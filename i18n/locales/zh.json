@@ -1,0 +1,118 @@
+{
+  "app": {
+    "title": "NovaStory · 分镜创作实验",
+    "subtitle": "人机协同创意中的自动化与个性研究"
+  },
+  "common": {
+    "loading": "AI 生成中…"
+  },
+  "sidebar": {
+    "language": "界面语言",
+    "api_section": "模型接口",
+    "topic_section": "实验主题",
+    "researcher_section": "实验员工具",
+    "subject_id_placeholder": "如 User_001",
+    "flow_abc": "流程一：A → B → C（全自动一键）",
+    "flow_abd": "流程二：A → B → D（半路大纲干预）",
+    "api_preset_label": "选择 API 配置",
+    "api_no_configs": "未找到 API 配置。请在 .streamlit/secrets.toml 中添加至少一个 [[api_configs]] 块（参见 secrets.toml.example）。",
+    "api_active": "当前配置：{name}",
+    "api_key_missing": "该配置缺少 API Key，请在 .streamlit/secrets.toml 中填入。",
+    "topic_preset_label": "选择主题预设",
+    "topic_title_label": "主题标题",
+    "topic_scenario_label": "情境描述",
+    "topic_shot_count_label": "分镜数",
+    "topic_total_seconds_label": "总时长（秒）",
+    "topic_save_button": "保存为新预设",
+    "topic_saved": "已保存到预设库",
+    "topic_save_failed": "保存失败：{error}",
+    "researcher_toggle": "实验员模式（查看 CSV）",
+    "frozen_hint": "受试者已开始作答，主题字段已锁定"
+  },
+  "onboarding": {
+    "title": "受试者入场",
+    "hint": "实验员请先确认侧边栏的接口与主题配置已就绪，然后在这里填入受试者编号、分配实验流，点开始即进入第一组。",
+    "topic_preview": "本次实验主题",
+    "topic_spec": "{count} 个镜头 · 总时长 {total} 秒（单镜时长由 AI 按节奏自由分配）",
+    "subject_id_label": "受试者编号",
+    "flow_label": "请为该受试者分配实验流（点击对应按钮即开始）"
+  },
+  "status": {
+    "topic_label": "当前主题",
+    "subject_label": "受试者",
+    "flow_label": "流程",
+    "step_label": "当前进度",
+    "group_a": "A · 纯人工",
+    "group_b": "B · 低自动化",
+    "group_c": "C · 全自动",
+    "group_d": "D · 大纲干预",
+    "done": "已完成"
+  },
+  "group_a": {
+    "title": "A 组 · 纯人工创作",
+    "instructions": "请围绕主题，纯手写完成 {shot_count} 个镜头、总时长 {total_seconds} 秒的分镜脚本。每个镜头的时长由你按节奏自由分配（特写可短、动作/对白可长），加起来等于 {total_seconds} 秒即可。包含画面描写与台词/音效。",
+    "script_label": "你的分镜脚本",
+    "script_placeholder": "镜头 1：…\n镜头 2：…\n镜头 3：…",
+    "seed_label": "请用一句话提炼你刚才剧本的核心创意梗（将作为后续 AI 组的初始输入）",
+    "seed_placeholder": "如：通宵学渣的崩溃式自救",
+    "submit": "提交 A 组数据"
+  },
+  "group_b": {
+    "title": "B 组 · 低自动化",
+    "instructions": "请微调你的核心创意梗（默认沿用 A 组），并补充给 AI 的提示词。AI 会生成 {shot_count} 个镜头的完整脚本，不满意可重生成（只保留最后一版）。",
+    "seed_label": "核心创意梗",
+    "prompt_label": "给 AI 的补充提示词（风格、节奏、台词偏好等）",
+    "prompt_placeholder": "如：偏荒诞喜剧风，多内心独白，少对白",
+    "generate": "AI 生成脚本",
+    "regenerate": "重新生成（覆盖上一版）",
+    "output_label": "AI 生成的脚本",
+    "submit": "提交 B 组数据"
+  },
+  "group_c": {
+    "title": "C 组 · 全自动一键生成",
+    "instructions": "你的核心创意梗已锁定，请直接一键生成 {shot_count} 镜头脚本。",
+    "seed_label": "已锁定的核心创意梗",
+    "generate": "一键生成",
+    "output_label": "AI 生成的脚本",
+    "submit": "提交 C 组数据"
+  },
+  "group_d": {
+    "title": "D 组 · 半路大纲干预",
+    "instructions": "先让 AI 生成 {shot_count} 句话的故事大纲，你可以在文本框中直接修改、推翻或加入自己的梗，然后再生成最终脚本。",
+    "seed_label": "已锁定的核心创意梗",
+    "gen_outline": "生成中间大纲",
+    "outline_label": "AI 大纲（可编辑）",
+    "outline_hint": "请在这里改写大纲，加入你的个性化梗",
+    "gen_final": "确认并生成最终脚本",
+    "final_label": "最终脚本",
+    "submit": "提交 D 组数据"
+  },
+  "done": {
+    "title": "实验完成 🎉",
+    "message": "本受试者所有组别已提交，数据已写入 CSV。",
+    "reset": "为下一位受试者重置"
+  },
+  "researcher": {
+    "title": "实验数据后台",
+    "filter_user": "按受试者编号过滤",
+    "filter_topic": "按主题过滤",
+    "row_count": "共 {n} 行",
+    "group_count": "各组样本量",
+    "download": "下载 CSV",
+    "empty": "暂无数据，请等待第一次提交。"
+  },
+  "llm": {
+    "endpoint": "当前配置：{name}",
+    "completed": "生成完成",
+    "failed": "生成失败",
+    "log_hint": "完整日志可在 data/llm.log 查看（终端可 `tail -f data/llm.log`）。"
+  },
+  "errors": {
+    "no_api_key": "请先在侧边栏填入 API Key。",
+    "llm_failed": "AI 调用失败：{error}",
+    "topic_required": "请先在侧边栏配置实验主题。",
+    "locked_prev_step": "请先完成上一步并提交。",
+    "outline_empty": "大纲为空，请先生成或填写大纲。",
+    "seed_empty": "请填写核心创意梗。"
+  }
+}

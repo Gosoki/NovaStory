@@ -1,0 +1,118 @@
+{
+  "app": {
+    "title": "NovaStory · Storyboard Experiment",
+    "subtitle": "Study of automation vs. personal voice in human-AI co-creation"
+  },
+  "common": {
+    "loading": "AI is generating…"
+  },
+  "sidebar": {
+    "language": "UI Language",
+    "api_section": "Model Endpoint",
+    "topic_section": "Experiment Topic",
+    "researcher_section": "Researcher Tools",
+    "subject_id_placeholder": "e.g. User_001",
+    "flow_abc": "Flow 1: A → B → C (one-click)",
+    "flow_abd": "Flow 2: A → B → D (mid-outline intervention)",
+    "api_preset_label": "Pick an API preset",
+    "api_no_configs": "No API presets found. Add at least one [[api_configs]] block to .streamlit/secrets.toml (see secrets.toml.example).",
+    "api_active": "Active preset: {name}",
+    "api_key_missing": "This preset has no API Key — fill it in .streamlit/secrets.toml.",
+    "topic_preset_label": "Pick a topic preset",
+    "topic_title_label": "Topic title",
+    "topic_scenario_label": "Scenario description",
+    "topic_shot_count_label": "Number of shots",
+    "topic_total_seconds_label": "Total seconds",
+    "topic_save_button": "Save as new preset",
+    "topic_saved": "Preset saved.",
+    "topic_save_failed": "Save failed: {error}",
+    "researcher_toggle": "Researcher mode (view CSV)",
+    "frozen_hint": "Subject has started — topic fields are locked."
+  },
+  "onboarding": {
+    "title": "Subject onboarding",
+    "hint": "Researcher: confirm the API and topic settings in the sidebar, then enter a Subject ID, assign a flow, and start.",
+    "topic_preview": "Topic for this run",
+    "topic_spec": "{count} shots · {total}s total (AI decides each shot's length)",
+    "subject_id_label": "Subject ID",
+    "flow_label": "Assign a flow to this subject (click a button to start)"
+  },
+  "status": {
+    "topic_label": "Topic",
+    "subject_label": "Subject",
+    "flow_label": "Flow",
+    "step_label": "Progress",
+    "group_a": "A · Manual",
+    "group_b": "B · Low automation",
+    "group_c": "C · Full auto",
+    "group_d": "D · Outline intervention",
+    "done": "Done"
+  },
+  "group_a": {
+    "title": "Group A · Pure manual writing",
+    "instructions": "Write a storyboard by hand: {shot_count} shots totalling {total_seconds}s. You decide each shot's length — close-ups can be short, action/dialogue can be longer — but the durations must sum to {total_seconds}s. Include visuals and dialogue/SFX.",
+    "script_label": "Your storyboard",
+    "script_placeholder": "Shot 1: …\nShot 2: …\nShot 3: …",
+    "seed_label": "In one sentence, summarize the creative hook of what you just wrote (it will seed the later AI groups).",
+    "seed_placeholder": "e.g. an all-nighter slacker's desperate self-rescue",
+    "submit": "Submit Group A"
+  },
+  "group_b": {
+    "title": "Group B · Low automation",
+    "instructions": "Tweak the creative hook (default carried over from A) and add a prompt for the AI. The AI will produce a full {shot_count}-shot script. Re-generate if unhappy — only the last version is kept.",
+    "seed_label": "Creative hook",
+    "prompt_label": "Extra prompt for the AI (style, pacing, dialogue preference, …)",
+    "prompt_placeholder": "e.g. absurd-comedy style, more inner monologue, less dialogue",
+    "generate": "Generate with AI",
+    "regenerate": "Regenerate (overwrites previous)",
+    "output_label": "AI-generated script",
+    "submit": "Submit Group B"
+  },
+  "group_c": {
+    "title": "Group C · One-click auto generation",
+    "instructions": "Your creative hook is locked. Click once to generate the {shot_count}-shot script directly.",
+    "seed_label": "Locked creative hook",
+    "generate": "Generate in one click",
+    "output_label": "AI-generated script",
+    "submit": "Submit Group C"
+  },
+  "group_d": {
+    "title": "Group D · Mid-outline intervention",
+    "instructions": "AI first writes a {shot_count}-sentence outline; you may freely edit, override, or inject your own jokes in the text box, then generate the final script.",
+    "seed_label": "Locked creative hook",
+    "gen_outline": "Generate intermediate outline",
+    "outline_label": "AI outline (editable)",
+    "outline_hint": "Rewrite the outline here — inject your personal twist.",
+    "gen_final": "Confirm and generate final script",
+    "final_label": "Final script",
+    "submit": "Submit Group D"
+  },
+  "done": {
+    "title": "Experiment complete 🎉",
+    "message": "All groups submitted for this subject. Data written to CSV.",
+    "reset": "Reset for the next subject"
+  },
+  "researcher": {
+    "title": "Researcher dashboard",
+    "filter_user": "Filter by Subject ID",
+    "filter_topic": "Filter by Topic",
+    "row_count": "{n} rows",
+    "group_count": "Rows per group",
+    "download": "Download CSV",
+    "empty": "No data yet — waiting for the first submission."
+  },
+  "llm": {
+    "endpoint": "Active preset: {name}",
+    "completed": "Generation complete",
+    "failed": "Generation failed",
+    "log_hint": "Full log is at data/llm.log (run `tail -f data/llm.log` in another terminal)."
+  },
+  "errors": {
+    "no_api_key": "Please enter an API Key in the sidebar first.",
+    "llm_failed": "AI call failed: {error}",
+    "topic_required": "Please configure the experiment topic in the sidebar.",
+    "locked_prev_step": "Please finish and submit the previous step first.",
+    "outline_empty": "Outline is empty — please generate or write one first.",
+    "seed_empty": "Please write the creative hook."
+  }
+}

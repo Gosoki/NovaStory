@@ -1,0 +1,118 @@
+{
+  "app": {
+    "title": "NovaStory · 絵コンテ作成実験",
+    "subtitle": "人間とAIの共創における自動化と個性のバランス研究"
+  },
+  "common": {
+    "loading": "AI生成中…"
+  },
+  "sidebar": {
+    "language": "表示言語",
+    "api_section": "モデル接続",
+    "topic_section": "実験テーマ",
+    "researcher_section": "実験者ツール",
+    "subject_id_placeholder": "例：User_001",
+    "flow_abc": "フロー1：A → B → C（ワンクリック）",
+    "flow_abd": "フロー2：A → B → D（途中でアウトライン介入）",
+    "api_preset_label": "APIプリセットを選択",
+    "api_no_configs": "APIプリセットが見つかりません。.streamlit/secrets.toml に少なくとも1つの [[api_configs]] ブロックを追加してください（secrets.toml.example を参照）。",
+    "api_active": "現在の設定：{name}",
+    "api_key_missing": "このプリセットにAPIキーがありません。.streamlit/secrets.toml に記入してください。",
+    "topic_preset_label": "テーマプリセットを選ぶ",
+    "topic_title_label": "テーマタイトル",
+    "topic_scenario_label": "シチュエーション説明",
+    "topic_shot_count_label": "ショット数",
+    "topic_total_seconds_label": "合計秒数",
+    "topic_save_button": "新規プリセットとして保存",
+    "topic_saved": "プリセットを保存しました。",
+    "topic_save_failed": "保存に失敗：{error}",
+    "researcher_toggle": "実験者モード（CSV閲覧）",
+    "frozen_hint": "被験者が開始済みのため、テーマ項目はロックされています。"
+  },
+  "onboarding": {
+    "title": "被験者の受付",
+    "hint": "実験者：サイドバーのAPI・テーマ設定を確認したら、ここで被験者IDを入力しフローを割り当てて開始してください。",
+    "topic_preview": "今回のテーマ",
+    "topic_spec": "{count}ショット · 合計{total}秒（各ショットの長さはAIがリズムに合わせて配分）",
+    "subject_id_label": "被験者ID",
+    "flow_label": "この被験者にフローを割り当て（ボタンを押すと開始）"
+  },
+  "status": {
+    "topic_label": "テーマ",
+    "subject_label": "被験者",
+    "flow_label": "フロー",
+    "step_label": "進捗",
+    "group_a": "A · 手書き",
+    "group_b": "B · 低自動化",
+    "group_c": "C · 全自動",
+    "group_d": "D · アウトライン介入",
+    "done": "完了"
+  },
+  "group_a": {
+    "title": "Aグループ · 完全手書き",
+    "instructions": "テーマに沿って、{shot_count}ショット・合計{total_seconds}秒の絵コンテを手書きで作成してください。各ショットの長さはあなたがリズムに合わせて配分（クローズアップは短め、アクション/台詞は長めなど）し、合計が{total_seconds}秒になるようにします。映像描写と台詞/効果音を含めてください。",
+    "script_label": "あなたの絵コンテ",
+    "script_placeholder": "ショット1：…\nショット2：…\nショット3：…",
+    "seed_label": "今書いた脚本のコアアイデアを一文で要約してください（以降のAIグループの初期入力になります）",
+    "seed_placeholder": "例：徹夜組ダメ学生の崩壊式セルフレスキュー",
+    "submit": "Aグループを提出"
+  },
+  "group_b": {
+    "title": "Bグループ · 低自動化",
+    "instructions": "コアアイデアを微調整し（既定でAから引継ぎ）、AIへの追加プロンプトを書いてください。AIが{shot_count}ショット分の完成脚本を生成します。気に入らない場合は再生成可能（最後の1版だけ保持）。",
+    "seed_label": "コアアイデア",
+    "prompt_label": "AIへの追加プロンプト（スタイル、テンポ、台詞傾向など）",
+    "prompt_placeholder": "例：不条理コメディ風、独白多め、台詞は少なめ",
+    "generate": "AIで生成",
+    "regenerate": "再生成（前版を上書き）",
+    "output_label": "AIが生成した脚本",
+    "submit": "Bグループを提出"
+  },
+  "group_c": {
+    "title": "Cグループ · ワンクリック全自動生成",
+    "instructions": "コアアイデアは固定済みです。そのまま{shot_count}ショットの脚本をワンクリックで生成してください。",
+    "seed_label": "固定されたコアアイデア",
+    "generate": "ワンクリック生成",
+    "output_label": "AIが生成した脚本",
+    "submit": "Cグループを提出"
+  },
+  "group_d": {
+    "title": "Dグループ · 途中アウトライン介入",
+    "instructions": "AIがまず{shot_count}文のストーリーアウトラインを生成します。テキスト枠で自由に修正・書き換え・あなたの個性的なネタを差し込んだ後、最終脚本を生成します。",
+    "seed_label": "固定されたコアアイデア",
+    "gen_outline": "中間アウトラインを生成",
+    "outline_label": "AIアウトライン（編集可）",
+    "outline_hint": "ここでアウトラインを書き換え、あなたらしいネタを入れてください。",
+    "gen_final": "確認して最終脚本を生成",
+    "final_label": "最終脚本",
+    "submit": "Dグループを提出"
+  },
+  "done": {
+    "title": "実験完了 🎉",
+    "message": "この被験者の全グループが提出され、データはCSVに保存されました。",
+    "reset": "次の被験者のためにリセット"
+  },
+  "researcher": {
+    "title": "実験データ管理画面",
+    "filter_user": "被験者IDで絞り込み",
+    "filter_topic": "テーマで絞り込み",
+    "row_count": "全{n}行",
+    "group_count": "グループ別件数",
+    "download": "CSVをダウンロード",
+    "empty": "まだデータがありません — 最初の提出を待っています。"
+  },
+  "llm": {
+    "endpoint": "現在の設定：{name}",
+    "completed": "生成完了",
+    "failed": "生成失敗",
+    "log_hint": "完全なログは data/llm.log にあります（別ターミナルで `tail -f data/llm.log`）。"
+  },
+  "errors": {
+    "no_api_key": "サイドバーでAPIキーを入力してください。",
+    "llm_failed": "AI呼び出しに失敗：{error}",
+    "topic_required": "サイドバーで実験テーマを設定してください。",
+    "locked_prev_step": "先に前のステップを完了して提出してください。",
+    "outline_empty": "アウトラインが空です。先に生成または記入してください。",
+    "seed_empty": "コアアイデアを記入してください。"
+  }
+}
