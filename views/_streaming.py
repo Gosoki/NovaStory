@@ -1,18 +1,20 @@
 from __future__ import annotations
 
+import time
 from typing import Optional
 
 import streamlit as st
 
-from core import llm
+from core import llm, state
 from i18n import t
 
 
 def stream_llm(system: str, user: str, *, group: str) -> Optional[str]:
     """Render endpoint info, stream tokens via st.write_stream, log lifecycle.
 
-    Returns the full string on success, None on config/call error (already shown via st.error).
-    Side effects (logged to data/llm.log): start / first_token / done / error.
+    Returns the full string on success, None on config/call error (already shown
+    via st.error). Streaming wait is logged as llm_start/llm_done events and
+    accumulated into the round's r_llm_wait (excluded from creative time).
     """
     try:
         llm._client()  # early config check
@@ -21,24 +23,53 @@ def stream_llm(system: str, user: str, *, group: str) -> Optional[str]:
         return None
 
     status = st.status(t("common.loading"), expanded=True)
-    status.write(
-        t("llm.endpoint", name=st.session_state.get("api_preset_name", "—"))
-    )
-    status.caption(t("llm.log_hint"))
 
+    state.log_event("llm_start", {"group": group})
+    t0 = time.time()
     try:
         out = st.write_stream(
             llm.generate_stream(
                 system,
                 user,
                 group=group,
-                user_id=st.session_state.get("subject_id", ""),
+                user_id=str(st.session_state.get("participant_id") or ""),
             )
         )
     except llm.LLMCallError as e:
+        state.log_event("llm_error", {"group": group, "elapsed": round(time.time() - t0, 2)})
         status.update(label=t("llm.failed"), state="error")
         st.error(t("errors.llm_failed", error=str(e)))
         return None
 
+    elapsed = round(time.time() - t0, 2)
+    state.add_llm_wait(elapsed)
+    state.log_event("llm_done", {"group": group, "elapsed": elapsed})
     status.update(label=t("llm.completed"), state="complete")
-    return out if isinstance(out, str) else "".join(out)
+    text = out if isinstance(out, str) else "".join(out)
+    return llm.clean_output(text)
+
+
+def call_llm_batch(system: str, user: str, *, group: str, n: int = 1) -> Optional[list[str]]:
+    """Non-streaming n-sample call with the same event/wait bookkeeping."""
+    state.log_event("llm_start", {"group": group, "n": n})
+    t0 = time.time()
+    try:
+        with st.spinner(t("common.loading")):
+            outs = llm.generate(
+                system,
+                user,
+                group=group,
+                user_id=str(st.session_state.get("participant_id") or ""),
+                n=n,
+            )
+    except llm.LLMConfigError:
+        st.error(t("errors.no_api_key"))
+        return None
+    except llm.LLMCallError as e:
+        state.log_event("llm_error", {"group": group, "elapsed": round(time.time() - t0, 2)})
+        st.error(t("errors.llm_failed", error=str(e)))
+        return None
+    elapsed = round(time.time() - t0, 2)
+    state.add_llm_wait(elapsed)
+    state.log_event("llm_done", {"group": group, "n": n, "elapsed": elapsed})
+    return outs

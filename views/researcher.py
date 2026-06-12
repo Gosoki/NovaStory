@@ -1,59 +1,40 @@
 from __future__ import annotations
 
-import json
-
 import streamlit as st
 
-from core import storage
+from core import db
 from i18n import t
 
 
 def render() -> None:
     st.header(t("researcher.title"))
-    df = storage.load_df()
+
+    c = db.counts()
+    cols = st.columns(4)
+    cols[0].metric(t("researcher.n_participants"), c["participants"])
+    cols[1].metric(t("researcher.n_passed"), c["passed"])
+    cols[2].metric(t("researcher.n_done"), c["done"])
+    cols[3].metric(t("researcher.n_trials"), c["trials"])
+
+    table = st.selectbox(t("researcher.table_label"), db.TABLES)
+    df = db.load_table(table)
     if df.empty:
         st.info(t("researcher.empty"))
         return
 
-    # Friendlier display: extract topic title from JSON for filtering
-    def topic_title(s: str) -> str:
-        try:
-            return json.loads(s).get("title", s)
-        except (json.JSONDecodeError, AttributeError):
-            return s or ""
+    if "participant_id" in df.columns:
+        options = ["(all)"] + sorted(df["participant_id"].unique().tolist())
+        pick = st.selectbox(t("researcher.filter_participant"), options)
+        if pick != "(all)":
+            df = df[df["participant_id"] == pick]
 
-    df = df.copy()
-    df["Topic_Title"] = df["Topic"].apply(topic_title)
-
-    col1, col2 = st.columns(2)
-    with col1:
-        user_options = ["(all)"] + sorted(df["User_ID"].unique().tolist())
-        user_pick = st.selectbox(t("researcher.filter_user"), user_options)
-    with col2:
-        topic_options = ["(all)"] + sorted(df["Topic_Title"].unique().tolist())
-        topic_pick = st.selectbox(t("researcher.filter_topic"), topic_options)
-
-    filtered = df
-    if user_pick != "(all)":
-        filtered = filtered[filtered["User_ID"] == user_pick]
-    if topic_pick != "(all)":
-        filtered = filtered[filtered["Topic_Title"] == topic_pick]
-
-    st.caption(t("researcher.row_count", n=len(filtered)))
-
-    st.subheader(t("researcher.group_count"))
-    st.bar_chart(filtered["Group"].value_counts())
-
-    st.dataframe(
-        filtered.drop(columns=["Topic_Title"]),
-        width="stretch",
-        hide_index=True,
-    )
+    st.caption(t("researcher.row_count", n=len(df)))
+    st.dataframe(df, width="stretch", hide_index=True)
 
     st.download_button(
         label=t("researcher.download"),
-        data=storage.download_bytes(),
-        file_name="experiment_results.csv",
+        data=df.to_csv(index=False).encode("utf-8-sig"),
+        file_name=f"novastory_{table}.csv",
         mime="text/csv",
         width="stretch",
     )

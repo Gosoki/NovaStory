@@ -1,0 +1,10 @@
+# 离线分析管线依赖(独立于主 requirements.txt,勿合并)
+# 安装: .venv/bin/pip install -r analysis/requirements-analysis.txt
+numpy
+scipy
+pandas
+statsmodels
+
+# 可选:仅 `analysis/metrics.py --backend local` 需要(副 embedding 模型
+# intfloat/multilingual-e5-small;会连带安装 torch,体积大,按需手动装):
+# sentence-transformers

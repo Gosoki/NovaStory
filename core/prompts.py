@@ -37,6 +37,39 @@ def build_system_outline(topic: dict) -> str:
     )
 
 
+def build_system_dissent(topic: dict, divergence_dim: str) -> str:
+    n = _shots(topic)
+    return (
+        "你是一名建设性的创作异议者。用户正在创作一个短视频故事大纲,"
+        "你手里有若干份『默认版本』——即同样的创意输入下,AI 不经人工干预时最典型的产出。\n"
+        "你的任务是对照默认版本审视用户当前的大纲,并严格按以下三段输出(保留标记):\n"
+        f"【重合】指出用户大纲与默认版本实质重合的 1-2 处(具体到情节/设定,而不是泛泛而谈);"
+        "若几乎没有重合,如实说明并指出用户大纲最独特的一点。\n"
+        "【提问】提出一个挑战性的问题,逼用户想清楚自己真正想表达什么。\n"
+        f"【反提案】沿『{divergence_dim}』的方向,给出一条远离默认版本、可直接落地为 {n} 镜头故事的具体替代构思(2-3 句)。\n"
+        "语气坦率但尊重,总字数不超过 220 字。不要重写整份大纲,不要输出三段以外的内容。\n"
+        "输出语言:中文。"
+    )
+
+
+def build_user_dissent(
+    topic: dict,
+    seed: str,
+    user_outline: str,
+    default_outlines: list[str],
+) -> str:
+    defaults = "\n\n".join(
+        f"--- 默认版本 {i + 1} ---\n{o.strip()}" for i, o in enumerate(default_outlines)
+    )
+    return (
+        f"主题:{topic.get('title', '').strip()}\n"
+        f"情境:{topic.get('scenario', '').strip()}\n"
+        f"用户的核心创意:{(seed or '').strip()}\n\n"
+        f"用户当前的大纲:\n{user_outline.strip()}\n\n"
+        f"AI 不经干预时的默认版本(共 {len(default_outlines)} 份):\n{defaults}"
+    )
+
+
 def build_user(
     topic: dict,
     seed: str,

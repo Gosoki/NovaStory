@@ -219,3 +219,11 @@ __marimo__/
 
 # claude
 .claude
+
+# NovaStory experiment data (never commit participant data)
+data/*.csv
+data/*.db
+data/archive/
+data/baseline/
+data/ghosts/
+data/analysis/

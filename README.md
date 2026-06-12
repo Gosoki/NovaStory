@@ -1,14 +1,23 @@
-# NovaStory · Storyboard Co-Creation Experiment
+# NovaStory v2 · Storyboard Co-Creation Experiment
 
-A Streamlit demo for studying how different human–AI collaboration modes shape
-short-video storyboard creativity. Built around a wizard-style A → B → C/D flow.
+Streamlit platform for a **within-subjects online experiment** on how the
+placement of human intervention in an AI storyboarding pipeline affects output
+homogenization and psychological ownership.
 
-- **Group A** — pure manual writing + one-line creative hook
-- **Group B** — low automation: hook + custom prompt → AI script (regeneratable)
-- **Group C** (Flow 1) — one-click full-auto generation
-- **Group D** (Flow 2) — mid-outline intervention: AI outline → user edits → final script
+- **Condition C** — fully automatic: intent statement → final script
+- **Condition D** — outline checkpoint: intent → AI outline → human edit → final
+- **Condition E** — D + **ModeMirror**: before finalizing, the AI shows the
+  "default version" it would have produced, diagnoses overlap with the user's
+  outline, asks a challenging question, offers a counter-proposal, and forces
+  an accept / transform / reject adjudication
 
-UI is available in 中文 / English / 日本語 (i18n via `i18n/locales/*.json`).
+Each participant: consent → novice screening (6-item battery + DAT) →
+3 rounds (3×3 Latin square over conditions × topics) with an in-app
+questionnaire + per-shot intent annotation after each round → completion code.
+Research design: see `paper/4、研究方案书.md`; engineering spec: `paper/5、开发任务书.md`.
+
+> v1 (the A/B/C/D wizard flow) was retired on 2026-06-12; its code lives in git
+> history (`3a7737b`) and its pilot data in `data/archive/`.
 
 ## Setup
 
@@ -16,32 +25,42 @@ UI is available in 中文 / English / 日本語 (i18n via `i18n/locales/*.json`)
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+cp .streamlit/secrets.toml.example .streamlit/secrets.toml  # fill api_configs
 streamlit run app.py
 ```
 
-## Sidebar configuration
-
-- **Subject ID** & **Flow** (ABC vs ABD)
-- **OpenAI API Key**, **Base URL** (defaults to `https://api.openai.com/v1`, override for OpenRouter / local LLMs), **Model** name
-- **Topic** — pick a preset from `data/topics.json` or edit live; "Save as new preset" appends to the file
-- **Researcher mode** — switches the main area to a CSV viewer with filters and a download button
-
-Topic fields lock the instant Group A is started, so the same Subject ID is guaranteed
-consistent across A/B/C/D.
+`secrets.toml` keys: `[[api_configs]]` blocks (first one is auto-applied for
+participants) and optional `researcher_password` (fallback: env
+`NOVASTORY_RESEARCHER_PW`, then dev default `nova`).
 
 ## Data
 
-Submissions append to `data/experiment_results.csv` with columns:
+Everything is written to SQLite (`data/novastory.db`, WAL mode, gitignored):
 
-`User_ID, Topic, Group, Total_Time_Seconds, Initial_Input, Interventions, Final_Output, Timestamp`
+| table | contents |
+|---|---|
+| `participants` | demographics, screening battery, latin-square seq, attention check, completion code |
+| `trials` | per round: condition, intent, AI/edited outlines, ModeMirror dissent + adjudication, final script, generation params (model/temperature/base_url), phase durations (LLM wait separated) |
+| `events` | timestamped interaction log (round_start … questionnaire_submit) |
+| `questionnaires` | ownership / agency / TLX items, intent-violation, per-shot annotations |
 
-- `Topic` — JSON snapshot of the topic at A-submit time
-- `Interventions` — JSON `{ai_outline, user_edited}`, only for Group D
+Researcher mode (sidebar, password-locked): table browser + CSV export +
+session reset for local testing.
 
-Self-rating is intentionally **not** collected here; collect it via Google Forms separately.
+## Offline pipeline (analysis)
+
+`scripts/` and `analysis/` hold the non-Streamlit pipeline (machine baselines,
+ghost-run counterfactuals, HLZ/diversity metrics, stats, power simulation,
+LLM-judge). See the Makefile and `analysis/requirements-analysis.txt`.
+
+## Tests
+
+```bash
+.venv/bin/python scripts/dev_smoke_e2e.py   # full participant flow, stubbed LLM, temp DB
+```
 
 ## i18n
 
-Add a language by dropping a new `i18n/locales/<code>.json` mirroring `zh.json`'s key
-tree and appending the code to `AVAILABLE_LANGS` / `LANG_LABELS` in
-[i18n/translator.py](i18n/translator.py).
+`i18n/locales/{zh,en,ja}.json` mirror the same key tree (zh is the fallback
+source of truth). Deploy a study in ONE language; topics live in
+`data/topics.json` (first 3 entries are used).

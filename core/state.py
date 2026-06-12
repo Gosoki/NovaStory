@@ -3,141 +3,224 @@ from __future__ import annotations
 import json
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import streamlit as st
+
+from core import config, db
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "data"
 TOPICS_FILE = DATA_DIR / "topics.json"
 
-STEP_ORDER = ["A", "B", "C", "D", "DONE"]
+# 3×3 Latin squares: seq (0-8) = cond_row * 3 + topic_row.
+# Condition order and topic→condition pairing are both balanced across 9 seqs.
+_COND_ORDERS = (("C", "D", "E"), ("D", "E", "C"), ("E", "C", "D"))
+_TOPIC_ORDERS = ((0, 1, 2), (1, 2, 0), (2, 0, 1))
 
-# Seed topic written to data/topics.json on first launch when the file is missing.
-# Live session always reads the topic from topics.json via load_topics() — never
-# from this constant — so editing this changes only what a fresh install starts with.
-_SEED_TOPIC = {
-    "title": "期末周渡劫",
-    "scenario": "距离明天早上的专业课期末考试只剩 8 小时，而主角现在才刚打开第一页书。",
-    "shot_count": 3,
-    "total_seconds": 15,
+# Seed topics written to data/topics.json on first launch when the file is
+# missing. Live session always reads from topics.json via load_topics().
+_SEED_TOPICS = [
+    {
+        "title": "期末周渡劫",
+        "scenario": "距离明天早上的专业课期末考试只剩 8 小时,而主角现在才刚打开第一页书。",
+        "shot_count": 3,
+        "total_seconds": 15,
+    },
+    {
+        "title": "错过的末班车",
+        "scenario": "深夜加班结束,主角狂奔到站台时末班车刚好关门开走,只能想办法回家。",
+        "shot_count": 3,
+        "total_seconds": 15,
+    },
+    {
+        "title": "五分钟的告白",
+        "scenario": "毕业典礼散场,人群正在离开,主角只剩五分钟向暗恋的人说出那句话。",
+        "shot_count": 3,
+        "total_seconds": 15,
+    },
+]
+
+# Per-round payload, reset at the start of every round.
+ROUND_PAYLOAD_DEFAULTS: dict[str, Any] = {
+    "r_phase": "intent",       # intent → pipeline → questionnaire
+    "r_intent": "",
+    "r_outline_ai": "",
+    "r_outline_user": "",
+    "r_defaults": [],          # pre-sampled default outlines (condition E)
+    "r_dissent": "",           # ModeMirror dissent text
+    "r_adjudication": "",      # accept / transform / reject
+    "r_adjudication_reason": "",
+    "r_final": "",
+    "r_regen": 0,
+    "r_llm_wait": 0.0,
+    "r_events": [],            # [(epoch_seconds, type)] session mirror for durations
+    "r_trial_id": None,
 }
 
 DEFAULTS: dict[str, Any] = {
     "lang": "zh",
-    "subject_id": "",
-    "flow": "ABC",
     "api_key": "",
-    "base_url": "https://api.openai.com/v1",
-    "model": "gpt-4o-mini",
-    "topic_frozen": False,
+    "base_url": "",
+    "model": "",
+    "api_preset_name": "",
     "researcher_mode": False,
-    "subject_started": False,
-    "step": "A",
-    "group_start_ts": {},
-    "group_submitted": {"A": False, "B": False, "C": False, "D": False},
-    # per-group payloads
-    "a_script": "",
-    "a_seed": "",
-    "b_seed": "",
-    "b_prompt": "",
-    "b_output": "",
-    "c_output": "",
-    "d_outline_ai": "",
-    "d_outline_user": "",
-    "d_final": "",
+    "researcher_ok": False,
+    "participant_id": None,
+    "seq": None,
+    "stage": "consent",        # consent → screening → rounds → done | screened_out
+    "round_idx": 1,
+    "round_plan": [],          # [{"condition": str, "topic": dict}] × 3
+    "divergence_dim": "",
+    "attention_value": None,
+    "completion_code": "",
+    **ROUND_PAYLOAD_DEFAULTS,
 }
 
 
 def init_state() -> None:
+    db.init_db()
     for k, v in DEFAULTS.items():
         if k not in st.session_state:
             st.session_state[k] = v if not isinstance(v, (dict, list)) else _clone(v)
-    # Topic is sourced from topics.json (single source of truth). Loaded lazily so
-    # researcher edits in the sidebar always sync with the file.
-    if "topic" not in st.session_state:
-        st.session_state["topic"] = dict(load_topics()[0])
+    _ensure_api_defaults()
 
 
 def _clone(v):
     return json.loads(json.dumps(v))
 
 
-def reset_subject() -> None:
-    """Reset everything tied to the current subject; keep researcher-side config.
+def _ensure_api_defaults() -> None:
+    """Auto-apply the first secrets preset so participants never see API config."""
+    if (st.session_state.get("api_key") or "").strip():
+        return
+    cfgs = load_api_configs()
+    if cfgs:
+        chosen = cfgs[0]
+        st.session_state["base_url"] = chosen["base_url"]
+        st.session_state["model"] = chosen["model"]
+        st.session_state["api_key"] = chosen["api_key"]
+        st.session_state["api_preset_name"] = chosen.get("name", "")
 
-    Notes:
-    - `flow` is NOT kept — each subject picks their assignment on the onboarding screen.
-    - `_api_preset_idx` is kept so the researcher doesn't have to re-pick the endpoint.
-    """
+
+# ---------------- assignment & round flow ----------------
+
+def plan_for_seq(seq: int, topics: list[dict]) -> list[dict]:
+    conds = _COND_ORDERS[seq // 3]
+    topic_idx = _TOPIC_ORDERS[seq % 3]
+    return [{"condition": c, "topic": dict(topics[i])} for c, i in zip(conds, topic_idx)]
+
+
+def begin_rounds(participant_id: int, seq: int) -> None:
+    topics = load_topics()
+    if len(topics) < config.N_ROUNDS:
+        raise RuntimeError(f"topics.json needs >= {config.N_ROUNDS} topics")
+    st.session_state["participant_id"] = participant_id
+    st.session_state["seq"] = seq
+    st.session_state["stage"] = "rounds"
+    st.session_state["round_idx"] = 1
+    st.session_state["round_plan"] = plan_for_seq(seq, topics[: config.N_ROUNDS])
+    st.session_state["divergence_dim"] = config.DIVERGENCE_POOL[
+        seq % len(config.DIVERGENCE_POOL)
+    ]
+    reset_round_payload()
+    log_event("round_start")
+
+
+def current_round() -> dict:
+    return st.session_state["round_plan"][st.session_state["round_idx"] - 1]
+
+
+def reset_round_payload() -> None:
+    for k, v in ROUND_PAYLOAD_DEFAULTS.items():
+        st.session_state[k] = v if not isinstance(v, (dict, list)) else _clone(v)
+    # Ephemeral widget keys (Streamlit usually cleans these on unmount; pop
+    # defensively so a new round never inherits stale editor content).
+    for k in ("_outline_edit", "_intent_input", "_mm_reason", "_mm_choice"):
+        st.session_state.pop(k, None)
+
+
+def advance_round() -> None:
+    if st.session_state["round_idx"] >= config.N_ROUNDS:
+        st.session_state["stage"] = "done"
+        return
+    st.session_state["round_idx"] += 1
+    reset_round_payload()
+    log_event("round_start")
+
+
+def is_last_round() -> bool:
+    return st.session_state["round_idx"] >= config.N_ROUNDS
+
+
+def reset_for_next() -> None:
+    """Local-testing convenience (researcher only): wipe the subject, keep config."""
     keep = {
-        "lang": st.session_state.get("lang", DEFAULTS["lang"]),
-        "api_key": st.session_state.get("api_key", ""),
-        "base_url": st.session_state.get("base_url", DEFAULTS["base_url"]),
-        "model": st.session_state.get("model", DEFAULTS["model"]),
-        "topic": _clone(st.session_state.get("topic", _SEED_TOPIC)),
-        "researcher_mode": st.session_state.get("researcher_mode", False),
-        "_api_preset_idx": st.session_state.get("_api_preset_idx", 0),
+        k: st.session_state.get(k)
+        for k in (
+            "lang", "api_key", "base_url", "model", "api_preset_name",
+            "researcher_mode", "researcher_ok",
+        )
     }
     for k in list(st.session_state.keys()):
         del st.session_state[k]
     init_state()
-    for k, v in keep.items():
-        st.session_state[k] = v
+    st.session_state.update(keep)
 
 
-def ensure_start_ts(group: str) -> None:
-    """Stamp the first time the subject views this group; never reset on rerun."""
-    ts = st.session_state["group_start_ts"]
-    if group not in ts:
-        ts[group] = time.time()
+# ---------------- events & timing ----------------
+
+def log_event(type_: str, payload: Optional[dict] = None) -> None:
+    st.session_state["r_events"].append((time.time(), type_))
+    db.insert_event(
+        st.session_state.get("participant_id"),
+        st.session_state.get("round_idx"),
+        type_,
+        payload,
+    )
 
 
-def elapsed_seconds(group: str) -> float:
-    start = st.session_state["group_start_ts"].get(group)
-    if not start:
-        return 0.0
-    return round(time.time() - start, 2)
+def add_llm_wait(seconds: float) -> None:
+    st.session_state["r_llm_wait"] += seconds
 
 
-def can_view(group: str) -> bool:
-    """A is always viewable; later groups require previous submission AND matching flow."""
-    if group == "A":
-        return True
-    if group == "B":
-        return st.session_state["group_submitted"].get("A", False)
-    if group == "C":
-        return (
-            st.session_state["flow"] == "ABC"
-            and st.session_state["group_submitted"].get("B", False)
-        )
-    if group == "D":
-        return (
-            st.session_state["flow"] == "ABD"
-            and st.session_state["group_submitted"].get("B", False)
-        )
-    return False
+def _ts(type_: str, last: bool = False) -> Optional[float]:
+    hits = [t for t, ty in st.session_state["r_events"] if ty == type_]
+    if not hits:
+        return None
+    return hits[-1] if last else hits[0]
 
 
-def mark_submitted(group: str) -> None:
-    st.session_state["group_submitted"][group] = True
-    # Advance step pointer
-    flow = st.session_state["flow"]
-    if group == "A":
-        st.session_state["step"] = "B"
-    elif group == "B":
-        st.session_state["step"] = "C" if flow == "ABC" else "D"
-    elif group in ("C", "D"):
-        st.session_state["step"] = "DONE"
+def round_durations(condition: str) -> dict:
+    """Aggregate per-phase durations from the session event mirror.
+
+    Fine-grained timestamps live in the events table; these aggregates are
+    convenience columns on the trial row. LLM streaming wait is tracked
+    separately (r_llm_wait) and excluded from creative-time interpretation.
+    """
+    out = {
+        "t_read_intent": _delta("round_start", "intent_submit"),
+        "t_edit": None,
+        "t_dissent": None,
+        "t_llm_wait": round(st.session_state["r_llm_wait"], 2),
+        "t_total": _delta("round_start", "trial_submit"),
+    }
+    if condition == "D":
+        out["t_edit"] = _delta("outline_shown", "final_click", last_a=True)
+    elif condition == "E":
+        edit1 = _delta("outline_shown", "dissent_request", last_a=True)
+        edit2 = _delta("adjudicate", "final_click")
+        if edit1 is not None or edit2 is not None:
+            out["t_edit"] = round((edit1 or 0.0) + (edit2 or 0.0), 2)
+        out["t_dissent"] = _delta("dissent_shown", "adjudicate")
+    return out
 
 
-def is_done() -> bool:
-    return st.session_state.get("step") == "DONE"
-
-
-def freeze_topic() -> None:
-    """Lock topic edits once subject has started (called when A is first viewed)."""
-    st.session_state["topic_frozen"] = True
+def _delta(a: str, b: str, last_a: bool = False) -> Optional[float]:
+    ta, tb = _ts(a, last=last_a), _ts(b)
+    if ta is None or tb is None or tb < ta:
+        return None
+    return round(tb - ta, 2)
 
 
 # ---------------- topics.json -----------------
@@ -146,17 +229,17 @@ def load_topics() -> list[dict]:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     if not TOPICS_FILE.exists():
         TOPICS_FILE.write_text(
-            json.dumps([_SEED_TOPIC], ensure_ascii=False, indent=2),
+            json.dumps(_SEED_TOPICS, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
-        return [dict(_SEED_TOPIC)]
+        return [dict(t) for t in _SEED_TOPICS]
     try:
         data = json.loads(TOPICS_FILE.read_text(encoding="utf-8"))
         if isinstance(data, list) and data:
             return [_normalize_topic(t) for t in data]
     except json.JSONDecodeError:
         pass
-    return [dict(_SEED_TOPIC)]
+    return [dict(t) for t in _SEED_TOPICS]
 
 
 def _normalize_topic(t: dict) -> dict:
@@ -168,6 +251,19 @@ def _normalize_topic(t: dict) -> dict:
     out.setdefault("total_seconds", 15)
     out.setdefault("shot_count", 3)
     return out
+
+
+def save_topic_preset(topic: dict) -> None:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    topics = load_topics()
+    for t in topics:
+        if t.get("title") == topic.get("title") and t.get("scenario") == topic.get("scenario"):
+            return
+    topics.append(topic)
+    TOPICS_FILE.write_text(
+        json.dumps(topics, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
 
 
 # ---------------- api configs (from .streamlit/secrets.toml) -----------------
@@ -191,17 +287,3 @@ def load_api_configs() -> list[dict]:
             "api_key": item.get("api_key", ""),
         })
     return out
-
-
-def save_topic_preset(topic: dict) -> None:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    topics = load_topics()
-    # avoid exact duplicates by title+scenario
-    for t in topics:
-        if t.get("title") == topic.get("title") and t.get("scenario") == topic.get("scenario"):
-            return
-    topics.append(topic)
-    TOPICS_FILE.write_text(
-        json.dumps(topics, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
