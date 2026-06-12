@@ -14,7 +14,7 @@ def stream_llm(system: str, user: str, *, group: str) -> Optional[str]:
 
     Returns the full string on success, None on config/call error (already shown
     via st.error). Streaming wait is logged as llm_start/llm_done events and
-    accumulated into the round's r_llm_wait (excluded from creative time).
+    accumulated into the round's llm-wait counters (excluded from creative time).
     """
     try:
         llm._client()  # early config check
@@ -49,27 +49,31 @@ def stream_llm(system: str, user: str, *, group: str) -> Optional[str]:
     return llm.clean_output(text)
 
 
-def call_llm_batch(system: str, user: str, *, group: str, n: int = 1) -> Optional[list[str]]:
-    """Non-streaming n-sample call with the same event/wait bookkeeping."""
-    state.log_event("llm_start", {"group": group, "n": n})
+def call_llm_json(system: str, user: str, *, group: str) -> Optional[dict]:
+    """JSON-mode call (guided elicitation) with the same event/wait bookkeeping.
+
+    Returns the parsed dict, or None on any failure — callers degrade to the
+    open fallback question (paper/7 §2)."""
+    state.log_event("llm_start", {"group": group})
     t0 = time.time()
     try:
-        with st.spinner(t("common.loading")):
-            outs = llm.generate(
+        with st.spinner(t("guidance.wait")):
+            data = llm.generate_json(
                 system,
                 user,
                 group=group,
                 user_id=str(st.session_state.get("participant_id") or ""),
-                n=n,
             )
     except llm.LLMConfigError:
         st.error(t("errors.no_api_key"))
         return None
-    except llm.LLMCallError as e:
-        state.log_event("llm_error", {"group": group, "elapsed": round(time.time() - t0, 2)})
-        st.error(t("errors.llm_failed", error=str(e)))
+    except (llm.LLMCallError, llm.LLMJsonError) as e:
+        state.log_event(
+            "llm_error",
+            {"group": group, "elapsed": round(time.time() - t0, 2), "kind": type(e).__name__},
+        )
         return None
     elapsed = round(time.time() - t0, 2)
     state.add_llm_wait(elapsed)
-    state.log_event("llm_done", {"group": group, "n": n, "elapsed": elapsed})
-    return outs
+    state.log_event("llm_done", {"group": group, "elapsed": elapsed})
+    return data

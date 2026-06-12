@@ -46,7 +46,7 @@ def render() -> None:
 
     # ---- per-shot intent annotation ----
     st.subheader(t("q.shots_title"))
-    parsed = shots.parse_shots(st.session_state["r_final"])
+    parsed = shots.parse_shots(state.current_script())
     shot_annotations: list[dict] = []
     if parsed:
         st.caption(t("q.shots_hint"))

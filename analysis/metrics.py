@@ -1,3 +1,5 @@
+# NOTE (2026-06-13): HLZ / MC1 / MC2 metrics below are DEPRECATED (paper/7 D10);
+# diversity/baseline parts remain in use for exploratory analysis (paper/8 A3).
 #!/usr/bin/env python
 """T7.4 指标计算 — HLZ / 组内多样性 / 采样地板 / 编辑距离 / 意图保真 / MC1 / MC2。
 

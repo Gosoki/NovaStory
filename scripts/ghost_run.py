@@ -1,3 +1,5 @@
+# DEPRECATED (paper/7 D10, 2026-06-13): per-participant ghost-run counterfactuals
+# were dropped with the pivot to guided co-creation; kept for possible reuse.
 #!/usr/bin/env python
 """T7.3 Ghost-run — 对每个 trial 用其真实中间输入跑同一 pipeline 生成 K 份纯机器版本。
 

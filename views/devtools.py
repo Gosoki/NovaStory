@@ -16,6 +16,7 @@ TEST_INTENTS = {
 }
 _FALLBACK_INTENT = "主角在最普通的一天里发现了一件完全说不通的小事"
 EDIT_SNIPPET = "\n(我的修改:结局反转——主角把这一切拍成视频发到了网上,火了)"
+REVISION_SAMPLE = "(测试)整体更搞笑一点,最后一镜加个反转"
 
 
 def render() -> None:
@@ -77,32 +78,52 @@ def _fill_current() -> None:
         st.session_state["_intent_input"] = TEST_INTENTS.get(
             rd["topic"]["title"], _FALLBACK_INTENT
         )
-    elif phase == "pipeline":
-        if cond == "E" and st.session_state["r_dissent"] and not st.session_state["r_adjudication"]:
-            st.session_state["_mm_choice"] = "transform"
-            st.session_state["_mm_reason"] = "(测试)反转可以,但保留温情基调"
-        elif cond in ("D", "E") and st.session_state["r_outline_ai"] and not st.session_state["r_final"]:
-            base = (
-                st.session_state.get("_outline_edit")
-                or st.session_state["r_outline_user"]
-                or st.session_state["r_outline_ai"]
-            )
-            if EDIT_SNIPPET.strip() not in base:
-                st.session_state["_outline_edit"] = base + EDIT_SNIPPET
+    elif phase == "guidance":
+        _fill_guidance()
+    elif phase == "postgen":
+        cur = st.session_state.get("_script_edit") or state.current_script()
+        if EDIT_SNIPPET.strip() not in cur:
+            st.session_state["_script_edit"] = cur + EDIT_SNIPPET
+        if cond == "D":
+            st.session_state["_revision_input"] = REVISION_SAMPLE
     elif phase == "questionnaire":
-        ridx = st.session_state["round_idx"]
-        for i in range(1, 4):
-            st.session_state[f"_q_own{i}_{ridx}"] = 5
-        for i in range(1, 3):
-            st.session_state[f"_q_soa{i}_{ridx}"] = 4
-        st.session_state[f"_q_tlx1_{ridx}"] = 3
-        st.session_state[f"_q_violation_{ridx}"] = 2
-        st.session_state[f"_q_imagine_{ridx}"] = 6
-        if ridx == 2:  # attention check round
-            st.session_state[f"_q_attention_{ridx}"] = 2
-        parsed = shots.parse_shots(st.session_state["r_final"])
-        if parsed:
-            for s in parsed:
-                st.session_state[f"_q_shot{s['idx']}_{ridx}"] = "mine"
+        _fill_questionnaire()
+
+
+def _fill_guidance() -> None:
+    """Answer every question (first option; one custom; one AI-decide) and jump
+    to the last question so a single click on 完成作答 finishes the round."""
+    qs = st.session_state["r_g_questions"]
+    if not qs:
+        return
+    rnd = len(st.session_state["r_guidance_rounds"]) + 1
+    for i, q in enumerate(qs):
+        options = q.get("options") or []
+        if i == 1:
+            st.session_state[f"_g_custom_{rnd}_{i}"] = "(测试)我自己写的方向"
+        elif i == 2 and options:
+            st.session_state[f"_g_opt_{rnd}_{i}"] = "__ai__"
+        elif options:
+            st.session_state[f"_g_opt_{rnd}_{i}"] = options[0]
         else:
-            st.session_state[f"_q_whole_{ridx}"] = "mine"
+            st.session_state[f"_g_custom_{rnd}_{i}"] = "(测试)开放回答"
+    st.session_state["r_g_idx"] = len(qs) - 1
+
+
+def _fill_questionnaire() -> None:
+    ridx = st.session_state["round_idx"]
+    for i in range(1, 4):
+        st.session_state[f"_q_own{i}_{ridx}"] = 5
+    for i in range(1, 3):
+        st.session_state[f"_q_soa{i}_{ridx}"] = 4
+    st.session_state[f"_q_tlx1_{ridx}"] = 3
+    st.session_state[f"_q_violation_{ridx}"] = 2
+    st.session_state[f"_q_imagine_{ridx}"] = 6
+    if ridx == 2:  # attention check round
+        st.session_state[f"_q_attention_{ridx}"] = 2
+    parsed = shots.parse_shots(state.current_script())
+    if parsed:
+        for s in parsed:
+            st.session_state[f"_q_shot{s['idx']}_{ridx}"] = "mine"
+    else:
+        st.session_state[f"_q_whole_{ridx}"] = "mine"

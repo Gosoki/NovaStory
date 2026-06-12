@@ -35,11 +35,11 @@ CREATE TABLE IF NOT EXISTS trials (
   condition TEXT NOT NULL,
   topic_json TEXT,
   intent_statement TEXT,
-  ai_outline TEXT,
-  edited_outline TEXT,
-  dissent_json TEXT,
-  adjudication TEXT,
-  adjudication_reason TEXT,
+  ai_outline TEXT,            -- v2 legacy (outline layer), unused in v3
+  edited_outline TEXT,        -- v2 legacy
+  dissent_json TEXT,          -- v2 legacy (ModeMirror)
+  adjudication TEXT,          -- v2 legacy
+  adjudication_reason TEXT,   -- v2 legacy
   final_output TEXT,
   parse_ok INTEGER,
   regen_count INTEGER DEFAULT 0,
@@ -47,10 +47,18 @@ CREATE TABLE IF NOT EXISTS trials (
   temperature REAL,
   base_url TEXT,
   t_read_intent REAL,
-  t_edit REAL,
-  t_dissent REAL,
+  t_edit REAL,                -- v2 legacy
+  t_dissent REAL,             -- v2 legacy
   t_llm_wait REAL,
   t_total REAL,
+  guidance_json TEXT,         -- E: rounds of option-style Q&A (paper/7 §6)
+  revision_requests TEXT,     -- D: [{round, text}]
+  script_versions TEXT,       -- [{v, author: "ai"|"user_edit", text}]
+  n_ai_rounds INTEGER,        -- D revision rounds / E follow-up guidance rounds
+  n_hand_edits INTEGER,
+  hand_edit_chars INTEGER,
+  t_pregen REAL,              -- E: round-1 answering net time
+  t_postgen REAL,             -- first script shown -> submit, net of LLM waits
   created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS events (
@@ -78,6 +86,15 @@ CREATE TABLE IF NOT EXISTS questionnaires (
 # Columns added after the first deployment; applied via ALTER on existing DBs.
 _MIGRATIONS = [
     "ALTER TABLE questionnaires ADD COLUMN imagine_match INTEGER",
+    # v3 (guided co-creation) trial columns
+    "ALTER TABLE trials ADD COLUMN guidance_json TEXT",
+    "ALTER TABLE trials ADD COLUMN revision_requests TEXT",
+    "ALTER TABLE trials ADD COLUMN script_versions TEXT",
+    "ALTER TABLE trials ADD COLUMN n_ai_rounds INTEGER",
+    "ALTER TABLE trials ADD COLUMN n_hand_edits INTEGER",
+    "ALTER TABLE trials ADD COLUMN hand_edit_chars INTEGER",
+    "ALTER TABLE trials ADD COLUMN t_pregen REAL",
+    "ALTER TABLE trials ADD COLUMN t_postgen REAL",
 ]
 
 

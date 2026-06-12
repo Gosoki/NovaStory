@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import difflib
 import json
 import time
 from pathlib import Path
@@ -43,18 +44,22 @@ _SEED_TOPICS = [
 
 # Per-round payload, reset at the start of every round.
 ROUND_PAYLOAD_DEFAULTS: dict[str, Any] = {
-    "r_phase": "intent",       # intent → pipeline → questionnaire
+    "r_phase": "intent",          # intent → pipeline → (guidance ⇄) postgen → questionnaire
     "r_intent": "",
-    "r_outline_ai": "",
-    "r_outline_user": "",
-    "r_defaults": [],          # pre-sampled default outlines (condition E)
-    "r_dissent": "",           # ModeMirror dissent text
-    "r_adjudication": "",      # accept / transform / reject
-    "r_adjudication_reason": "",
-    "r_final": "",
-    "r_regen": 0,
+    "r_versions": [],             # [{"v", "author": "ai"|"user_edit", "text"}]
+    "r_guidance_rounds": [],      # guidance_json["rounds"] (condition E)
+    "r_revision_requests": [],    # [{"round", "text"}] (condition D)
+    "r_n_ai_rounds": 0,           # D revision rounds / E follow-up guidance rounds
+    "r_n_hand_edits": 0,
+    "r_hand_edit_chars": 0,
+    # guidance working state (condition E)
+    "r_g_source": "",             # "fixed3+ai_supplement" | "ai_from_draft"
+    "r_g_questions": [],
+    "r_g_idx": 0,
+    "r_g_fallback": False,
     "r_llm_wait": 0.0,
-    "r_events": [],            # [(epoch_seconds, type)] session mirror for durations
+    "r_llm_wait_post": 0.0,       # waits occurring after the first script_shown
+    "r_events": [],               # [(epoch_seconds, type)] session mirror for durations
     "r_trial_id": None,
 }
 
@@ -68,10 +73,9 @@ DEFAULTS: dict[str, Any] = {
     "researcher_ok": False,
     "participant_id": None,
     "seq": None,
-    "stage": "consent",        # consent → screening → rounds → done | screened_out
+    "stage": "consent",        # consent → screening → rounds → done
     "round_idx": 1,
     "round_plan": [],          # [{"condition": str, "topic": dict}] × 3
-    "divergence_dim": "",
     "attention_value": None,
     "completion_code": "",
     **ROUND_PAYLOAD_DEFAULTS,
@@ -120,9 +124,6 @@ def begin_rounds(participant_id: int, seq: int) -> None:
     st.session_state["stage"] = "rounds"
     st.session_state["round_idx"] = 1
     st.session_state["round_plan"] = plan_for_seq(seq, topics[: config.N_ROUNDS])
-    st.session_state["divergence_dim"] = config.DIVERGENCE_POOL[
-        seq % len(config.DIVERGENCE_POOL)
-    ]
     reset_round_payload()
     log_event("round_start")
 
@@ -136,8 +137,9 @@ def reset_round_payload() -> None:
         st.session_state[k] = v if not isinstance(v, (dict, list)) else _clone(v)
     # Ephemeral widget keys (Streamlit usually cleans these on unmount; pop
     # defensively so a new round never inherits stale editor content).
-    for k in ("_outline_edit", "_intent_input", "_mm_reason", "_mm_choice"):
-        st.session_state.pop(k, None)
+    for k in list(st.session_state.keys()):
+        if k in ("_script_edit", "_intent_input", "_revision_input") or k.startswith("_g_"):
+            st.session_state.pop(k, None)
 
 
 def advance_round() -> None:
@@ -168,6 +170,37 @@ def reset_for_next() -> None:
     st.session_state.update(keep)
 
 
+# ---------------- script versions (paper/7 §2: snapshot hard rule) ----------------
+
+def current_script() -> str:
+    versions = st.session_state["r_versions"]
+    return versions[-1]["text"] if versions else ""
+
+
+def add_version(text: str, author: str) -> None:
+    """Append a script version (author: "ai" | "user_edit") with bookkeeping."""
+    versions = st.session_state["r_versions"]
+    prev = versions[-1]["text"] if versions else ""
+    v = len(versions) + 1
+    versions.append({"v": v, "author": author, "text": text})
+    if author == "user_edit":
+        delta = _edit_chars(prev, text)
+        st.session_state["r_n_hand_edits"] += 1
+        st.session_state["r_hand_edit_chars"] += delta
+        log_event("hand_edit_saved", {"v": v, "chars_delta": delta})
+    else:
+        log_event("script_shown", {"v": v})
+
+
+def _edit_chars(a: str, b: str) -> int:
+    """Changed-character volume between two versions (difflib opcodes)."""
+    total = 0
+    for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, a, b).get_opcodes():
+        if tag != "equal":
+            total += max(i2 - i1, j2 - j1)
+    return total
+
+
 # ---------------- events & timing ----------------
 
 def log_event(type_: str, payload: Optional[dict] = None) -> None:
@@ -182,6 +215,8 @@ def log_event(type_: str, payload: Optional[dict] = None) -> None:
 
 def add_llm_wait(seconds: float) -> None:
     st.session_state["r_llm_wait"] += seconds
+    if any(ty == "script_shown" for _, ty in st.session_state["r_events"]):
+        st.session_state["r_llm_wait_post"] += seconds
 
 
 def _ts(type_: str, last: bool = False) -> Optional[float]:
@@ -195,24 +230,20 @@ def round_durations(condition: str) -> dict:
     """Aggregate per-phase durations from the session event mirror.
 
     Fine-grained timestamps live in the events table; these aggregates are
-    convenience columns on the trial row. LLM streaming wait is tracked
-    separately (r_llm_wait) and excluded from creative-time interpretation.
-    """
+    convenience columns on the trial row. LLM waits are excluded from the
+    creative-time columns (t_pregen / t_postgen)."""
     out = {
         "t_read_intent": _delta("round_start", "intent_submit"),
-        "t_edit": None,
-        "t_dissent": None,
+        "t_pregen": None,
+        "t_postgen": None,
         "t_llm_wait": round(st.session_state["r_llm_wait"], 2),
         "t_total": _delta("round_start", "trial_submit"),
     }
-    if condition == "D":
-        out["t_edit"] = _delta("outline_shown", "final_click", last_a=True)
-    elif condition == "E":
-        edit1 = _delta("outline_shown", "dissent_request", last_a=True)
-        edit2 = _delta("adjudicate", "final_click")
-        if edit1 is not None or edit2 is not None:
-            out["t_edit"] = round((edit1 or 0.0) + (edit2 or 0.0), 2)
-        out["t_dissent"] = _delta("dissent_shown", "adjudicate")
+    if condition == "E":
+        out["t_pregen"] = _delta("guidance_shown", "guidance_submit")
+    post = _delta("script_shown", "trial_submit")
+    if post is not None:
+        out["t_postgen"] = round(max(0.0, post - st.session_state["r_llm_wait_post"]), 2)
     return out
 
 

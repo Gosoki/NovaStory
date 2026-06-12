@@ -76,36 +76,17 @@
     "title": "Creation Round {i} / {n}",
     "progress": "Progress: Round {i} / {n}",
     "topic_spec": "{count} shots · {total} seconds total (the AI freely allocates each shot's duration to fit the pacing)",
-    "instr_C": "In this round, the AI will directly generate a complete {shot_count}-shot storyboard script based on your idea. Please start by writing one or two sentences describing the story you want to film.",
-    "instr_D": "In this round, the AI will first generate a story outline based on your idea; you can edit the outline before having the AI generate the final storyboard script. Please start by writing one or two sentences describing the story you want to film.",
-    "instr_E": "In this round, the AI will first generate a story outline for you to edit; before the final script is generated, the AI will also offer a dissenting opinion on your outline for your reference. Please start by writing one or two sentences describing the story you want to film.",
+    "instr_C": "In this round the AI will generate a complete {shot_count}-shot storyboard script directly from your idea; review it and submit. First, write your story idea in one or two sentences.",
+    "instr_D": "In this round the AI generates a complete script first; you can then edit it directly, or tell the AI what to change (it can be abstract, e.g. \"make it funnier\"), and polish it as many times as you like. First, write your story idea in one or two sentences.",
+    "instr_E": "In this round the AI will first ask you a few questions to understand what you want, then generate the script; afterwards you can keep being guided by the AI or edit the script directly until you are happy. First, write your story idea in one or two sentences.",
     "intent_label": "Your story idea (one or two sentences)",
     "intent_placeholder": "e.g., The main character discovers they dreamed every question on the exam the night before…",
     "intent_submit": "Confirm and start creating",
-    "final_label": "Final storyboard script",
-    "confirm_final": "Confirm this version and continue",
     "step_intent": "Write your idea",
-    "step_outline": "Edit the outline",
-    "step_dissent": "Hear the AI's view",
     "step_generate": "Generate the script",
-    "step_questionnaire": "Answer questions"
-  },
-  "group_d": {
-    "outline_label": "Story outline (editable)",
-    "outline_hint": "Please edit the outline so it matches your own ideas — feel free to rewrite, delete, or add new plot points.",
-    "gen_final": "Confirm outline and generate final script"
-  },
-  "mm": {
-    "request": "Finish editing and hear the AI's dissenting opinion",
-    "dissent_title": "The AI's dissenting opinion",
-    "adjudicate_label": "What is your decision regarding this opinion?",
-    "adj_accept": "Accept: revise according to the AI's counter-proposal",
-    "adj_transform": "Partially accept: borrow some of it, but revise in my own way",
-    "adj_reject": "Reject: keep my current outline",
-    "reason_label": "(Optional) Briefly explain your reasoning",
-    "adjudicate_submit": "Confirm my decision",
-    "post_adj_accept": "Please apply the changes you wish to adopt in the outline below, then generate the final script.",
-    "post_adj_reject": "Your decision has been recorded. Confirm the outline to generate the final script."
+    "step_questionnaire": "Answer questions",
+    "step_guidance": "Answer the AI's questions",
+    "step_polish": "Polish the script"
   },
   "q": {
     "title": "A few questions about this round",
@@ -156,6 +137,33 @@
     "llm_failed": "AI request failed: {error}. Please click any button to retry in a moment, or contact the researcher.",
     "outline_empty": "The outline is empty. Please fill in the outline first.",
     "intent_too_short": "Please make your idea more specific (at least {n} characters).",
-    "answer_all": "Some questions are still unanswered. Please answer all of them before submitting."
+    "answer_all": "Some questions are still unanswered. Please answer all of them before submitting.",
+    "answer_or_skip": "Please pick an option, write your own, or leave it to the AI.",
+    "revision_empty": "Please tell the AI what you want changed first."
+  },
+  "postgen": {
+    "title": "Current script (version {v}, directly editable)",
+    "edit_hint": "You can edit the script above directly — your changes are saved automatically when you submit or hand it to the AI.",
+    "submit": "I'm happy with it — submit this version",
+    "readonly_title": "AI-generated script"
+  },
+  "d": {
+    "revision_label": "Tell the AI what to change",
+    "revision_placeholder": "e.g. make it funnier / cut the dialogue in shot 2 / twist the ending",
+    "revision_hint": "You can give an abstract direction or specific edits; or just edit the script above yourself.",
+    "revision_send": "Ask the AI to revise"
+  },
+  "guidance": {
+    "wait": "The AI is preparing questions for you — this takes about a minute…",
+    "title": "Build your story together with the AI",
+    "progress": "Question {i} / {n}",
+    "pick_label": "Pick the option closest to what you have in mind",
+    "custom_label": "✍ Or write your own:",
+    "ai_decide": "🤖 Let the AI decide",
+    "prev": "Previous",
+    "next": "Next",
+    "finish": "Done — generate the script",
+    "continue_btn": "Let the AI keep guiding me",
+    "fallback_q": "In a few words, what direction or details do you still want?"
   }
 }

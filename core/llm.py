@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 import time
 from datetime import datetime
@@ -29,6 +30,10 @@ class LLMConfigError(RuntimeError):
 
 class LLMCallError(RuntimeError):
     """Raised when the upstream call itself fails."""
+
+
+class LLMJsonError(RuntimeError):
+    """Raised when a JSON-mode call cannot produce parseable JSON after retries."""
 
 
 # --------- logging ---------
@@ -122,51 +127,75 @@ def generate_stream(
         raise LLMCallError(str(e)) from e
 
 
-# --------- non-streaming (ModeMirror default sampling & dissent) ---------
+# --------- JSON mode (guided elicitation) ---------
 
-def generate(
+_FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)
+
+
+def _guidance_client_and_model() -> tuple[OpenAI, str]:
+    """Guidance step may use its own API config (paper/7 D23)."""
+    idx = config.GUIDANCE_API_INDEX
+    if idx is None:
+        return _client(), _model()
+    try:
+        cfg = st.secrets.get("api_configs", [])[idx]
+    except Exception as e:  # noqa: BLE001
+        raise LLMConfigError(f"guidance api_configs[{idx}] unavailable") from e
+    if not (cfg.get("api_key") or "").strip():
+        raise LLMConfigError(f"guidance api_configs[{idx}] missing api_key")
+    client = OpenAI(api_key=cfg["api_key"], base_url=cfg.get("base_url") or None)
+    return client, (cfg.get("model") or "").strip() or "gpt-4o-mini"
+
+
+def generate_json(
     system: str,
     user: str,
     *,
     group: str,
     user_id: str = "",
-    n: int = 1,
+    retries: int | None = None,
     temperature: float | None = None,
-) -> list[str]:
-    """Return n completions. Tries the API's `n` parameter once, falls back to
-    sequential calls for providers that reject it."""
+) -> dict:
+    """Call the guidance model and parse its output as JSON.
+
+    Retries with the parse error fed back; raises LLMJsonError when every
+    attempt fails (callers degrade to an open fallback question)."""
+    if retries is None:
+        retries = config.GUIDANCE_JSON_RETRIES
     if temperature is None:
         temperature = config.TEMPERATURE
-    model = _model()
-    client = _client()
-    messages = [
-        {"role": "system", "content": system},
-        {"role": "user", "content": user},
-    ]
-    _log(group, user_id, f"batch_start model={model} n={n}")
+    client, model = _guidance_client_and_model()
+    _log(group, user_id, f"json_start model={model}")
     t0 = time.time()
-    outs: list[str] = []
-    try:
-        if n > 1:
-            try:
-                resp = client.chat.completions.create(
-                    model=model, messages=messages, temperature=temperature, n=n
-                )
-                outs = [(c.message.content or "").strip() for c in resp.choices]
-            except Exception:  # noqa: BLE001 — provider may not support n>1
-                outs = []
-        if len(outs) < n:
-            outs = []
-            for _ in range(n):
-                resp = client.chat.completions.create(
-                    model=model, messages=messages, temperature=temperature
-                )
-                outs.append((resp.choices[0].message.content or "").strip())
-        outs = [clean_output(o) for o in outs]
-        _log(group, user_id, f"batch_done elapsed={time.time()-t0:.2f}s n={len(outs)}")
-        return outs
-    except Exception as e:  # noqa: BLE001
-        _log(group, user_id, f"batch_error elapsed={time.time()-t0:.2f}s err={e!r}")
-        raise LLMCallError(str(e)) from e
+    last_err = ""
+    msg_user = user
+    for attempt in range(retries + 1):
+        try:
+            resp = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": msg_user},
+                ],
+                temperature=temperature,
+            )
+        except Exception as e:  # noqa: BLE001
+            _log(group, user_id, f"json_error elapsed={time.time()-t0:.2f}s err={e!r}")
+            raise LLMCallError(str(e)) from e
+        raw = clean_output(resp.choices[0].message.content or "")
+        raw = _FENCE_RE.sub("", raw).strip()
+        try:
+            data = json.loads(raw)
+            _log(group, user_id,
+                 f"json_done elapsed={time.time()-t0:.2f}s attempt={attempt + 1}")
+            return data
+        except json.JSONDecodeError as e:
+            last_err = str(e)
+            _log(group, user_id, f"json_parse_fail attempt={attempt + 1} err={last_err}")
+            msg_user = (
+                f"{user}\n\n(你上一次的输出不是合法 JSON,解析错误:{last_err}。"
+                "请重新输出,只输出 JSON 本身。)"
+            )
+    raise LLMJsonError(last_err)
 
 

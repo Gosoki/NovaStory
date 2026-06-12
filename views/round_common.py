@@ -4,7 +4,7 @@ import streamlit as st
 
 from core import config, state
 from i18n import t
-from views import group_c, group_d, group_e, questionnaire
+from views import _postgen, group_c, group_d, group_e, guidance, questionnaire
 
 
 def render() -> None:
@@ -31,19 +31,26 @@ def render() -> None:
             group_d.render_pipeline(topic)
         else:
             group_e.render_pipeline(topic)
+            st.rerun()  # E: begin_round switched phase to "guidance"
+    elif phase == "guidance":
+        guidance.render(topic)
+    elif phase == "postgen":
+        if cond == "C":
+            _postgen.render_readonly(topic)
+        else:
+            _postgen.render(topic, cond)
     elif phase == "questionnaire":
         questionnaire.render()
 
 
 def _step_strip(cond: str) -> None:
-    """Visual stepper, symmetric across conditions (avoids differential demand:
-    every condition previews its own steps the same way)."""
+    """Visual stepper; every condition previews its own steps the same way."""
     steps = [t("round.step_intent")]
-    if cond in ("D", "E"):
-        steps.append(t("round.step_outline"))
     if cond == "E":
-        steps.append(t("round.step_dissent"))
+        steps.append(t("round.step_guidance"))
     steps.append(t("round.step_generate"))
+    if cond in ("D", "E"):
+        steps.append(t("round.step_polish"))
     steps.append(t("round.step_questionnaire"))
 
     cur = _current_step(cond, len(steps))
@@ -65,19 +72,15 @@ def _current_step(cond: str, n_steps: int) -> int:
         return 0
     if phase == "questionnaire":
         return n_steps - 1
-    # pipeline
     if cond == "C":
-        return 1
+        return 1  # generate / view
     if cond == "D":
-        return 2 if st.session_state["r_final"] else 1
+        return 1 if phase == "pipeline" else 2  # generate → polish
     # E
-    if st.session_state["r_final"]:
-        return 3
-    if not st.session_state["r_dissent"]:
-        return 1
-    if not st.session_state["r_adjudication"]:
-        return 2
-    return 3
+    if phase in ("pipeline", "guidance"):
+        # follow-up guidance rounds happen mid-polish
+        return 1 if not st.session_state["r_versions"] else 3
+    return 2 if not st.session_state["r_versions"] else 3
 
 
 def _topic_card(topic: dict) -> None:

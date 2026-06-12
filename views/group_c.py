@@ -4,19 +4,16 @@ import streamlit as st
 
 from core import prompts, state
 from views._streaming import stream_llm
-from views._trial import render_final_and_confirm
 
 
 def render_pipeline(topic: dict) -> None:
-    """Condition C — fully automatic: intent → final script in one shot."""
-    if not st.session_state["r_final"]:
-        system = prompts.build_system_script(topic)
-        user = prompts.build_user(topic, st.session_state["r_intent"])
-        out = stream_llm(system, user, group="C-final")
-        if out is not None:
-            st.session_state["r_final"] = out
-            state.log_event("final_shown")
-            st.rerun()
-        return
-
-    render_final_and_confirm(st.session_state["r_final"])
+    """Condition C — one-shot: intent → full script, view, submit (no loop)."""
+    out = stream_llm(
+        prompts.build_system_script(topic),
+        prompts.build_user_script(topic, st.session_state["r_intent"]),
+        group="C-final",
+    )
+    if out is not None:
+        state.add_version(out, "ai")
+        st.session_state["r_phase"] = "postgen"
+        st.rerun()

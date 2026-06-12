@@ -76,36 +76,17 @@
     "title": "第 {i} / {n} 轮创作",
     "progress": "进度:第 {i} / {n} 轮",
     "topic_spec": "{count} 个镜头 · 总时长 {total} 秒(单镜时长由 AI 按节奏自由分配)",
-    "instr_C": "本轮 AI 将根据你的创意直接生成完整的 {shot_count} 镜头分镜脚本。请先用一两句话写下你想拍的故事创意。",
-    "instr_D": "本轮 AI 会先根据你的创意生成故事大纲,你可以修改大纲后再让 AI 生成最终分镜脚本。请先用一两句话写下你想拍的故事创意。",
-    "instr_E": "本轮 AI 会先生成故事大纲供你修改;在生成最终脚本前,AI 还会对你的大纲提出不同意见供你参考。请先用一两句话写下你想拍的故事创意。",
+    "instr_C": "本轮 AI 将根据你的创意直接生成完整的 {shot_count} 镜头分镜脚本,看稿后即可提交。请先用一两句话写下你想拍的故事创意。",
+    "instr_D": "本轮 AI 会先生成完整脚本;之后你可以直接在稿子上修改,也可以告诉 AI 你想怎么改(可以很抽象,比如『更搞笑』),反复打磨到满意为止。请先用一两句话写下你想拍的故事创意。",
+    "instr_E": "本轮 AI 会先问你几个问题,把你的想法问清楚后再生成脚本;之后你仍可以继续让 AI 引导,或直接修改稿子,打磨到满意为止。请先用一两句话写下你想拍的故事创意。",
     "intent_label": "你的故事创意(一两句话)",
     "intent_placeholder": "例如:主角发现卷子上的题目自己昨晚全都梦到过……",
     "intent_submit": "确定,开始创作",
-    "final_label": "最终分镜脚本",
-    "confirm_final": "确认这一版,继续",
     "step_intent": "写创意",
-    "step_outline": "修改大纲",
-    "step_dissent": "听取 AI 意见",
     "step_generate": "生成脚本",
-    "step_questionnaire": "回答问题"
-  },
-  "group_d": {
-    "outline_label": "故事大纲(可编辑)",
-    "outline_hint": "请修改大纲,让它符合你自己的想法——可以改写、删除或加入新的情节。",
-    "gen_final": "确认大纲,生成最终脚本"
-  },
-  "mm": {
-    "request": "完成编辑,听听 AI 的不同意见",
-    "dissent_title": "AI 的不同意见",
-    "adjudicate_label": "对于这条意见,你的决定是?",
-    "adj_accept": "采纳:按 AI 的反提案修改",
-    "adj_transform": "部分采纳:借鉴一部分,按我的方式改",
-    "adj_reject": "拒绝:坚持我现在的大纲",
-    "reason_label": "(可选)简单说说理由",
-    "adjudicate_submit": "确定我的决定",
-    "post_adj_accept": "请在下方大纲中落实你要采纳的修改,然后生成最终脚本。",
-    "post_adj_reject": "已记录你的决定。确认大纲后即可生成最终脚本。"
+    "step_questionnaire": "回答问题",
+    "step_guidance": "回答 AI 提问",
+    "step_polish": "打磨脚本"
   },
   "q": {
     "title": "关于这一轮的几个问题",
@@ -156,6 +137,33 @@
     "llm_failed": "AI 调用失败:{error}。请稍后点击任意按钮重试,或联系实验员。",
     "outline_empty": "大纲为空,请先填写大纲。",
     "intent_too_short": "请把创意写得具体一点(至少 {n} 个字)。",
-    "answer_all": "还有未回答的题目,请全部作答后再提交。"
+    "answer_all": "还有未回答的题目,请全部作答后再提交。",
+    "answer_or_skip": "请选择一个选项、自己写一个,或交给 AI 决定。",
+    "revision_empty": "请先告诉 AI 你想怎么改。"
+  },
+  "postgen": {
+    "title": "当前脚本(第 {v} 版,可直接编辑)",
+    "edit_hint": "可以直接在上面修改脚本——你点提交或让 AI 处理时,修改会自动保存。",
+    "submit": "满意了,提交这一版",
+    "readonly_title": "AI 生成的脚本"
+  },
+  "d": {
+    "revision_label": "告诉 AI 你想怎么改",
+    "revision_placeholder": "例如:更搞笑一点 / 删掉第 2 镜的台词 / 结局反转",
+    "revision_hint": "可以说抽象方向,也可以提具体改动;不想打字也可以直接在上面的稿子里改。",
+    "revision_send": "让 AI 修改"
+  },
+  "guidance": {
+    "wait": "AI 正在为你准备问题,大约需要一分钟…",
+    "title": "和 AI 一起完善你的故事",
+    "progress": "第 {i} / {n} 问",
+    "pick_label": "选一个最接近你想法的",
+    "custom_label": "✍ 或者自己写:",
+    "ai_decide": "🤖 交给 AI 决定",
+    "prev": "上一问",
+    "next": "下一问",
+    "finish": "完成作答,生成脚本",
+    "continue_btn": "让 AI 继续引导",
+    "fallback_q": "用几句话告诉 AI,你还想要什么样的方向或细节?"
   }
 }

@@ -1,23 +1,25 @@
-# NovaStory v2 · Storyboard Co-Creation Experiment
+# NovaStory v3 · Guided Co-Creation Experiment
 
-Streamlit platform for a **within-subjects online experiment** on how the
-placement of human intervention in an AI storyboarding pipeline affects output
-homogenization and psychological ownership.
+Streamlit platform for a **within-subjects online experiment** comparing
+*ask-before-generate* and *fix-after-generate* AI workflows for novice
+storyboard creators (intent fidelity, psychological ownership, revision effort).
 
-- **Condition C** — fully automatic: intent statement → final script
-- **Condition D** — outline checkpoint: intent → AI outline → human edit → final
-- **Condition E** — D + **ModeMirror**: before finalizing, the AI shows the
-  "default version" it would have produced, diagnoses overlap with the user's
-  outline, asks a challenging question, offers a counter-proposal, and forces
-  an accept / transform / reject adjudication
+- **Condition C** — one-shot: intent → full script → submit (no loop)
+- **Condition D** — generate-then-repair: AI generates first; the script is an
+  always-editable textarea plus a free-form "tell the AI what to change" box;
+  unlimited revision loop (proxy for the default chatbot workflow)
+- **Condition E** — guide-then-generate: the AI first asks 5-7 option-style
+  questions (3 fixed expert dimensions + 2-4 AI-chosen), then generates; the
+  user can keep requesting guided follow-up rounds or edit directly
 
-Each participant: consent → novice screening (6-item battery + DAT) →
-3 rounds (3×3 Latin square over conditions × topics) with an in-app
-questionnaire + per-shot intent annotation after each round → completion code.
-Research design: see `paper/4、研究方案书.md`; engineering spec: `paper/5、开发任务书.md`.
+Each participant: consent → background questionnaire (novice status recorded,
+nobody screened out) → 3 rounds (3×3 Latin square over conditions × topics)
+with an in-app questionnaire + per-shot intent annotation after each round →
+completion code. Interaction spec: `paper/7`; engineering: `paper/5`;
+runtime flow: `paper/6`; claim verification: `paper/9`.
 
-> v1 (the A/B/C/D wizard flow) was retired on 2026-06-12; its code lives in git
-> history (`3a7737b`) and its pilot data in `data/archive/`.
+> v1 (A/B/C/D wizard) retired 2026-06-12 (`3a7737b`); v2 (ModeMirror E,
+> outline-editing D) retired 2026-06-13 — both live in git history.
 
 ## Setup
 
