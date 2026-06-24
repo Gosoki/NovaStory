@@ -50,7 +50,7 @@
     "ai_freq_opt3": "週に数回",
     "ai_freq_opt4": "ほぼ毎日",
     "exp_section": "創作経験",
-    "published": "Douyin・Kuaishou・bilibili・TikTokなどのプラットフォームで、ご自身が制作したショート動画を公開したことがありますか?",
+    "published": "TikTok・YouTube(ショート)・Instagram(リール)などのプラットフォームで、ご自身が制作したショート動画を公開したことがありますか?",
     "published_opt1": "公開したことがない",
     "published_opt2": "1〜5本公開した",
     "published_opt3": "6本以上公開した",
@@ -86,7 +86,8 @@
     "step_generate": "脚本を生成",
     "step_questionnaire": "質問に回答",
     "step_guidance": "AIの質問に答える",
-    "step_polish": "脚本を磨く"
+    "step_polish": "脚本を磨く",
+    "retry": "もう一度試す"
   },
   "q": {
     "title": "このラウンドについての質問",
@@ -108,7 +109,8 @@
     "tag_ai_ok": "主にAIによるものだが、納得している",
     "tag_ai_against": "自分の本来の意図に反している",
     "submit": "このラウンドの回答を送信",
-    "imagine": "完成した絵コンテは、あなたが頭の中で思い描いていた映像にどのくらい近いですか?(1=全く違う、7=とても近い)"
+    "imagine": "完成した絵コンテは、あなたが頭の中で思い描いていた映像にどのくらい近いですか?(1=全く違う、7=とても近い)",
+    "script_review": "今回完成した絵コンテ"
   },
   "done": {
     "title": "すべて完了しました。ご参加ありがとうございました!🎉",
@@ -159,7 +161,7 @@
     "progress": "質問 {i} / {n}",
     "pick_label": "イメージに最も近いものを選んでください",
     "custom_label": "✍ または自分で書く:",
-    "ai_decide": "🤖 AI に任せる",
+    "ai_decide": "AI に任せる",
     "prev": "前の質問",
     "next": "次の質問",
     "finish": "回答完了 — 脚本を生成",

@@ -42,18 +42,22 @@ Everything is written to SQLite (`data/novastory.db`, WAL mode, gitignored):
 | table | contents |
 |---|---|
 | `participants` | demographics, screening battery, latin-square seq, attention check, completion code |
-| `trials` | per round: condition, intent, AI/edited outlines, ModeMirror dissent + adjudication, final script, generation params (model/temperature/base_url), phase durations (LLM wait separated) |
+| `trials` | per round: condition, intent, `guidance_json` (E Q&A), `revision_requests` (D), `script_versions` (ai/user_edit), `n_ai_rounds`/`n_hand_edits`/`hand_edit_chars`, `t_pregen`/`t_postgen`, generation params (model/temperature/base_url). (v2-legacy outline/dissent columns kept but unused) |
 | `events` | timestamped interaction log (round_start … questionnaire_submit) |
-| `questionnaires` | ownership / agency / TLX items, intent-violation, per-shot annotations |
+| `questionnaires` | ownership / agency / TLX items, intent-violation, imagine-match, per-shot annotations |
 
-Researcher mode (sidebar, password-locked): table browser + CSV export +
-session reset for local testing.
+Language: participants run in **Japanese** (`ja`, default); the researcher can
+switch to `zh` for testing (topics carry `{ja, zh}`, LLM output follows the
+participant's language). Researcher mode (sidebar, password-locked): table
+browser + CSV export + session reset for local testing.
 
 ## Offline pipeline (analysis)
 
 `scripts/` and `analysis/` hold the non-Streamlit pipeline (machine baselines,
-ghost-run counterfactuals, HLZ/diversity metrics, stats, power simulation,
-LLM-judge). See the Makefile and `analysis/requirements-analysis.txt`.
+stats, power simulation, LLM-judge). Note: ghost-run / HLZ metrics are
+**deprecated** (kept for possible reuse); current primary measures are
+intent-fidelity / ownership / revision-effort. See the Makefile and
+`analysis/requirements-analysis.txt`.
 
 ## Tests
 

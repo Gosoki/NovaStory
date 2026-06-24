@@ -86,7 +86,8 @@
     "step_generate": "生成脚本",
     "step_questionnaire": "回答问题",
     "step_guidance": "回答 AI 提问",
-    "step_polish": "打磨脚本"
+    "step_polish": "打磨脚本",
+    "retry": "重试"
   },
   "q": {
     "title": "关于这一轮的几个问题",
@@ -108,7 +109,8 @@
     "tag_ai_ok": "主要是 AI 的,但我认可",
     "tag_ai_against": "违背了我的本意",
     "submit": "提交本轮问卷",
-    "imagine": "最终脚本和你想象中的画面有多接近?(1=完全不像,7=非常接近)"
+    "imagine": "最终脚本和你想象中的画面有多接近?(1=完全不像,7=非常接近)",
+    "script_review": "你刚完成的脚本"
   },
   "done": {
     "title": "全部完成,感谢参与!🎉",
@@ -159,7 +161,7 @@
     "progress": "第 {i} / {n} 问",
     "pick_label": "选一个最接近你想法的",
     "custom_label": "✍ 或者自己写:",
-    "ai_decide": "🤖 交给 AI 决定",
+    "ai_decide": "交给 AI 决定",
     "prev": "上一问",
     "next": "下一问",
     "finish": "完成作答,生成脚本",

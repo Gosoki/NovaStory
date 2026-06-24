@@ -6,8 +6,11 @@ from pathlib import Path
 import streamlit as st
 
 LOCALES_DIR = Path(__file__).parent / "locales"
-DEFAULT_LANG = "zh"
-AVAILABLE_LANGS = ["zh", "en", "ja"]
+# ja = formal-study language (participants are Japanese); zh kept for the
+# researcher's testing. Missing keys fall back to ja so a participant never
+# sees a Chinese string. AVAILABLE_LANGS ordered ja-first for the picker.
+DEFAULT_LANG = "ja"
+AVAILABLE_LANGS = ["ja", "zh", "en"]
 LANG_LABELS = {"zh": "中文", "en": "English", "ja": "日本語"}
 
 _log = logging.getLogger(__name__)

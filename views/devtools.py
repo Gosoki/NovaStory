@@ -3,16 +3,17 @@ from __future__ import annotations
 import streamlit as st
 
 from core import db, shots, state
+from i18n import t
 
 """Researcher-only manual-testing helpers (rendered inside the sidebar's
 researcher section). Works because the sidebar renders BEFORE the main area:
 assigning to a main-area widget key here happens before that widget is
 instantiated in the same run, which Streamlit allows."""
 
-TEST_INTENTS = {
-    "期末周渡劫": "主角发现卷子上的题目自己昨晚全都梦到过,但怎么也想不起答案",
-    "错过的末班车": "主角错过末班车,索性跟着一支深夜跑团一路跑回了家",
-    "五分钟的告白": "主角把要说的话写在毕业帽内侧,结果帽子被风吹走了",
+TEST_INTENTS = {  # keyed by zh title (researcher tests in zh)
+    "下不去的满员电车": "主角终于挤到门边,门却在他面前关上了",
+    "打工最后一天的那句话": "主角把想说的话写在了递出去的最后一杯咖啡的杯套上",
+    "放榜的早晨": "主角不敢看公告栏,先盯着周围人的表情猜自己的结果",
 }
 _FALLBACK_INTENT = "主角在最普通的一天里发现了一件完全说不通的小事"
 EDIT_SNIPPET = "\n(我的修改:结局反转——主角把这一切拍成视频发到了网上,火了)"
@@ -57,7 +58,7 @@ def _skip_intake() -> None:
         "self_rating": 1, "quiz_correct": 0, "is_novice": True, "dev": True,
     }
     pid, seq = db.insert_participant(
-        st.session_state.get("lang", "zh"), demographics, screening, passed=True
+        st.session_state.get("lang", "ja"), demographics, screening, passed=True
     )
     state.begin_rounds(pid, seq)
 
@@ -75,9 +76,9 @@ def _fill_current() -> None:
     rd = state.current_round()
     cond = rd["condition"]
     if phase == "intent":
-        st.session_state["_intent_input"] = TEST_INTENTS.get(
-            rd["topic"]["title"], _FALLBACK_INTENT
-        )
+        # TEST_INTENTS is keyed by the zh title; topic titles are now {ja,zh} dicts.
+        key = state.topic_text(rd["topic"], "title", "zh")
+        st.session_state["_intent_input"] = TEST_INTENTS.get(key, _FALLBACK_INTENT)
     elif phase == "guidance":
         _fill_guidance()
     elif phase == "postgen":
@@ -102,7 +103,7 @@ def _fill_guidance() -> None:
         if i == 1:
             st.session_state[f"_g_custom_{rnd}_{i}"] = "(测试)我自己写的方向"
         elif i == 2 and options:
-            st.session_state[f"_g_opt_{rnd}_{i}"] = "__ai__"
+            st.session_state[f"_g_opt_{rnd}_{i}"] = t("guidance.ai_decide")
         elif options:
             st.session_state[f"_g_opt_{rnd}_{i}"] = options[0]
         else:
@@ -121,9 +122,10 @@ def _fill_questionnaire() -> None:
     st.session_state[f"_q_imagine_{ridx}"] = 6
     if ridx == 2:  # attention check round
         st.session_state[f"_q_attention_{ridx}"] = 2
+    mine_label = t("q.tag_mine")  # shot widgets use localized labels as options
     parsed = shots.parse_shots(state.current_script())
     if parsed:
         for s in parsed:
-            st.session_state[f"_q_shot{s['idx']}_{ridx}"] = "mine"
+            st.session_state[f"_q_shot{s['idx']}_{ridx}"] = mine_label
     else:
-        st.session_state[f"_q_whole_{ridx}"] = "mine"
+        st.session_state[f"_q_whole_{ridx}"] = mine_label

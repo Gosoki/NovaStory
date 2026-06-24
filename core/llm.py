@@ -192,9 +192,11 @@ def generate_json(
         except json.JSONDecodeError as e:
             last_err = str(e)
             _log(group, user_id, f"json_parse_fail attempt={attempt + 1} err={last_err}")
+            # Neutral English so the correction note never nudges the output
+            # language away from the participant's locale.
             msg_user = (
-                f"{user}\n\n(你上一次的输出不是合法 JSON,解析错误:{last_err}。"
-                "请重新输出,只输出 JSON 本身。)"
+                f"{user}\n\n(Your previous output was not valid JSON. "
+                f"Parse error: {last_err}. Output ONLY valid JSON, nothing else.)"
             )
     raise LLMJsonError(last_err)
 

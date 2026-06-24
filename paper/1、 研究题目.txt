@@ -1,3 +1,5 @@
+⚠️【已过时·v1 初始构想(2026-06-12 前)】研究主线与设计均已多次变更:当前题目/方向见 paper/10、paper/7,实验为引导式共创三条件 C/D/E(意图保真+所有权+修改效率)。本文仅留档最早的「同质化×四组 A/B/C/D」方案。
+
 一、 研究题目
 《生成式 AI 工作流中的控制权博弈：面向零基础用户的 Agent 自动化赋能与创意同质化困境及干预机制研究》
 (Control Dynamics in Generative AI Workflows: Empowering Novices via Agents, the Dilemma of Creative Homogenization, and Optimal Intervention Mechanisms)
@@ -84,4 +86,4 @@
 ④ 次の一手・TODO（具体的に何をするか）
 ⑤ 質問・相談したいこと
 
-
+

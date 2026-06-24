@@ -66,11 +66,20 @@ def call_llm_json(system: str, user: str, *, group: str) -> Optional[dict]:
             )
     except llm.LLMConfigError:
         st.error(t("errors.no_api_key"))
-        return None
-    except (llm.LLMCallError, llm.LLMJsonError) as e:
+        return "RETRY"  # transient: caller should offer retry, not degrade
+    except llm.LLMCallError as e:
         state.log_event(
             "llm_error",
-            {"group": group, "elapsed": round(time.time() - t0, 2), "kind": type(e).__name__},
+            {"group": group, "elapsed": round(time.time() - t0, 2), "kind": "call"},
+        )
+        st.error(t("errors.llm_failed", error=str(e)))
+        return "RETRY"
+    except llm.LLMJsonError as e:
+        # Model responded but JSON was unparseable after retries → degrade to
+        # the open fallback question (paper/7 §2).
+        state.log_event(
+            "llm_error",
+            {"group": group, "elapsed": round(time.time() - t0, 2), "kind": "json"},
         )
         return None
     elapsed = round(time.time() - t0, 2)

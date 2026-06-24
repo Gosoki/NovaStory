@@ -18,6 +18,11 @@ _SHOT_TAGS = ("mine", "ai_ok", "ai_against")
 
 def render() -> None:
     ridx = st.session_state["round_idx"]
+    # Show the finished script above the questionnaire so the participant can
+    # refer to it while answering.
+    with st.container(border=True):
+        st.caption(t("q.script_review"))
+        st.markdown(state.current_script())
     st.subheader(t("q.title"))
     st.caption(t("q.hint"))
 
@@ -45,35 +50,33 @@ def render() -> None:
     likert("imagine", t("q.imagine"))
 
     # ---- per-shot intent annotation ----
+    # Options are the localized labels themselves (no format_func): a
+    # segmented_control with format_func inside a loop is not reliably
+    # AppTest-drivable across reruns. Selection is mapped back to the tag key.
     st.subheader(t("q.shots_title"))
+    tag_labels = [t(f"q.tag_{c}") for c in _SHOT_TAGS]
+    lbl2tag = dict(zip(tag_labels, _SHOT_TAGS))
     parsed = shots.parse_shots(state.current_script())
     shot_annotations: list[dict] = []
     if parsed:
         st.caption(t("q.shots_hint"))
         for s in parsed:
-            with st.container(border=True):
-                st.markdown(_shot_preview(s))
-                tag = st.segmented_control(
-                    t("q.shot_tag_label"),
-                    _SHOT_TAGS,
-                    selection_mode="single",
-                    format_func=lambda c: t(f"q.tag_{c}"),
-                    key=f"_q_shot{s['idx']}_{ridx}",
-                )
-                if tag is None:
-                    missing = True
-                shot_annotations.append({"shot": s["idx"], "tag": tag})
+            st.markdown(_shot_preview(s))
+            sel = st.segmented_control(
+                t("q.shot_tag_label"), tag_labels, selection_mode="single",
+                key=f"_q_shot{s['idx']}_{ridx}",
+            )
+            if sel is None:
+                missing = True
+            shot_annotations.append({"shot": s["idx"], "tag": lbl2tag.get(sel)})
     else:
-        tag = st.segmented_control(
-            t("q.whole_tag_label"),
-            _SHOT_TAGS,
-            selection_mode="single",
-            format_func=lambda c: t(f"q.tag_{c}"),
+        sel = st.segmented_control(
+            t("q.whole_tag_label"), tag_labels, selection_mode="single",
             key=f"_q_whole_{ridx}",
         )
-        if tag is None:
+        if sel is None:
             missing = True
-        shot_annotations.append({"shot": 0, "tag": tag})
+        shot_annotations.append({"shot": 0, "tag": lbl2tag.get(sel)})
 
     if st.button(t("q.submit"), type="primary", width="stretch"):
         if missing:

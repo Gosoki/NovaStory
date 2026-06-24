@@ -3,7 +3,7 @@ from __future__ import annotations
 import streamlit as st
 
 from core import config, prompts, state
-from i18n import t
+from i18n import get_lang, t
 from views import _postgen
 from views._streaming import call_llm_json, stream_llm
 
@@ -12,7 +12,9 @@ from views._streaming import call_llm_json, stream_llm
 # rounds (1-3 questions on the current draft). Questions are shown one at a
 # time (AskUserQuestion-style); answers are submitted together at the end.
 
-_AI_DECIDE = "__ai__"  # sentinel option: "leave this one to the AI"
+def _AI_DECIDE() -> str:
+    """The localized "leave it to the AI" option label (also its stored value)."""
+    return t("guidance.ai_decide")
 
 
 def begin_round(source: str) -> None:
@@ -31,7 +33,10 @@ def render(topic: dict) -> None:
     if not st.session_state["r_g_questions"]:
         _generate_questions(topic)
         if not st.session_state["r_g_questions"]:
-            return  # config error surfaced by call_llm_json; user can retry via rerun
+            # transient call/config error: offer an explicit retry (never hard-stuck)
+            if st.button(t("round.retry"), type="primary", width="stretch"):
+                st.rerun()
+            return
 
     qs = st.session_state["r_g_questions"]
     idx = st.session_state["r_g_idx"]
@@ -46,11 +51,13 @@ def render(topic: dict) -> None:
 
     options = list(q.get("options") or [])
     if options:
+        # The "leave it to the AI" choice is a real localized option (not a
+        # format_func sentinel): segmented_control + format_func is not reliably
+        # AppTest-drivable across reruns. _AI_DECIDE() detects it on read.
         st.segmented_control(
             t("guidance.pick_label"),
-            options + [_AI_DECIDE],
+            options + [_AI_DECIDE()],
             selection_mode="single",
-            format_func=lambda o: t("guidance.ai_decide") if o == _AI_DECIDE else o,
             key=f"_g_opt_{rnd}_{idx}",
             label_visibility="collapsed",
         )
@@ -82,16 +89,19 @@ def _answered(rnd: int, idx: int, q: dict) -> bool:
 def _generate_questions(topic: dict) -> None:
     source = st.session_state["r_g_source"]
     intent = st.session_state["r_intent"]
+    lang = get_lang()
     if source == "fixed3+ai_supplement":
-        system = prompts.build_system_guidance_round1()
-        user = prompts.build_user_guidance_round1(topic, intent)
+        system = prompts.build_system_guidance_round1(lang)
+        user = prompts.build_user_guidance_round1(topic, intent, lang)
         group = "E-guidance-r1"
     else:
-        system = prompts.build_system_guidance_followup()
-        user = prompts.build_user_guidance_followup(topic, intent, state.current_script())
+        system = prompts.build_system_guidance_followup(lang)
+        user = prompts.build_user_guidance_followup(topic, intent, state.current_script(), lang)
         group = "E-guidance-fu"
 
     data = call_llm_json(system, user, group=group)
+    if data == "RETRY":
+        return  # transient failure; render() will show a retry button
     qs = _validate(data)
     if qs is None:
         # Degrade: one open question, free text only (paper/7 §2).
@@ -138,8 +148,9 @@ def _finish_round(topic: dict, rnd: int) -> None:
     for i, q in enumerate(qs):
         custom = (st.session_state.get(f"_g_custom_{rnd}_{i}") or "").strip()
         chosen_opt = st.session_state.get(f"_g_opt_{rnd}_{i}")
-        ai_decided = chosen_opt == _AI_DECIDE and not custom
-        chosen = custom or ("" if chosen_opt in (None, _AI_DECIDE) else str(chosen_opt))
+        ai = _AI_DECIDE()
+        ai_decided = chosen_opt == ai and not custom
+        chosen = custom or ("" if chosen_opt in (None, ai) else str(chosen_opt))
         items.append({
             "dimension": q["dimension"],
             "question": q["question"],
@@ -149,37 +160,42 @@ def _finish_round(topic: dict, rnd: int) -> None:
             "ai_decided": ai_decided,
             "fallback": st.session_state["r_g_fallback"],
         })
-        state.log_event(
-            "guidance_answer",
-            {"dimension": q["dimension"], "is_custom": bool(custom), "ai_decided": ai_decided},
-        )
 
     source = st.session_state["r_g_source"]
+    intent = st.session_state["r_intent"]
+    lang = get_lang()
+    if source == "fixed3+ai_supplement":
+        out = stream_llm(
+            prompts.build_system_script(topic, lang),
+            prompts.build_user_script_from_answers(topic, intent, items, lang),
+            group="E-final",
+        )
+    else:
+        out = stream_llm(
+            prompts.build_system_revision(topic, lang),
+            prompts.build_user_revision_from_answers(
+                topic, intent, state.current_script(), items, lang
+            ),
+            group="E-revise",
+        )
+    # Only commit the round once generation succeeds, so a failed-then-retried
+    # generation never double-appends the round / re-logs answers.
+    if not (out and out.strip()):
+        return
+    for it in items:
+        state.log_event(
+            "guidance_answer",
+            {"dimension": it["dimension"], "is_custom": it["is_custom"],
+             "ai_decided": it["ai_decided"]},
+        )
     round_entry: dict = {"round": rnd, "source": source, "items": items}
     if source == "ai_from_draft":
         round_entry["draft_snapshot_ref"] = len(st.session_state["r_versions"])
     st.session_state["r_guidance_rounds"].append(round_entry)
     state.log_event("guidance_submit", {"round": rnd})
-
-    intent = st.session_state["r_intent"]
-    if source == "fixed3+ai_supplement":
-        out = stream_llm(
-            prompts.build_system_script(topic),
-            prompts.build_user_script_from_answers(topic, intent, items),
-            group="E-final",
-        )
-    else:
-        out = stream_llm(
-            prompts.build_system_revision(topic),
-            prompts.build_user_revision_from_answers(
-                topic, intent, state.current_script(), items
-            ),
-            group="E-revise",
-        )
-    if out is not None:
-        state.add_version(out, "ai")
-        if source == "ai_from_draft":
-            st.session_state["r_n_ai_rounds"] += 1
-        st.session_state["r_phase"] = "postgen"
-        _postgen.request_editor_refresh()
-        st.rerun()
+    state.add_version(out, "ai")
+    if source == "ai_from_draft":
+        st.session_state["r_n_ai_rounds"] += 1
+    st.session_state["r_phase"] = "postgen"
+    _postgen.request_editor_refresh()
+    st.rerun()

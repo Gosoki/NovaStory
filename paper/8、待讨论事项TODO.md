@@ -1,7 +1,25 @@
 # 待讨论事项 TODO
 
-> 建立 2026-06-12;2026-06-13 按「挡不挡重构」重新分层。结清的条目沉到文末留痕。
-> 权威设计=paper/7 v4;主张判决与贡献措辞=paper/9;文献=paper/reference/。
+> 建立 2026-06-12;2026-06-13 按「挡不挡重构」重新分层;2026-06-24 加入日语/跨语言效度项。结清的条目沉到文末留痕。
+> 权威设计=paper/7 v4.1;论文骨架=paper/10;主张=paper/9;文献=paper/reference/。
+
+---
+
+## 🌏 日语/跨语言效度(2026-06-24 审计新增,pilot/预注册前)
+
+- **JP1 量表跨语言效度**:所有权(Van Dyne&Pierce 英文母本)与 agency(只取 J-SoAS 2 题且自译非原句)的日译删减版效度未知。→ 用 J-SoAS 已发表日语原句子集;所有权做回译+认知访谈;pilot 报告日语样本 Cronbach α;论文区分"已验证日语量表"vs"自译删减版"。
+- **JP2 日语 embedding 保真效度**:embedding 余弦测意图保真在日语短分镜文本上可比性存疑。→ pilot 验证 embedding 余弦与盲评保真/想象匹配的收敛效度;保真主锚用盲评+逐镜头标注,embedding 降为辅助。
+- **JP3 LLM-judge 日语可靠性**:judge/盲评效度证据(TTCW/Zheng)多基于英文。→ 人评校验用**日语母语评审**(非研究者),单独报告日语 judge-人评相关,不沿用英文数字;Limitations 写明。
+- **JP4 文化反应偏差**:日本被试中点/谦逊偏好压缩量表方差、可能与条件交互。→ 主分析用被试内差分;查条件×反应风格交互(个体量表 SD 作协变量);锚点本地化;Limitations 写明。
+- **JP5 字符门槛跨语言**:`MIN_INTENT_CHARS=10` 在日语信息量更低(假名助词)。→ 改语言感知门槛(日语上调或用形态素/词数);自填字数等用 MeCab/SudachiPy 形态素计数或按语言标准化。
+- **JP6 语言锁定**:语言选择器常驻可被中途切换污染数据。→ 正式收数 consent 后锁定被试语言(禁用切换或仅研究员可改),每轮 lang 写入 events 校验三轮一致。
+- **JP7 日本招募**:日本 Prolific 池小 + novice 准入进一步缩小。→ pilot 实测可达量;备 CrowdWorks/Lancers/大学池;按日本市场定报酬;时长×延迟纳入监控。
+
+## ⚙️ 延后的代码加固(2026-06-24 审计,非阻塞)
+
+- **CG1 seq 并发竞态**:`db.insert_participant` 的 `COUNT(*)%9` 与 INSERT 非原子,WAL 下多人同时筛查通过可能撞 seq。→ 改 INSERT 后由自增 id 推导 seq,或 `BEGIN IMMEDIATE`。被试量小可暂留。
+- **CG2 双击提交无防抖**:submit_trial / insert_questionnaire 可能被快速双击重复落库。→ 提交后禁用按钮或加 r_trial_id 幂等守卫。
+- **CG3 `_normalize_topic` ValueError**:脏 legacy preset 的 `shot_seconds` 非数字会崩 load_topics。→ int() try 兜底。
 
 ---
 

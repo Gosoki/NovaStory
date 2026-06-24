@@ -79,17 +79,32 @@ EDIT_MARK = "\n(我手改的:结尾加一个彩蛋镜头)"
 
 
 def inject(at, key, value):
-    """Set a widget value via session_state (works for segmented_control,
-    which AppTest has no accessor for) and remember it for backfilling."""
+    """Set a text/checkbox widget value via session_state and remember it for
+    backfilling across reruns."""
     _injected[key] = value
     at.session_state[key] = value
+
+
+def set_sc(at, key, value):
+    """Set a st.segmented_control (AppTest ButtonGroup) reliably by key.
+
+    Direct session injection of segmented_control is fragile — acceptance
+    depends on widget-tree state — so drive it through the real accessor.
+    """
+    for bg in at.get("button_group"):
+        if bg.key == key:
+            bg.set_value(value)
+            return
+    raise AssertionError(
+        f"segmented_control {key!r} not on page (have {[b.key for b in at.get('button_group')]})"
+    )
 
 
 def safe_run(at):
     """AppTest workaround: after a st.rerun page transition the element tree
     retains stale widgets whose session keys Streamlit already dropped, and
     the next run crashes while serializing them. Backfill missing keys."""
-    for r in list(at.radio) + list(at.selectbox):
+    for r in list(at.radio) + list(at.selectbox) + list(at.get("button_group")):
         if r.key and r.key not in at.session_state:
             at.session_state[r.key] = None
     for w in list(at.text_input) + list(at.text_area):
@@ -111,6 +126,8 @@ def btn_click(at, label):
 def run() -> None:
     at = AppTest.from_file("app.py", default_timeout=60)
     at.run()
+    # Participants default to ja; the researcher (and this test) work in zh.
+    at.session_state["lang"] = "zh"
 
     # --- consent + screening (everyone proceeds; novice recorded) ---
     at.checkbox(key="_consent_agree").check().run()
@@ -123,7 +140,7 @@ def run() -> None:
     at.radio[2].set_value("否")
     at.radio[3].set_value("我不知道")
     at.radio[4].set_value("我不知道")
-    inject(at, "_scr_self", 1)
+    set_sc(at, "_scr_self", 1)
     btn_click(at, "提交并继续")
     assert at.session_state["stage"] == "rounds" and at.session_state["seq"] == 0
 
@@ -166,30 +183,37 @@ def run() -> None:
 
 
 def _answer_guidance(at, rnd: int, n: int, custom_idx: int = -1, ai_idx: int = -1) -> None:
+    # Answer via direct session injection + jump to the last question, mirroring
+    # the researcher devtools path (reliable: per-question widget navigation with
+    # segmented_control set_value loses values across the advance-rerun).
     qs = at.session_state["r_g_questions"]
     assert len(qs) == n, f"expected {n} questions, got {len(qs)}"
+    ai_decide_zh = "交给 AI 决定"  # researcher tests in zh; == t("guidance.ai_decide")
     for i in range(n):
         if i == custom_idx:
-            inject(at, f"_g_custom_{rnd}_{i}", "我自己写的:荒诞但温柔")
+            at.session_state[f"_g_custom_{rnd}_{i}"] = "我自己写的:荒诞但温柔"
         elif i == ai_idx:
-            inject(at, f"_g_opt_{rnd}_{i}", "__ai__")
-        else:
-            inject(at, f"_g_opt_{rnd}_{i}", qs[i]["options"][0])
-        btn_click(at, "完成作答,生成脚本" if i == n - 1 else "下一问")
+            at.session_state[f"_g_opt_{rnd}_{i}"] = ai_decide_zh
+        elif qs[i]["options"]:
+            at.session_state[f"_g_opt_{rnd}_{i}"] = qs[i]["options"][0]
+    at.session_state["r_g_idx"] = n - 1
+    safe_run(at)  # render the last question so its finish button appears
+    btn_click(at, "完成作答,生成脚本")
 
 
 def _answer_questionnaire(at, round_idx: int, attention: bool = False) -> None:
     for i in range(1, 4):
-        inject(at, f"_q_own{i}_{round_idx}", 5)
+        set_sc(at, f"_q_own{i}_{round_idx}", 5)
     for i in range(1, 3):
-        inject(at, f"_q_soa{i}_{round_idx}", 4)
+        set_sc(at, f"_q_soa{i}_{round_idx}", 4)
     if attention:
-        inject(at, f"_q_attention_{round_idx}", 2)
-    inject(at, f"_q_tlx1_{round_idx}", 3)
-    inject(at, f"_q_violation_{round_idx}", 2)
-    inject(at, f"_q_imagine_{round_idx}", 6)
-    for idx in (1, 2, 3):  # stub scripts always parse into 3 shots
-        inject(at, f"_q_shot{idx}_{round_idx}", "mine")
+        set_sc(at, f"_q_attention_{round_idx}", 2)
+    set_sc(at, f"_q_tlx1_{round_idx}", 3)
+    set_sc(at, f"_q_violation_{round_idx}", 2)
+    set_sc(at, f"_q_imagine_{round_idx}", 6)
+    for idx in (1, 2, 3):  # stub scripts parse into 3 shots; option[0] == "mine" label
+        bg = next(b for b in at.get("button_group") if b.key == f"_q_shot{idx}_{round_idx}")
+        bg.set_value(bg.options[0])
     btn_click(at, "提交本轮问卷")
 
 

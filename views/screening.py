@@ -110,7 +110,7 @@ def render() -> None:
         "is_novice": is_novice,
     }
     pid, seq = db.insert_participant(
-        st.session_state.get("lang", "zh"), demographics, screening, passed=True
+        st.session_state.get("lang", "ja"), demographics, screening, passed=True
     )
     state.begin_rounds(pid, seq)
     st.rerun()

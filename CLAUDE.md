@@ -10,6 +10,19 @@ Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-s
  - 适时更新md
  - 适标记过时或废弃的文档md
  - 一些可能用得上的文献放到 paper/reference 里面
+
+### 0.1 维护项目时间轴 `paper/11、项目时间轴.md`
+ - 每当发生这四类事件之一，就在 paper/11 最上方追加一条（日期 + 类别标签 + 一句话 + 受影响文档/代码）：
+   ① 研究方向/主线变更　② 实验设计重大调整　③ 应用版本性重构　④ 关键决策拍板
+ - 日常小改不记。类别标签：`方向` / `设计` / `代码` / `决策` / `文档`。
+ - 同时：方向/设计变更后，检查 paper/ 里被取代的文档是否需要加过时横幅（保留历史决策与原因，但不要让旧文档被误读为当前状态）。
+
+### 0.2 当前权威文档（避免引用过时内容）
+ - 研究方向/论文骨架：`paper/10`　实验交互规格：`paper/7 v4.1`　工程：`paper/5 v2.0`　运行流程：`paper/6`　主张/文献核查：`paper/9`　文献库：`paper/reference/`　待办：`paper/8`
+ - 已过时（仅留档）：`paper/1`（v1 四组）、`paper/2`/`paper/3`（v2 ModeMirror）、`paper/4`（部分失效，§5.1/5.4/6 等）
+
+### 0.3 语言（实验对象是日本人）
+ - 被试默认日语（`ja`），研究员测试用 `zh`。UI 文案在 `i18n/locales/{ja,zh,en}.json`（三语键树必须一致）；**LLM 输出语言由 `prompts.build_*` 的 `lang` 参数控制**（调用点传 `i18n.get_lang()`）；脚本主题 `data/topics.json` 字段为 `{ja, zh}` 字典。改 UI/prompt 时务必中日同步，别让日本被试看到中文。
  
  
 

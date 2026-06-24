@@ -86,7 +86,8 @@
     "step_generate": "Generate the script",
     "step_questionnaire": "Answer questions",
     "step_guidance": "Answer the AI's questions",
-    "step_polish": "Polish the script"
+    "step_polish": "Polish the script",
+    "retry": "Retry"
   },
   "q": {
     "title": "A few questions about this round",
@@ -108,7 +109,8 @@
     "tag_ai_ok": "Mostly the AI's, but I approve of it",
     "tag_ai_against": "Against my original intent",
     "submit": "Submit this round's questionnaire",
-    "imagine": "How close is the final script to what you pictured in your mind? (1 = not at all, 7 = very close)"
+    "imagine": "How close is the final script to what you pictured in your mind? (1 = not at all, 7 = very close)",
+    "script_review": "The storyboard you just finished"
   },
   "done": {
     "title": "All done — thank you for participating! 🎉",
@@ -159,7 +161,7 @@
     "progress": "Question {i} / {n}",
     "pick_label": "Pick the option closest to what you have in mind",
     "custom_label": "✍ Or write your own:",
-    "ai_decide": "🤖 Let the AI decide",
+    "ai_decide": "Let the AI decide",
     "prev": "Previous",
     "next": "Next",
     "finish": "Done — generate the script",

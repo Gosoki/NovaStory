@@ -3,7 +3,7 @@ from __future__ import annotations
 import streamlit as st
 
 from core import config, state
-from i18n import t
+from i18n import get_lang, t
 from views import _postgen, group_c, group_d, group_e, guidance, questionnaire
 
 
@@ -84,9 +84,10 @@ def _current_step(cond: str, n_steps: int) -> int:
 
 
 def _topic_card(topic: dict) -> None:
+    lang = get_lang()
     with st.container(border=True):
-        st.markdown(f"**{topic['title']}**")
-        st.write(topic.get("scenario", ""))
+        st.markdown(f"**{state.topic_text(topic, 'title', lang)}**")
+        st.write(state.topic_text(topic, "scenario", lang))
         st.caption(
             t(
                 "round.topic_spec",

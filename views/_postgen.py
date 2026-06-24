@@ -3,7 +3,7 @@ from __future__ import annotations
 import streamlit as st
 
 from core import prompts, state
-from i18n import t
+from i18n import get_lang, t
 from views import _trial
 from views._streaming import stream_llm
 
@@ -90,9 +90,12 @@ def _render_revision_channel(topic: dict) -> None:
             {"round": st.session_state["r_n_ai_rounds"] + 1, "text": request}
         )
         state.log_event("revision_request", {"chars": len(request)})
+        lang = get_lang()
         out = stream_llm(
-            prompts.build_system_revision(topic),
-            prompts.build_user_revision(topic, st.session_state["r_intent"], base, request),
+            prompts.build_system_revision(topic, lang),
+            prompts.build_user_revision(
+                topic, st.session_state["r_intent"], base, request, lang
+            ),
             group="D-revise",
         )
         if out is not None:
