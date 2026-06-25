@@ -35,7 +35,7 @@ def render(topic: dict, cond: str) -> None:
     elif cond == "E":
         _render_guidance_channel()
 
-    if st.button(t("postgen.submit"), type="primary", width="stretch"):
+    if st.button(t("postgen.submit"), type="primary", width="stretch", key="btn_finalize"):
         final = persist_pending_edit()
         _trial.submit_trial(final)
         st.rerun()
@@ -45,7 +45,7 @@ def render_readonly(topic: dict) -> None:
     """Condition C: zero-loop — rendered script + submit only."""
     st.subheader(t("postgen.readonly_title"))
     st.markdown(state.current_script())
-    if st.button(t("postgen.submit"), type="primary", width="stretch"):
+    if st.button(t("postgen.submit"), type="primary", width="stretch", key="btn_finalize"):
         _trial.submit_trial(state.current_script())
         st.rerun()
 
@@ -80,7 +80,7 @@ def _render_revision_channel(topic: dict) -> None:
         height=80,
     )
     st.caption(t("d.revision_hint"))
-    if st.button(t("d.revision_send"), type="secondary", width="stretch"):
+    if st.button(t("d.revision_send"), type="secondary", width="stretch", key="btn_more_ai"):
         request = (st.session_state.get("_revision_input") or "").strip()
         if not request:
             st.error(t("errors.revision_empty"))
@@ -107,7 +107,7 @@ def _render_revision_channel(topic: dict) -> None:
 
 
 def _render_guidance_channel() -> None:
-    if st.button(t("guidance.continue_btn"), type="secondary", width="stretch"):
+    if st.button(t("guidance.continue_btn"), type="secondary", width="stretch", key="btn_more_ai"):
         persist_pending_edit()
         state.log_event("continue_guidance_click")
         from views import guidance  # local import: guidance imports this module

@@ -19,7 +19,7 @@ def render() -> None:
     if phase == "intent":
         _render_intent(cond, topic)
     elif phase == "pipeline":
-        st.info(t(f"round.instr_{cond}", shot_count=topic["shot_count"]))
+        st.warning(t(f"round.instr_{cond}", shot_count=topic["shot_count"]))
         st.text_input(
             t("round.intent_label"),
             value=st.session_state["r_intent"],
@@ -98,7 +98,7 @@ def _topic_card(topic: dict) -> None:
 
 
 def _render_intent(cond: str, topic: dict) -> None:
-    st.info(t(f"round.instr_{cond}", shot_count=topic["shot_count"]))
+    st.warning(t(f"round.instr_{cond}", shot_count=topic["shot_count"]))
     st.text_area(
         t("round.intent_label"),
         key="_intent_input",
