@@ -73,39 +73,48 @@ def _refresh_editor_if_flagged() -> None:
 
 
 def _render_history() -> None:
-    """Collapsible log of past requests / guidance answers and earlier drafts so
-    the participant can look back at what they asked for and previous versions."""
+    """Chat-style transcript of the whole round — the idea, every revision request
+    / guidance answer / hand-edit and every AI version — in order, like a chat
+    agent keeping the full conversation."""
     versions = st.session_state["r_versions"]
-    requests = st.session_state["r_revision_requests"]
-    guidance = st.session_state["r_guidance_rounds"]
-    if len(versions) <= 1 and not requests and not guidance:
+    if not versions:
         return
+    requests = st.session_state["r_revision_requests"]   # condition D
+    guidance = st.session_state["r_guidance_rounds"]      # condition E
     with st.expander(t("history.title"), expanded=False):
-        if requests:
-            st.caption(t("history.requests"))
-            for r in requests:
-                st.markdown(f"- {t('history.round', n=r['round'])}: {r['text']}")
-        if guidance:
-            st.caption(t("history.guidance"))
-            for g in guidance:
-                chosen = "、".join(
-                    it["chosen"] for it in g["items"] if it.get("chosen")
-                )
-                st.markdown(f"- {t('history.round', n=g['round'])}: {chosen or '—'}")
-        if len(versions) > 1:
-            st.caption(t("history.versions"))
-            past = versions[:-1]
-            labels = [
-                t("history.version", v=v["v"], who=t(f"history.author_{v['author']}"))
-                for v in past
-            ]
-            i = st.selectbox(
-                t("history.pick"), range(len(past)),
-                format_func=lambda x: labels[x],
-                index=len(past) - 1,
-                key=f"_hist_pick_{st.session_state['round_idx']}",
-            )
-            st.markdown(past[i]["text"])
+        intent = (st.session_state.get("r_intent") or "").strip()
+        if intent:
+            with st.chat_message("user"):
+                st.caption(t("history.intent"))
+                st.markdown(intent)
+        ai_seen = 0
+        for v in versions:
+            if v["author"] == "ai":
+                _history_user_turn(ai_seen, requests, guidance)
+                with st.chat_message("assistant"):
+                    st.caption(t("history.ai", v=v["v"]))
+                    st.markdown(v["text"])
+                ai_seen += 1
+            else:  # user_edit
+                with st.chat_message("user"):
+                    st.caption(t("history.edit"))
+                    st.markdown(v["text"])
+
+
+def _history_user_turn(ai_idx: int, requests: list, guidance: list) -> None:
+    """The user message that triggered the ai_idx-th AI version: guidance answers
+    for E; the free-text request for D's 2nd+ generation; nothing for the first."""
+    if guidance and ai_idx < len(guidance):
+        answers = "、".join(
+            it["chosen"] for it in guidance[ai_idx]["items"] if it.get("chosen")
+        )
+        with st.chat_message("user"):
+            st.caption(t("history.guide"))
+            st.markdown(answers or "—")
+    elif requests and 1 <= ai_idx <= len(requests):
+        with st.chat_message("user"):
+            st.caption(t("history.req"))
+            st.markdown(requests[ai_idx - 1]["text"])
 
 
 def _render_revision_channel(topic: dict) -> None:

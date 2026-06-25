@@ -122,14 +122,11 @@
   },
   "history": {
     "title": "历史记录",
-    "requests": "你提过的修改要求",
-    "guidance": "历次引导回答",
-    "versions": "历史版本",
-    "round": "第{n}次",
-    "version": "v{v}（{who}）",
-    "author_ai": "AI",
-    "author_user_edit": "你的手改",
-    "pick": "查看哪一版"
+    "intent": "你的创意",
+    "req": "修改要求",
+    "guide": "引导回答",
+    "edit": "你的手改",
+    "ai": "AI（第{v}版）"
   },
   "done": {
     "title": "全部完成,感谢参与!🎉",

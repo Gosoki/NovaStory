@@ -122,14 +122,11 @@
   },
   "history": {
     "title": "これまでの履歴",
-    "requests": "あなたの修正リクエスト",
-    "guidance": "これまでのガイド回答",
-    "versions": "以前のバージョン",
-    "round": "第{n}回",
-    "version": "v{v}（{who}）",
-    "author_ai": "AI",
-    "author_user_edit": "あなたの手直し",
-    "pick": "見たいバージョン"
+    "intent": "あなたのアイデア",
+    "req": "修正リクエスト",
+    "guide": "ガイド回答",
+    "edit": "あなたの手直し",
+    "ai": "AI（第{v}版）"
   },
   "done": {
     "title": "すべて完了しました。ご参加ありがとうございました!🎉",

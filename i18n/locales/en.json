@@ -122,14 +122,11 @@
   },
   "history": {
     "title": "History",
-    "requests": "Your revision requests",
-    "guidance": "Your guidance answers",
-    "versions": "Previous versions",
-    "round": "Round {n}",
-    "version": "v{v} ({who})",
-    "author_ai": "AI",
-    "author_user_edit": "Your edit",
-    "pick": "View which version"
+    "intent": "Your idea",
+    "req": "Revision request",
+    "guide": "Guidance answers",
+    "edit": "Your edit",
+    "ai": "AI (v{v})"
   },
   "done": {
     "title": "All done — thank you for participating! 🎉",
