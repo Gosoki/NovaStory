@@ -99,6 +99,9 @@ def _topic_card(topic: dict) -> None:
 
 def _render_intent(cond: str, topic: dict) -> None:
     st.warning(t(f"round.instr_{cond}", shot_count=topic["shot_count"]))
+    st.markdown(
+        t("round.intent_scope", count=topic["shot_count"], total=topic["total_seconds"])
+    )
     st.text_area(
         t("round.intent_label"),
         key="_intent_input",

@@ -37,28 +37,19 @@ def main() -> None:
         _done()
 
 
-# Action-color cues: green = finalize / decide the storyboard, red = keep
-# iterating with the AI. Buttons opt in via their key (Streamlit adds a
-# `st-key-<key>` class to the widget wrapper, so only keyed buttons recolor).
+# "Keep iterating with the AI" buttons are tinted blue so they read as a
+# distinct, non-final action; the finalize/submit button keeps Streamlit's
+# default primary color. Opt-in via key (Streamlit adds a `st-key-<key>` class).
 _ACTION_CSS = """
 <style>
-div.st-key-btn_finalize button {
-    background-color: #16a34a !important;
-    border: 1px solid #16a34a !important;
-    color: #ffffff !important;
-}
-div.st-key-btn_finalize button:hover {
-    background-color: #15803d !important;
-    border-color: #15803d !important;
-}
 div.st-key-btn_more_ai button {
-    background-color: #dc2626 !important;
-    border: 1px solid #dc2626 !important;
+    background-color: #2563eb !important;
+    border: 1px solid #2563eb !important;
     color: #ffffff !important;
 }
 div.st-key-btn_more_ai button:hover {
-    background-color: #b91c1c !important;
-    border-color: #b91c1c !important;
+    background-color: #1d4ed8 !important;
+    border-color: #1d4ed8 !important;
 }
 </style>
 """

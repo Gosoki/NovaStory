@@ -30,12 +30,14 @@ def render(topic: dict, cond: str) -> None:
     )
     st.caption(t("postgen.edit_hint"))
 
+    _render_history()
+
     if cond == "D":
         _render_revision_channel(topic)
     elif cond == "E":
         _render_guidance_channel()
 
-    if st.button(t("postgen.submit"), type="primary", width="stretch", key="btn_finalize"):
+    if st.button(t("postgen.submit"), type="primary", width="stretch"):
         final = persist_pending_edit()
         _trial.submit_trial(final)
         st.rerun()
@@ -45,7 +47,7 @@ def render_readonly(topic: dict) -> None:
     """Condition C: zero-loop — rendered script + submit only."""
     st.subheader(t("postgen.readonly_title"))
     st.markdown(state.current_script())
-    if st.button(t("postgen.submit"), type="primary", width="stretch", key="btn_finalize"):
+    if st.button(t("postgen.submit"), type="primary", width="stretch"):
         _trial.submit_trial(state.current_script())
         st.rerun()
 
@@ -68,6 +70,42 @@ def request_editor_refresh() -> None:
 def _refresh_editor_if_flagged() -> None:
     if st.session_state.pop("_postgen_refresh", False):
         st.session_state["_script_edit"] = state.current_script()
+
+
+def _render_history() -> None:
+    """Collapsible log of past requests / guidance answers and earlier drafts so
+    the participant can look back at what they asked for and previous versions."""
+    versions = st.session_state["r_versions"]
+    requests = st.session_state["r_revision_requests"]
+    guidance = st.session_state["r_guidance_rounds"]
+    if len(versions) <= 1 and not requests and not guidance:
+        return
+    with st.expander(t("history.title"), expanded=False):
+        if requests:
+            st.caption(t("history.requests"))
+            for r in requests:
+                st.markdown(f"- {t('history.round', n=r['round'])}: {r['text']}")
+        if guidance:
+            st.caption(t("history.guidance"))
+            for g in guidance:
+                chosen = "、".join(
+                    it["chosen"] for it in g["items"] if it.get("chosen")
+                )
+                st.markdown(f"- {t('history.round', n=g['round'])}: {chosen or '—'}")
+        if len(versions) > 1:
+            st.caption(t("history.versions"))
+            past = versions[:-1]
+            labels = [
+                t("history.version", v=v["v"], who=t(f"history.author_{v['author']}"))
+                for v in past
+            ]
+            i = st.selectbox(
+                t("history.pick"), range(len(past)),
+                format_func=lambda x: labels[x],
+                index=len(past) - 1,
+                key=f"_hist_pick_{st.session_state['round_idx']}",
+            )
+            st.markdown(past[i]["text"])
 
 
 def _render_revision_channel(topic: dict) -> None:

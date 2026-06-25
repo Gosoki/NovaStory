@@ -5,7 +5,7 @@ import re
 """Best-effort parsing of generated storyboard markdown into per-shot dicts.
 
 The system prompt enforces numbered shots with bracketed field labels, in zh
-(【时长】X秒【景别】【画面描写】【台词/音效】) or ja (【秒数】X秒【サイズ】
+(【时长】X秒【拍法】【画面描写】【台词/音效】) or ja (【秒数】X秒【カメラ】
 【画面】【セリフ・音】). Labels are kept language-aware so a Japanese
 storyboard parses the same way a Chinese one does (the field LABELS are the
 parse anchor; the field CONTENT is in the participant's language).
@@ -14,16 +14,16 @@ Callers must handle an empty result (-> whole-text fallback, parse_ok=0).
 
 # Field label (inside 【】) → canonical key; covers zh + ja labels and aliases.
 _FIELD_RE = re.compile(
-    r"【\s*(景别|画面描写|台词/音效|台词|音效|时长"
-    r"|サイズ|ショットサイズ|映像|画面|ビジュアル|セリフ・音|セリフ|音声|効果音|音|尺|秒数|長さ)"
+    r"【\s*(景别|拍法|画面描写|台词/音效|台词|音效|时长"
+    r"|サイズ|ショットサイズ|カメラ|映像|画面|ビジュアル|セリフ・音|セリフ|音声|効果音|音|尺|秒数|長さ)"
     r"[^】]*】\s*[::]?\s*"
 )
 _FIELD_MAP = {
     # zh
-    "景别": "shot_type", "画面描写": "visual",
+    "景别": "shot_type", "拍法": "shot_type", "画面描写": "visual",
     "台词/音效": "audio", "台词": "audio", "音效": "audio", "时长": "duration",
     # ja
-    "サイズ": "shot_type", "ショットサイズ": "shot_type",
+    "サイズ": "shot_type", "ショットサイズ": "shot_type", "カメラ": "shot_type",
     "映像": "visual", "画面": "visual", "ビジュアル": "visual",
     "セリフ・音": "audio", "セリフ": "audio", "音声": "audio", "効果音": "audio", "音": "audio",
     "尺": "duration", "秒数": "duration", "長さ": "duration",
