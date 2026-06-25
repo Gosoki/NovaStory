@@ -4,19 +4,19 @@
     "subtitle": "一项关于人与 AI 共同创作的在线研究"
   },
   "common": {
-    "loading": "AI 生成中…"
+    "loading": "AI 生成中…(通常需要 30〜90 秒,接口繁忙时可能稍久,请耐心等待)"
   },
   "sidebar": {
     "language": "界面语言",
     "api_section": "模型接口",
     "topic_section": "题目库",
     "topics_hint": "编辑 data/topics.json 后刷新生效;前 3 个题目用于实验。",
-    "researcher_section": "实验员工具",
-    "researcher_pw": "实验员密码",
+    "researcher_section": "管理员工具",
+    "researcher_pw": "管理员密码",
     "researcher_unlock": "解锁",
     "researcher_pw_wrong": "密码不正确。",
-    "researcher_toggle": "实验员模式(查看数据后台)",
-    "researcher_logout": "退出实验员模式",
+    "researcher_toggle": "管理员模式(查看数据后台)",
+    "researcher_logout": "退出管理员模式",
     "reset_subject": "为下一位被试重置会话",
     "api_preset_label": "选择 API 配置",
     "api_no_configs": "未找到 API 配置。请在 .streamlit/secrets.toml 中添加至少一个 [[api_configs]] 块(参见 secrets.toml.example)。",
@@ -157,6 +157,7 @@
     "outline_empty": "大纲为空,请先填写大纲。",
     "intent_too_short": "请把创意写得具体一点(至少 {n} 个字)。",
     "answer_all": "还有未回答的题目,请全部作答后再提交。",
+    "unanswered": "还有未回答的题目 → {items}",
     "answer_or_skip": "请选择一个选项、自己写一个,或交给 AI 决定。",
     "revision_empty": "请先告诉 AI 你想怎么改。"
   },

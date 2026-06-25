@@ -4,19 +4,19 @@
     "subtitle": "人とAIの共同創作に関するオンライン研究"
   },
   "common": {
-    "loading": "AIが生成しています…"
+    "loading": "AIが生成しています…(通常30〜90秒ほどかかります。混み合うと少し時間がかかることがあります。そのままお待ちください)"
   },
   "sidebar": {
     "language": "表示言語",
     "api_section": "モデルAPI",
     "topic_section": "お題リスト",
     "topics_hint": "data/topics.json を編集して再読み込みすると反映されます。先頭の3つのお題が実験に使用されます。",
-    "researcher_section": "実験者ツール",
-    "researcher_pw": "実験者パスワード",
+    "researcher_section": "管理者ツール",
+    "researcher_pw": "管理者パスワード",
     "researcher_unlock": "ロック解除",
     "researcher_pw_wrong": "パスワードが正しくありません。",
-    "researcher_toggle": "実験者モード(データ管理画面を表示)",
-    "researcher_logout": "実験者モードを終了",
+    "researcher_toggle": "管理者モード(データ管理画面を表示)",
+    "researcher_logout": "管理者モードを終了",
     "reset_subject": "次の参加者のためにセッションをリセット",
     "api_preset_label": "API設定を選択",
     "api_no_configs": "API設定が見つかりません。.streamlit/secrets.toml に [[api_configs]] ブロックを少なくとも1つ追加してください(secrets.toml.example を参照)。",
@@ -157,6 +157,7 @@
     "outline_empty": "アウトラインが空です。先にアウトラインを入力してください。",
     "intent_too_short": "アイデアをもう少し具体的に書いてください({n} 文字以上)。",
     "answer_all": "未回答の項目があります。すべて回答してから送信してください。",
+    "unanswered": "未回答の項目があります → {items}",
     "answer_or_skip": "選択肢を選ぶか、自分で書くか、AI に任せるかを選んでください。",
     "revision_empty": "まず AI にどう直してほしいかを伝えてください。"
   },

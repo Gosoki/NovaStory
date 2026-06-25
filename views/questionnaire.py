@@ -46,6 +46,12 @@ def _scale_anchors(kind: str | None) -> None:
         c3.markdown(_anchor_html(t(f"q.{right}"), "right"), unsafe_allow_html=True)
 
 
+def _short(label: str, n: int = 18) -> str:
+    """A compact, recognizable form of a long item label for the unanswered list."""
+    label = label.strip()
+    return label if len(label) <= n else label[:n] + "…"
+
+
 def render() -> None:
     ridx = st.session_state["round_idx"]
     # Show the finished script above the questionnaire so the participant can
@@ -57,10 +63,9 @@ def render() -> None:
     st.caption(t("q.hint"))
 
     answers: dict[str, object] = {}
-    missing = False
+    missing: list[str] = []  # labels of unanswered items, named back to the user
 
     def likert(key: str, label: str, anchors: str | None = "agree") -> None:
-        nonlocal missing
         st.markdown(label)
         val = st.segmented_control(
             label, _SCALE, selection_mode="single", key=f"_q_{key}_{ridx}",
@@ -68,7 +73,7 @@ def render() -> None:
         )
         _scale_anchors(anchors)
         if val is None:
-            missing = True
+            missing.append(_short(label))
         answers[key] = val
         st.divider()
 
@@ -102,7 +107,7 @@ def render() -> None:
                 key=f"_q_shot{s['idx']}_{ridx}",
             )
             if sel is None:
-                missing = True
+                missing.append(t("q.shot_label", i=s["idx"]))
             shot_annotations.append({"shot": s["idx"], "tag": lbl2tag.get(sel)})
             st.divider()
     else:
@@ -111,12 +116,12 @@ def render() -> None:
             key=f"_q_whole_{ridx}",
         )
         if sel is None:
-            missing = True
+            missing.append(_short(t("q.whole_tag_label")))
         shot_annotations.append({"shot": 0, "tag": lbl2tag.get(sel)})
 
     if st.button(t("q.submit"), type="primary", width="stretch"):
         if missing:
-            st.error(t("errors.answer_all"))
+            st.error(t("errors.unanswered", items=" / ".join(missing)))
             return
         _submit(ridx, answers, shot_annotations)
         st.rerun()

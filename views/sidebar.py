@@ -11,6 +11,8 @@ from views import devtools
 
 def render() -> None:
     with st.sidebar:
+        _language_picker()
+        st.divider()
         _researcher_section()
 
 
@@ -41,11 +43,6 @@ def _researcher_section() -> None:
             return
 
         st.toggle(t("sidebar.researcher_toggle"), key="researcher_mode")
-        # Language picker lives here (researcher-only): participants stay locked
-        # to DEFAULTS["lang"]="ja" and can never switch mid-session, which also
-        # protects the localized-string answer comparisons (JP6 / AUD4).
-        _language_picker()
-        st.divider()
         devtools.render()
         _api_section()
         _topics_preview()

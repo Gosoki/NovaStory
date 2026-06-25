@@ -77,6 +77,30 @@ def current_meta(temperature: float | None = None) -> dict:
 
 # --------- streaming ---------
 
+def ping(max_tokens: int = 5) -> tuple[bool, float, str]:
+    """Researcher connectivity check: a tiny non-streaming completion against the
+    currently configured endpoint. Returns (ok, elapsed_seconds, detail).
+
+    Never raises — surfaces config/network/server-busy problems as detail text so
+    the researcher can confirm the model is reachable before a participant starts.
+    """
+    t0 = time.time()
+    try:
+        client = _client()
+        resp = client.chat.completions.create(
+            model=_model(),
+            messages=[{"role": "user", "content": "ping"}],
+            max_tokens=max_tokens,
+            temperature=0,
+        )
+        txt = (resp.choices[0].message.content or "").strip()
+        return True, time.time() - t0, txt or "(空の応答)"
+    except LLMConfigError as e:
+        return False, time.time() - t0, f"config: {e}"
+    except Exception as e:  # noqa: BLE001
+        return False, time.time() - t0, str(e)
+
+
 def generate_stream(
     system: str,
     user: str,
@@ -84,47 +108,58 @@ def generate_stream(
     group: str,
     user_id: str = "",
     temperature: float | None = None,
+    retries: int = 2,
 ) -> Iterator[str]:
     """Stream chat completion chunks as they arrive.
 
-    Side effects: appends start / first_token / done / error events to data/llm.log
-    so the operator can `tail -f data/llm.log` in another terminal.
+    Transient failures (server busy / rate limit / timeout) are auto-retried with
+    a short backoff — but ONLY while no token has been streamed yet, since once
+    content is yielded to the UI a retry would duplicate output. After streaming
+    begins, an error propagates (the caller's manual retry button handles it).
+
+    Side effects: appends start / first_token / retry / done / error events to
+    data/llm.log so the operator can `tail -f data/llm.log` in another terminal.
     """
     if temperature is None:
         temperature = config.TEMPERATURE
     model = _model()
     base_url = st.session_state.get("base_url", "")
     client = _client()
+    messages = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": user},
+    ]
     _log(group, user_id, f"start model={model} base={base_url}")
     t0 = time.time()
-    total_len = 0
-    first = True
-    try:
-        stream = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            temperature=temperature,
-            stream=True,
-        )
-        for chunk in stream:
-            if not chunk.choices:
+    for attempt in range(retries + 1):
+        total_len = 0
+        first = True
+        try:
+            stream = client.chat.completions.create(
+                model=model, messages=messages, temperature=temperature, stream=True,
+            )
+            for chunk in stream:
+                if not chunk.choices:
+                    continue
+                delta = chunk.choices[0].delta
+                content = getattr(delta, "content", None) or ""
+                if not content:
+                    continue
+                if first:
+                    _log(group, user_id,
+                         f"first_token elapsed={time.time()-t0:.2f}s attempt={attempt+1}")
+                    first = False
+                total_len += len(content)
+                yield content
+            _log(group, user_id, f"done elapsed={time.time()-t0:.2f}s len={total_len}")
+            return
+        except Exception as e:  # noqa: BLE001
+            if first and attempt < retries:  # safe to retry: nothing streamed yet
+                _log(group, user_id, f"retry attempt={attempt+1} err={e!r}")
+                time.sleep(1.5 * (attempt + 1))
                 continue
-            delta = chunk.choices[0].delta
-            content = getattr(delta, "content", None) or ""
-            if not content:
-                continue
-            if first:
-                _log(group, user_id, f"first_token elapsed={time.time()-t0:.2f}s")
-                first = False
-            total_len += len(content)
-            yield content
-        _log(group, user_id, f"done elapsed={time.time()-t0:.2f}s len={total_len}")
-    except Exception as e:  # noqa: BLE001
-        _log(group, user_id, f"error elapsed={time.time()-t0:.2f}s err={e!r}")
-        raise LLMCallError(str(e)) from e
+            _log(group, user_id, f"error elapsed={time.time()-t0:.2f}s err={e!r}")
+            raise LLMCallError(str(e)) from e
 
 
 # --------- JSON mode (guided elicitation) ---------

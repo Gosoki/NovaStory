@@ -28,7 +28,7 @@
 > **✅ 状态(2026-06-26):AUD1-5 已修 + AUD6 已加 consent 强提示(完整会话恢复仍待决策)。E2E 通过。** 已修详情:
 > - AUD1+2 `views/_postgen.py`:照搬 E 的"成功后才提交",判定改 `out and out.strip()`。
 > - AUD3 `core/state.py`:新增 `r_llm_wait_pre`,E round-1 `t_pregen` 已扣除最终生成等待。
-> - AUD4 `views/sidebar.py`(语言器移进 researcher 区,被试锁 ja)+ `views/guidance.py`(`ai_decided` 存为语言无关布尔,不再字符串比对)。
+> - AUD4 **治本已修**:`views/guidance.py` 把 `ai_decided` 存为语言无关布尔,不再字符串比对——即使被试中途切语言,E 引导数据也不再被污染。**治标(语言器移进 researcher 区)已按用户决定回退**(2026-06-26):语言器放回侧栏外、**被试可自选语言**;因 JP6 的数据污染面已被布尔修复堵住,外放是安全的。残留:JP6 的"每轮 lang 写入 events 校验三轮一致"仍可做(若正式study限定日语再议)。
 > - AUD5 `views/guidance.py`:追问界面 `r_versions` 非空时加"取消,返回草稿"出口(新键 `guidance.cancel`)。
 > - AUD6(lite) `views/consent.py`:加"勿刷新/勿返回"强提示(新键 `consent.no_refresh`)。**完整恢复(URL pid 续接)仍未做**,见下。
 > - 配套:`devtools.py`/`dev_smoke_e2e.py` 同步 `ai_decided` 字段;E2E `safe_run` 补 checkbox 回填。
@@ -36,7 +36,7 @@
 - **AUD1 D 修改通道失败不回滚【✅已修】**`views/_postgen.py:134-157`。`r_revision_requests.append` 与 `revision_request` 事件在 `stream_llm` **之前**执行,但 AI 版本只在成功时追加 → LLM 失败(`LLMCallError` 真实可发生)留下"孤儿请求":`render_history` 的 `requests[ai_idx-1]` 配对整体错位(被试看到的履历张冠李戴)、落库 `revision_requests` 条数与 `n_ai_rounds`/版本数不一致、重试产生重复 round 号。→ **照搬 E 的 `_finish_round` 模式**:先 `stream_llm`,`out and out.strip()` 成功后再 append/log/add_version/+1。
 - **AUD2 D 修改通道空串判定【✅已修(与 AUD1 同处)】**`views/_postgen.py:152`。用 `if out is not None` 而非 `out and out.strip()`(C/D/E 其余 5 处都用后者)。模型只回 `<think>`/空白时 `stream_llm` 返回 `""`(非 None)→ `add_version("","ai")` 把脚本覆盖成空、清空编辑器、`n_ai_rounds` 虚增、空版本落库(原文仍在版本历史可找回)。→ 改判定为 `out and out.strip()`,空返回给提示不写版本。(与 AUD1 同一处,一并修。)
 - **AUD3 E `t_pregen` 把最终生成等待算进创作时间【✅已修;影响主因变量】**`core/state.py:263-264`。`t_pregen=_delta("guidance_shown","guidance_submit")` **未扣 LLM 等待**,而 E-final 剧本生成(几十秒)恰在此区间内、又因发生在首个 `script_shown` 之前躲过 `r_llm_wait_post` 扣减 → E 引导阶段"创作投入"系统性高估,污染 C/D/E 时间对比。**仅影响 E round-1**(follow-up 已被 `t_postgen` 正确扣除)。→ 新增 `r_llm_wait_pre` 累加器(仅在「已有 guidance_shown 且尚无 guidance_submit」区间累加),`t_pregen=max(0, raw-r_llm_wait_pre)`;**只改 E 分支**。
-- **AUD4 语言切换器对被试可见 + `ai_decided` 本地化串比对脆弱【✅已修;JP6 一并解决】**`views/sidebar.py:12-28` + `views/guidance.py:166-184`。语言器在 researcher 守卫**之外**,被试随时可切 →①违反"只见日语";②`ai_decided` 把本地化串 `_AI_DECIDE()` 当枚举存/比对,答题→提交间切语言会误判 `ai_decided=False` 并把"交给AI"当普通选项塞进 prompt,污染 E 引导数据;③翻页恢复静默丢弃 AI-decide 选择(与既知 widget-key 丢失同源)。→ **治标**:语言器移进 researcher 折叠区(JP6 的锁定也一并解决);**治本**:`ai_decided` 在 `_save_current` 时就存成语言无关布尔,不再字符串比对。
+- **AUD4 语言切换器对被试可见 + `ai_decided` 本地化串比对脆弱【✅治本已修(布尔);治标按用户决定回退—语言器外放可自选】**`views/sidebar.py:12-28` + `views/guidance.py:166-184`。语言器在 researcher 守卫**之外**,被试随时可切 →①违反"只见日语";②`ai_decided` 把本地化串 `_AI_DECIDE()` 当枚举存/比对,答题→提交间切语言会误判 `ai_decided=False` 并把"交给AI"当普通选项塞进 prompt,污染 E 引导数据;③翻页恢复静默丢弃 AI-decide 选择(与既知 widget-key 丢失同源)。→ **治标**:语言器移进 researcher 折叠区(JP6 的锁定也一并解决);**治本**:`ai_decided` 在 `_save_current` 时就存成语言无关布尔,不再字符串比对。
 - **AUD5 E 追问生成失败被锁死、回不到草稿【✅已修】**`views/guidance.py:205-223`。follow-up 时已有可用草稿,但生成持续失败时 `_finish_round` 直接 return、`r_phase` 仍 `guidance`,无"取消/返回"出口,只能刷新(丢全会话)。→ `render()` 中当 `r_versions` 非空时加一个"取消/返回"按钮,置 `r_phase="postgen"` 并 rerun,不提交本轮。
 - **AUD6 刷新/会话丢失即丢本轮数据且重复占 seq【🟡 lite 已修:consent 强提示;完整恢复待决策】**`core/state.py:64-103`。轮内进度全在 `session_state`,刷新→回 consent、`participant_id` 丢失→重新 screening 会**再 insert 一个 passed 行、占第二个 seq**,破坏拉丁方平衡 + 虚增样本(events 行因增量落库仍在,但 trial 级文本/会话续接丢失)。→ MVP 最低成本:URL query param 存 pid,init 时若该 pid 未 done 则从 DB 重建 `round_idx`(按已落 trials 数)/`seq`,避免重复占 seq;或至少 consent 页强提示"全程勿刷新/勿返回"并记为已知限制。**请拍板本期是否实现恢复。**
 
@@ -47,6 +47,7 @@
 - **AUD10**`views/_streaming.py:25` 脚本/修改类 LLM 调用(~75s)等待界面无时间预期,只显示「AIが生成しています…」。→ 加预期文案/进度提示(关联 D23 延迟决策)。
 - **AUD-low/nit(约 40 条,择机)**:DB 无唯一约束/legacy 列易误导分析;`attention` 原始作答值不落库只存 0/1;`devtools` 切条件清空 `r_events` 致时长落 NULL;JSON 模式未用 `response_format=json_object`;per-shot 三标签语义重叠、错误提示不指明哪项、「15秒・3カット」硬/软约束没讲清、提交按钮非绿(与"绿=决定"约定相悖)、履历默认展开 480px 对首轮可能干扰;`scripts/ghost_run.py` 调用了不存在的 `prompts.build_user`(死脚本)、`baseline_gen.py`/`ghost_run.py` 调 `build_*` 不传 lang;`shot_type` 解析后无消费方(死字段)。**完整清单见审计原始结果**(`tasks/wxqj7vwwt.output`)。
 - **误报(2,已剔除)**:devtools `_fill_guidance` 被覆盖(实际不会)、"无任何提示这轮 AI 帮法不同"(intent warning 已有说明)。
+- **✅ 这批 UX/健壮性已修(2026-06-26)**:① 提交/决定类 primary 按钮改**绿色**(`app.py` CSS;"绿=决定",继续AI 仍蓝),原"默认红"决定作废;② 问卷未答全错误**指明具体题目/镜头**(`errors.unanswered` + `questionnaire._short`);③ LLM 等待文案加**时间预期**(30-90秒/繁忙更久)+ 流式**前置自动重试2次**(首 token 前才重试,避免重复;`llm.generate_stream`);④ devtools 加**「🔌 测试模型连通」**(`llm.ping`,报通/不通+延迟,>30s 警告);⑤ 主题蓝主色 `#2563eb`,**同时定义 `[theme.light]` 和 `[theme.dark]` → 跟随系统明暗**(坑:只写裸 `[theme]` 会被锁成单一 light 模式、不跟随系统;须两个子主题都定义才跟随并出 ☰→Settings 切换),消掉默认珊瑚红(进度条/选中态/转圈);决定按钮仍绿、继续AI 仍蓝(CSS `!important` 覆盖主题);⑥ 语言器**移回侧栏外、被试可自选**(AUD4 治标回退,治本布尔保留)。**注:改 `[theme]` 需重启 streamlit 服务才生效。**
 
 ## 📋 逐操作详细日志 — 前瞻设计(规划;系统冻结后一次性加,现在不实现)
 

@@ -37,11 +37,29 @@ def main() -> None:
         _done()
 
 
-# "Keep iterating with the AI" buttons are tinted blue so they read as a
-# distinct, non-final action; the finalize/submit button keeps Streamlit's
-# default primary color. Opt-in via key (Streamlit adds a `st-key-<key>` class).
+# Button color semantics:
+#   green = decide / advance / finalize ("绿=决定")  ← all type="primary" buttons
+#   blue  = keep iterating with the AI (a distinct, non-final action)  ← btn_more_ai
+# Streamlit's default primary is coral/red, which first-time users misread as a
+# dangerous action. Multiple selectors cover the 1.57 testid scheme plus a `kind`
+# attribute fallback (non-matching selectors are harmless no-ops).
 _ACTION_CSS = """
 <style>
+button[data-testid="stBaseButton-primary"],
+button[data-testid="stBaseButton-primaryFormSubmit"],
+.stButton button[kind="primary"],
+.stFormSubmitButton button[kind="primary"] {
+    background-color: #16a34a !important;
+    border-color: #16a34a !important;
+    color: #ffffff !important;
+}
+button[data-testid="stBaseButton-primary"]:hover,
+button[data-testid="stBaseButton-primaryFormSubmit"]:hover,
+.stButton button[kind="primary"]:hover,
+.stFormSubmitButton button[kind="primary"]:hover {
+    background-color: #15803d !important;
+    border-color: #15803d !important;
+}
 div.st-key-btn_more_ai button {
     background-color: #2563eb !important;
     border: 1px solid #2563eb !important;

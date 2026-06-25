@@ -3,3 +3,15 @@ runOnSave = true
 
 [browser]
 gatherUsageStats = false
+
+# Theme: blue accent that FOLLOWS each participant's system light/dark preference.
+# Streamlit auto-switches (and shows the ☰ → Settings toggle) ONLY when BOTH
+# [theme.light] and [theme.dark] are defined; a bare [theme] would lock the app
+# to a single (light) mode — that's why a dark system wasn't followed before.
+# Decide buttons stay green & continue-AI blue via the !important CSS in app.py
+# (white text → legible on either background).
+[theme.light]
+primaryColor = "#2563eb"
+
+[theme.dark]
+primaryColor = "#2563eb"

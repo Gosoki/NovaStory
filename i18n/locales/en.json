@@ -4,19 +4,19 @@
     "subtitle": "An online study on human–AI co-creation"
   },
   "common": {
-    "loading": "AI is generating…"
+    "loading": "AI is generating… (usually 30–90 seconds; may take longer if the service is busy — please wait)"
   },
   "sidebar": {
     "language": "Interface language",
     "api_section": "Model API",
     "topic_section": "Topic pool",
     "topics_hint": "Edit data/topics.json and refresh to apply changes; the first 3 topics are used in the experiment.",
-    "researcher_section": "Researcher tools",
-    "researcher_pw": "Researcher password",
+    "researcher_section": "Admin tools",
+    "researcher_pw": "Admin password",
     "researcher_unlock": "Unlock",
     "researcher_pw_wrong": "Incorrect password.",
-    "researcher_toggle": "Researcher mode (view data dashboard)",
-    "researcher_logout": "Exit researcher mode",
+    "researcher_toggle": "Admin mode (view data dashboard)",
+    "researcher_logout": "Exit admin mode",
     "reset_subject": "Reset session for the next participant",
     "api_preset_label": "Select API configuration",
     "api_no_configs": "No API configurations found. Please add at least one [[api_configs]] block to .streamlit/secrets.toml (see secrets.toml.example).",
@@ -157,6 +157,7 @@
     "outline_empty": "The outline is empty. Please fill in the outline first.",
     "intent_too_short": "Please make your idea more specific (at least {n} characters).",
     "answer_all": "Some questions are still unanswered. Please answer all of them before submitting.",
+    "unanswered": "Unanswered items → {items}",
     "answer_or_skip": "Please pick an option, write your own, or leave it to the AI.",
     "revision_empty": "Please tell the AI what you want changed first."
   },

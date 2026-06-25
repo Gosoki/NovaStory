@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import streamlit as st
 
-from core import db, shots, state
+from core import db, llm, shots, state
 from i18n import t
 
 """Researcher-only manual-testing helpers (rendered inside the sidebar's
@@ -22,6 +22,7 @@ REVISION_SAMPLE = "(测试)整体更搞笑一点,最后一镜加个反转"
 
 def render() -> None:
     st.subheader("🧪 测试工具")
+    _model_check()
     stage = st.session_state.get("stage")
     if stage in ("consent", "screening"):
         if st.button("跳过同意+筛查(注入测试被试)", width="stretch"):
@@ -49,6 +50,23 @@ def render() -> None:
             )
         st.caption("切换会重置本轮已有输入(从写创意重新开始)。")
     st.caption("成套输入:samples/test_inputs.md;全自动回归:scripts/dev_smoke_e2e.py")
+
+
+def _model_check() -> None:
+    """Researcher connectivity probe — ping the configured model and report
+    通/不通 + latency, so 接口繁忙/慢/挂 can be caught before a participant starts."""
+    meta = llm.current_meta()
+    st.caption(f"模型:`{meta['model']}` · {meta['base_url'] or '(默认 OpenAI)'}")
+    if st.button("🔌 测试模型连通", width="stretch", key="btn_model_ping"):
+        with st.spinner("正在调用模型…"):
+            ok, elapsed, detail = llm.ping()
+        if ok:
+            st.success(f"✅ 通 · {elapsed:.1f}s · 返回:{detail[:40]}")
+            if elapsed > 30:
+                st.warning("⚠️ 延迟 >30s,正式收数体验差,考虑切 OpenAI(见 config.GUIDANCE_API_INDEX)")
+        else:
+            st.error(f"❌ 不通 · {elapsed:.1f}s · {detail[:200]}")
+    st.divider()
 
 
 def _skip_intake() -> None:
