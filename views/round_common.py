@@ -16,6 +16,10 @@ def render() -> None:
     _topic_card(topic)
 
     phase = st.session_state["r_phase"]
+    # The chat-style history sits at the very top of the loop phases so it stays
+    # visible while answering guidance questions and while editing/revising.
+    if phase == "guidance" or (phase == "postgen" and cond != "C"):
+        _postgen.render_history()
     if phase == "intent":
         _render_intent(cond, topic)
     elif phase == "pipeline":

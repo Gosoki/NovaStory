@@ -74,6 +74,8 @@ ROUND_PAYLOAD_DEFAULTS: dict[str, Any] = {
     # guidance working state (condition E)
     "r_g_source": "",             # "fixed3+ai_supplement" | "ai_from_draft"
     "r_g_questions": [],
+    "r_g_answers": {},            # {q_idx: {"opt", "custom"}} — persists across
+                                  # pagination (Streamlit clears unmounted widgets)
     "r_g_idx": 0,
     "r_g_fallback": False,
     "r_llm_wait": 0.0,

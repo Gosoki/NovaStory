@@ -21,6 +21,7 @@ def begin_round(source: str) -> None:
     """source: "fixed3+ai_supplement" (round 1) | "ai_from_draft" (follow-up)."""
     st.session_state["r_g_source"] = source
     st.session_state["r_g_questions"] = []
+    st.session_state["r_g_answers"] = {}
     st.session_state["r_g_idx"] = 0
     st.session_state["r_g_fallback"] = False
     for k in list(st.session_state.keys()):
@@ -49,22 +50,32 @@ def render(topic: dict) -> None:
     if q.get("why"):
         st.caption(q["why"])
 
+    saved = st.session_state["r_g_answers"].get(idx, {})
     options = list(q.get("options") or [])
     if options:
         # The "leave it to the AI" choice is a real localized option (not a
         # format_func sentinel): segmented_control + format_func is not reliably
         # AppTest-drivable across reruns. _AI_DECIDE() detects it on read.
+        opt_key = f"_g_opt_{rnd}_{idx}"
+        opts = options + [_AI_DECIDE()]
+        # Restore a prior choice when this question is re-mounted (Streamlit
+        # cleared its widget key while it was off-screen during pagination).
+        if opt_key not in st.session_state and saved.get("opt") in opts:
+            st.session_state[opt_key] = saved["opt"]
         st.segmented_control(
-            t("guidance.pick_label"),
-            options + [_AI_DECIDE()],
+            t("guidance.pick_label"), opts,
             selection_mode="single",
-            key=f"_g_opt_{rnd}_{idx}",
+            key=opt_key,
             label_visibility="collapsed",
         )
-    st.text_input(t("guidance.custom_label"), key=f"_g_custom_{rnd}_{idx}")
+    cust_key = f"_g_custom_{rnd}_{idx}"
+    if cust_key not in st.session_state and saved.get("custom"):
+        st.session_state[cust_key] = saved["custom"]
+    st.text_input(t("guidance.custom_label"), key=cust_key)
 
     cols = st.columns(2)
     if idx > 0 and cols[0].button(t("guidance.prev"), width="stretch"):
+        _save_current(rnd, idx)
         st.session_state["r_g_idx"] -= 1
         st.rerun()
     last = idx == len(qs) - 1
@@ -73,6 +84,7 @@ def render(topic: dict) -> None:
         if not _answered(rnd, idx, q):
             st.error(t("errors.answer_or_skip"))
             return
+        _save_current(rnd, idx)
         if last:
             _finish_round(topic, rnd)
         else:
@@ -84,6 +96,15 @@ def _answered(rnd: int, idx: int, q: dict) -> bool:
     custom = (st.session_state.get(f"_g_custom_{rnd}_{idx}") or "").strip()
     chosen = st.session_state.get(f"_g_opt_{rnd}_{idx}")
     return bool(custom) or chosen is not None or not q.get("options")
+
+
+def _save_current(rnd: int, idx: int) -> None:
+    """Persist the mounted question's answer to a non-widget store; Streamlit
+    clears a widget's key once it stops being rendered (paginated questions)."""
+    st.session_state["r_g_answers"][idx] = {
+        "opt": st.session_state.get(f"_g_opt_{rnd}_{idx}"),
+        "custom": (st.session_state.get(f"_g_custom_{rnd}_{idx}") or ""),
+    }
 
 
 def _generate_questions(topic: dict) -> None:
@@ -144,10 +165,11 @@ def _validate(data) -> list[dict] | None:
 
 def _finish_round(topic: dict, rnd: int) -> None:
     qs = st.session_state["r_g_questions"]
+    saved = st.session_state["r_g_answers"]
     items = []
     for i, q in enumerate(qs):
-        custom = (st.session_state.get(f"_g_custom_{rnd}_{i}") or "").strip()
-        chosen_opt = st.session_state.get(f"_g_opt_{rnd}_{i}")
+        custom = (saved.get(i, {}).get("custom") or "").strip()
+        chosen_opt = saved.get(i, {}).get("opt")
         ai = _AI_DECIDE()
         ai_decided = chosen_opt == ai and not custom
         chosen = custom or ("" if chosen_opt in (None, ai) else str(chosen_opt))

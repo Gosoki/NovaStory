@@ -189,13 +189,15 @@ def _answer_guidance(at, rnd: int, n: int, custom_idx: int = -1, ai_idx: int = -
     qs = at.session_state["r_g_questions"]
     assert len(qs) == n, f"expected {n} questions, got {len(qs)}"
     ai_decide_zh = "交给 AI 决定"  # researcher tests in zh; == t("guidance.ai_decide")
+    answers = {}
     for i in range(n):
         if i == custom_idx:
-            at.session_state[f"_g_custom_{rnd}_{i}"] = "我自己写的:荒诞但温柔"
+            answers[i] = {"opt": None, "custom": "我自己写的:荒诞但温柔"}
         elif i == ai_idx:
-            at.session_state[f"_g_opt_{rnd}_{i}"] = ai_decide_zh
+            answers[i] = {"opt": ai_decide_zh, "custom": ""}
         elif qs[i]["options"]:
-            at.session_state[f"_g_opt_{rnd}_{i}"] = qs[i]["options"][0]
+            answers[i] = {"opt": qs[i]["options"][0], "custom": ""}
+    at.session_state["r_g_answers"] = answers
     at.session_state["r_g_idx"] = n - 1
     safe_run(at)  # render the last question so its finish button appears
     btn_click(at, "完成作答,生成脚本")

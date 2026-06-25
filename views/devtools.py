@@ -97,17 +97,18 @@ def _fill_guidance() -> None:
     qs = st.session_state["r_g_questions"]
     if not qs:
         return
-    rnd = len(st.session_state["r_guidance_rounds"]) + 1
+    answers = {}
     for i, q in enumerate(qs):
         options = q.get("options") or []
         if i == 1:
-            st.session_state[f"_g_custom_{rnd}_{i}"] = "(测试)我自己写的方向"
+            answers[i] = {"opt": None, "custom": "(测试)我自己写的方向"}
         elif i == 2 and options:
-            st.session_state[f"_g_opt_{rnd}_{i}"] = t("guidance.ai_decide")
+            answers[i] = {"opt": t("guidance.ai_decide"), "custom": ""}
         elif options:
-            st.session_state[f"_g_opt_{rnd}_{i}"] = options[0]
+            answers[i] = {"opt": options[0], "custom": ""}
         else:
-            st.session_state[f"_g_custom_{rnd}_{i}"] = "(测试)开放回答"
+            answers[i] = {"opt": None, "custom": "(测试)开放回答"}
+    st.session_state["r_g_answers"] = answers
     st.session_state["r_g_idx"] = len(qs) - 1
 
 

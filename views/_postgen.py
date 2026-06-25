@@ -16,6 +16,9 @@ from views._streaming import stream_llm
 # update "_script_edit" at the top of the next run, before instantiation.
 
 
+_HISTORY_HEIGHT = 480   # px; scrollable height of the chat-history pane (tunable)
+
+
 def render(topic: dict, cond: str) -> None:
     _refresh_editor_if_flagged()
     if "_script_edit" not in st.session_state:
@@ -29,8 +32,6 @@ def render(topic: dict, cond: str) -> None:
         label_visibility="collapsed",
     )
     st.caption(t("postgen.edit_hint"))
-
-    _render_history()
 
     if cond == "D":
         _render_revision_channel(topic)
@@ -72,7 +73,7 @@ def _refresh_editor_if_flagged() -> None:
         st.session_state["_script_edit"] = state.current_script()
 
 
-def _render_history() -> None:
+def render_history() -> None:
     """Chat-style transcript of the whole round — the idea, every revision request
     / guidance answer / hand-edit and every AI version — in order, like a chat
     agent keeping the full conversation."""
@@ -81,36 +82,39 @@ def _render_history() -> None:
         return
     requests = st.session_state["r_revision_requests"]   # condition D
     guidance = st.session_state["r_guidance_rounds"]      # condition E
-    with st.expander(t("history.title"), expanded=False):
-        intent = (st.session_state.get("r_intent") or "").strip()
-        if intent:
-            with st.chat_message("user"):
-                st.caption(t("history.intent"))
-                st.markdown(intent)
-        ai_seen = 0
-        for v in versions:
-            if v["author"] == "ai":
-                _history_user_turn(ai_seen, requests, guidance)
-                with st.chat_message("assistant"):
-                    st.caption(t("history.ai", v=v["v"]))
-                    st.markdown(v["text"])
-                ai_seen += 1
-            else:  # user_edit
+    with st.expander(t("history.title"), expanded=True):
+        with st.container(height=_HISTORY_HEIGHT):
+            intent = (st.session_state.get("r_intent") or "").strip()
+            if intent:
                 with st.chat_message("user"):
-                    st.caption(t("history.edit"))
-                    st.markdown(v["text"])
+                    st.caption(t("history.intent"))
+                    st.markdown(intent)
+            ai_seen = 0
+            for v in versions:
+                if v["author"] == "ai":
+                    _history_user_turn(ai_seen, requests, guidance)
+                    with st.chat_message("assistant"):
+                        st.caption(t("history.ai", v=v["v"]))
+                        st.markdown(v["text"])
+                    ai_seen += 1
+                else:  # user_edit
+                    with st.chat_message("user"):
+                        st.caption(t("history.edit"))
+                        st.markdown(v["text"])
 
 
 def _history_user_turn(ai_idx: int, requests: list, guidance: list) -> None:
     """The user message that triggered the ai_idx-th AI version: guidance answers
     for E; the free-text request for D's 2nd+ generation; nothing for the first."""
     if guidance and ai_idx < len(guidance):
-        answers = "、".join(
-            it["chosen"] for it in guidance[ai_idx]["items"] if it.get("chosen")
-        )
         with st.chat_message("user"):
             st.caption(t("history.guide"))
-            st.markdown(answers or "—")
+            for it in guidance[ai_idx]["items"]:
+                answer = (
+                    t("guidance.ai_decide") if it.get("ai_decided")
+                    else (it.get("chosen") or "—")
+                )
+                st.markdown(f"**{it['question']}**  \n→ {answer}")
     elif requests and 1 <= ai_idx <= len(requests):
         with st.chat_message("user"):
             st.caption(t("history.req"))
