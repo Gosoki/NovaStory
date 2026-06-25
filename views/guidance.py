@@ -91,6 +91,13 @@ def render(topic: dict) -> None:
             st.session_state["r_g_idx"] += 1
             st.rerun()
 
+    # Follow-up guidance (a draft already exists): always offer an escape hatch
+    # back to the draft, so a failing/looping final generation can't trap the
+    # user on the guidance screen with no way to submit their existing script.
+    if st.session_state["r_versions"] and st.button(t("guidance.cancel"), width="stretch"):
+        st.session_state["r_phase"] = "postgen"
+        st.rerun()
+
 
 def _answered(rnd: int, idx: int, q: dict) -> bool:
     custom = (st.session_state.get(f"_g_custom_{rnd}_{idx}") or "").strip()
@@ -101,9 +108,14 @@ def _answered(rnd: int, idx: int, q: dict) -> bool:
 def _save_current(rnd: int, idx: int) -> None:
     """Persist the mounted question's answer to a non-widget store; Streamlit
     clears a widget's key once it stops being rendered (paginated questions)."""
+    opt = st.session_state.get(f"_g_opt_{rnd}_{idx}")
     st.session_state["r_g_answers"][idx] = {
-        "opt": st.session_state.get(f"_g_opt_{rnd}_{idx}"),
+        "opt": opt,
         "custom": (st.session_state.get(f"_g_custom_{rnd}_{idx}") or ""),
+        # Freeze "leave it to the AI" as a language-invariant flag at save time:
+        # the option label is localized, so re-comparing the stored string later
+        # (e.g. after a language switch) is unreliable.
+        "ai_decided": opt == _AI_DECIDE(),
     }
 
 
@@ -168,11 +180,11 @@ def _finish_round(topic: dict, rnd: int) -> None:
     saved = st.session_state["r_g_answers"]
     items = []
     for i, q in enumerate(qs):
-        custom = (saved.get(i, {}).get("custom") or "").strip()
-        chosen_opt = saved.get(i, {}).get("opt")
-        ai = _AI_DECIDE()
-        ai_decided = chosen_opt == ai and not custom
-        chosen = custom or ("" if chosen_opt in (None, ai) else str(chosen_opt))
+        a = saved.get(i, {})
+        custom = (a.get("custom") or "").strip()
+        chosen_opt = a.get("opt")
+        ai_decided = bool(a.get("ai_decided")) and not custom
+        chosen = custom or ("" if ai_decided or chosen_opt is None else str(chosen_opt))
         items.append({
             "dimension": q["dimension"],
             "question": q["question"],

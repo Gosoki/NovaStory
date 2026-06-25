@@ -80,6 +80,7 @@ ROUND_PAYLOAD_DEFAULTS: dict[str, Any] = {
     "r_g_fallback": False,
     "r_llm_wait": 0.0,
     "r_llm_wait_post": 0.0,       # waits occurring after the first script_shown
+    "r_llm_wait_pre": 0.0,        # E round-1: waits inside [guidance_shown, guidance_submit)
     "r_events": [],               # [(epoch_seconds, type)] session mirror for durations
     "r_trial_id": None,
 }
@@ -236,8 +237,15 @@ def log_event(type_: str, payload: Optional[dict] = None) -> None:
 
 def add_llm_wait(seconds: float) -> None:
     st.session_state["r_llm_wait"] += seconds
-    if any(ty == "script_shown" for _, ty in st.session_state["r_events"]):
+    types = [ty for _, ty in st.session_state["r_events"]]
+    if "script_shown" in types:
         st.session_state["r_llm_wait_post"] += seconds
+    # E round-1: the final-script generation runs inside the
+    # [guidance_shown, guidance_submit) window and lands before the first
+    # script_shown, so it escapes r_llm_wait_post. Track it separately so
+    # round_durations can keep it out of t_pregen (a creative-time column).
+    if "guidance_shown" in types and "guidance_submit" not in types:
+        st.session_state["r_llm_wait_pre"] += seconds
 
 
 def _ts(type_: str, last: bool = False) -> Optional[float]:
@@ -261,7 +269,9 @@ def round_durations(condition: str) -> dict:
         "t_total": _delta("round_start", "trial_submit"),
     }
     if condition == "E":
-        out["t_pregen"] = _delta("guidance_shown", "guidance_submit")
+        pre = _delta("guidance_shown", "guidance_submit")
+        if pre is not None:  # net of the final-script generation wait in-window
+            out["t_pregen"] = round(max(0.0, pre - st.session_state["r_llm_wait_pre"]), 2)
     post = _delta("script_shown", "trial_submit")
     if post is not None:
         out["t_postgen"] = round(max(0.0, post - st.session_state["r_llm_wait_post"]), 2)

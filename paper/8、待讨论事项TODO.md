@@ -21,6 +21,49 @@
 - **CG2 双击提交无防抖**:submit_trial / insert_questionnaire 可能被快速双击重复落库。→ 提交后禁用按钮或加 r_trial_id 幂等守卫。
 - **CG3 `_normalize_topic` ValueError**:脏 legacy preset 的 `shot_seconds` 非数字会崩 load_topics。→ int() try 兜底。
 
+## 🔴🔧 全项目审计高优先修复(2026-06-26,10 维并行+对抗验证;62 发现→60 确认。详见时间轴 06-26)
+
+> 去重后约 5 个 high 根因(很多发现来自不同维度但指向同一处)。**建议本期修**=会污染数据或卡死被试且改动小;**可延后**=影响小或需设计决策。
+>
+> **✅ 状态(2026-06-26):AUD1-5 已修 + AUD6 已加 consent 强提示(完整会话恢复仍待决策)。E2E 通过。** 已修详情:
+> - AUD1+2 `views/_postgen.py`:照搬 E 的"成功后才提交",判定改 `out and out.strip()`。
+> - AUD3 `core/state.py`:新增 `r_llm_wait_pre`,E round-1 `t_pregen` 已扣除最终生成等待。
+> - AUD4 `views/sidebar.py`(语言器移进 researcher 区,被试锁 ja)+ `views/guidance.py`(`ai_decided` 存为语言无关布尔,不再字符串比对)。
+> - AUD5 `views/guidance.py`:追问界面 `r_versions` 非空时加"取消,返回草稿"出口(新键 `guidance.cancel`)。
+> - AUD6(lite) `views/consent.py`:加"勿刷新/勿返回"强提示(新键 `consent.no_refresh`)。**完整恢复(URL pid 续接)仍未做**,见下。
+> - 配套:`devtools.py`/`dev_smoke_e2e.py` 同步 `ai_decided` 字段;E2E `safe_run` 补 checkbox 回填。
+
+- **AUD1 D 修改通道失败不回滚【✅已修】**`views/_postgen.py:134-157`。`r_revision_requests.append` 与 `revision_request` 事件在 `stream_llm` **之前**执行,但 AI 版本只在成功时追加 → LLM 失败(`LLMCallError` 真实可发生)留下"孤儿请求":`render_history` 的 `requests[ai_idx-1]` 配对整体错位(被试看到的履历张冠李戴)、落库 `revision_requests` 条数与 `n_ai_rounds`/版本数不一致、重试产生重复 round 号。→ **照搬 E 的 `_finish_round` 模式**:先 `stream_llm`,`out and out.strip()` 成功后再 append/log/add_version/+1。
+- **AUD2 D 修改通道空串判定【✅已修(与 AUD1 同处)】**`views/_postgen.py:152`。用 `if out is not None` 而非 `out and out.strip()`(C/D/E 其余 5 处都用后者)。模型只回 `<think>`/空白时 `stream_llm` 返回 `""`(非 None)→ `add_version("","ai")` 把脚本覆盖成空、清空编辑器、`n_ai_rounds` 虚增、空版本落库(原文仍在版本历史可找回)。→ 改判定为 `out and out.strip()`,空返回给提示不写版本。(与 AUD1 同一处,一并修。)
+- **AUD3 E `t_pregen` 把最终生成等待算进创作时间【✅已修;影响主因变量】**`core/state.py:263-264`。`t_pregen=_delta("guidance_shown","guidance_submit")` **未扣 LLM 等待**,而 E-final 剧本生成(几十秒)恰在此区间内、又因发生在首个 `script_shown` 之前躲过 `r_llm_wait_post` 扣减 → E 引导阶段"创作投入"系统性高估,污染 C/D/E 时间对比。**仅影响 E round-1**(follow-up 已被 `t_postgen` 正确扣除)。→ 新增 `r_llm_wait_pre` 累加器(仅在「已有 guidance_shown 且尚无 guidance_submit」区间累加),`t_pregen=max(0, raw-r_llm_wait_pre)`;**只改 E 分支**。
+- **AUD4 语言切换器对被试可见 + `ai_decided` 本地化串比对脆弱【✅已修;JP6 一并解决】**`views/sidebar.py:12-28` + `views/guidance.py:166-184`。语言器在 researcher 守卫**之外**,被试随时可切 →①违反"只见日语";②`ai_decided` 把本地化串 `_AI_DECIDE()` 当枚举存/比对,答题→提交间切语言会误判 `ai_decided=False` 并把"交给AI"当普通选项塞进 prompt,污染 E 引导数据;③翻页恢复静默丢弃 AI-decide 选择(与既知 widget-key 丢失同源)。→ **治标**:语言器移进 researcher 折叠区(JP6 的锁定也一并解决);**治本**:`ai_decided` 在 `_save_current` 时就存成语言无关布尔,不再字符串比对。
+- **AUD5 E 追问生成失败被锁死、回不到草稿【✅已修】**`views/guidance.py:205-223`。follow-up 时已有可用草稿,但生成持续失败时 `_finish_round` 直接 return、`r_phase` 仍 `guidance`,无"取消/返回"出口,只能刷新(丢全会话)。→ `render()` 中当 `r_versions` 非空时加一个"取消/返回"按钮,置 `r_phase="postgen"` 并 rerun,不提交本轮。
+- **AUD6 刷新/会话丢失即丢本轮数据且重复占 seq【🟡 lite 已修:consent 强提示;完整恢复待决策】**`core/state.py:64-103`。轮内进度全在 `session_state`,刷新→回 consent、`participant_id` 丢失→重新 screening 会**再 insert 一个 passed 行、占第二个 seq**,破坏拉丁方平衡 + 虚增样本(events 行因增量落库仍在,但 trial 级文本/会话续接丢失)。→ MVP 最低成本:URL query param 存 pid,init 时若该 pid 未 done 则从 DB 重建 `round_idx`(按已落 trials 数)/`seq`,避免重复占 seq;或至少 consent 页强提示"全程勿刷新/勿返回"并记为已知限制。**请拍板本期是否实现恢复。**
+
+### 审计 medium / 可延后(择期或随手修)
+- **AUD7**`views/screening.py:86-111` `published` 存本地化原文(日/中混入),与其它字段存 index 不一致,分析端难对齐。→ 统一存 index 或英文枚举。
+- **AUD8**`core/db.py:31-83` `trials`/`questionnaires` 无 `UNIQUE(participant_id, round_idx)`,重入产生重复行(与 CG1/CG2 同族)。→ 加唯一约束 + 幂等守卫。
+- **AUD9**`core/llm.py`+`views/_trial.py` E 用 `GUIDANCE_API_INDEX` 指定独立模型时,该 **model/base_url/温度从不落库**,trial 只记主会话参数,引导步无法复现/审计。→ 引导调用的 meta 也落库(events 或 trial 增列)。
+- **AUD10**`views/_streaming.py:25` 脚本/修改类 LLM 调用(~75s)等待界面无时间预期,只显示「AIが生成しています…」。→ 加预期文案/进度提示(关联 D23 延迟决策)。
+- **AUD-low/nit(约 40 条,择机)**:DB 无唯一约束/legacy 列易误导分析;`attention` 原始作答值不落库只存 0/1;`devtools` 切条件清空 `r_events` 致时长落 NULL;JSON 模式未用 `response_format=json_object`;per-shot 三标签语义重叠、错误提示不指明哪项、「15秒・3カット」硬/软约束没讲清、提交按钮非绿(与"绿=决定"约定相悖)、履历默认展开 480px 对首轮可能干扰;`scripts/ghost_run.py` 调用了不存在的 `prompts.build_user`(死脚本)、`baseline_gen.py`/`ghost_run.py` 调 `build_*` 不传 lang;`shot_type` 解析后无消费方(死字段)。**完整清单见审计原始结果**(`tasks/wxqj7vwwt.output`)。
+- **误报(2,已剔除)**:devtools `_fill_guidance` 被覆盖(实际不会)、"无任何提示这轮 AI 帮法不同"(intent warning 已有说明)。
+
+## 📋 逐操作详细日志 — 前瞻设计(规划;系统冻结后一次性加,现在不实现)
+
+> 目标:每个被试的每个操作可逐条复盘——**时间 + 动作 + 具体选项/输入文本 + 脚本是否被改 + token**。("改了哪部分"暂不记,留全版本后验 diff。)源:审计 logging 维度 8 条 + 自查。
+
+**地基(可直接复用,扩内容无需迁移)**:`events` 表(`participant_id, round_idx, ts, type, payload_json`)+ 统一 `log_event` 入口已存在,`payload_json` 是 schema-free 的;已覆盖阶段骨架事件。
+
+**缺口与预埋建议**:
+1. **LOG1 内容缺失 → enrich payload**:多数事件只落计数/标志(`intent_submit` 只 `chars`、`guidance_answer` 只 `dimension/is_custom/ai_decided`、`revision_request` 只 `chars`、`hand_edit_saved` 只 `chars_delta`)。→ 约定每个动作事件 payload 带"具体内容"字段(选项原值 + 输入全文)。无需迁移,只是补 payload(创意/脚本文本已在 trials,重复存可接受)。
+2. **LOG2 统一入口 `log_action`**:把所有"用户动作"收口到一个 `log_action(action, content=..., **meta)` 薄封装(底层仍 `log_event`),定一张 action 命名表 + payload 字段名 → 以后一次性接全 + 分析端字段稳定。
+3. **LOG3 排序精度**:`ts` 是秒级 isoformat,同秒多操作丢先后。→ `events` 加一个**轮内自增 `seq` 列**(或存毫秒),保证逐操作可严格排序。
+4. **LOG4 对齐 trial**:`events` 无 `trial_id` 外键,trial 轮末才落库。→ trial 落库后回填 `events.trial_id`,或按 `(participant_id, round_idx)+seq` 对齐。
+5. **LOG5 脚本改动标记**:"是否改过"现靠 `chars_delta>0` 隐式;全版本已在 `script_versions(author=ai|user_edit)`,**diff 可后验重算**(故"改了哪部分"无需现在记)。→ 加显式 `script_modified` 布尔 + 保留全版本(已有)。
+6. **LOG6 token(关联 C6)**:usage **当前完全没取**。→ 流式:`create(..., stream_options={"include_usage": True})` 读末 chunk usage;JSON 模式:`resp.usage` 已可得只是丢弃了。落点:`llm_done` 事件 payload 加 `{prompt_tokens, completion_tokens, total_tokens}`(`llm_done` 已带 `elapsed`,天然挂载点);可选 trials 加汇总列。**注意**:部分第三方 OpenAI 兼容网关流式不返回 usage,取不到记 null 别崩。
+
+**实现时机**:系统冻结后一次迁移完成(`events` 加 `seq`/`trial_id` 列 + `llm.py` 取 usage + `log_event` enrich payload)。
+
 ---
 
 ## 🔴 重构源码前(门槛区)

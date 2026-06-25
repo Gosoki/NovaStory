@@ -101,13 +101,13 @@ def _fill_guidance() -> None:
     for i, q in enumerate(qs):
         options = q.get("options") or []
         if i == 1:
-            answers[i] = {"opt": None, "custom": "(测试)我自己写的方向"}
+            answers[i] = {"opt": None, "custom": "(测试)我自己写的方向", "ai_decided": False}
         elif i == 2 and options:
-            answers[i] = {"opt": t("guidance.ai_decide"), "custom": ""}
+            answers[i] = {"opt": t("guidance.ai_decide"), "custom": "", "ai_decided": True}
         elif options:
-            answers[i] = {"opt": options[0], "custom": ""}
+            answers[i] = {"opt": options[0], "custom": "", "ai_decided": False}
         else:
-            answers[i] = {"opt": None, "custom": "(测试)开放回答"}
+            answers[i] = {"opt": None, "custom": "(测试)开放回答", "ai_decided": False}
     st.session_state["r_g_answers"] = answers
     st.session_state["r_g_idx"] = len(qs) - 1
 

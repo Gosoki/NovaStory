@@ -27,7 +27,8 @@
     "title": "Study Information and Informed Consent",
     "body": "Thank you for taking part in this study!\n\n**What you will do**: You will create 3 short-video storyboard scripts on given topics, each with a different form of AI assistance, and answer a few short questions after each one. The whole session takes about **10-15 minutes**.\n\n**Data**: We record the text you enter, your interactions with the system, and your questionnaire answers. Data are used for academic research only, analyzed anonymously, and nothing that could identify you will be published.\n\n**Voluntary**: You may leave at any time by closing the page, with no negative consequences.\n\nIf you agree, please tick the box below and begin.",
     "agree": "I have read the above and agree to take part in this study",
-    "start": "Agree and begin"
+    "start": "Agree and begin",
+    "no_refresh": "⚠️ Do not refresh the page or use the browser's Back button during the study — your progress will be lost and you will have to start over."
   },
   "screening": {
     "title": "Background Questionnaire",
@@ -182,6 +183,7 @@
     "next": "Next",
     "finish": "Done — generate the script",
     "continue_btn": "Let the AI keep guiding me",
-    "fallback_q": "In a few words, what direction or details do you still want?"
+    "fallback_q": "In a few words, what direction or details do you still want?",
+    "cancel": "Cancel and return to the draft"
   }
 }

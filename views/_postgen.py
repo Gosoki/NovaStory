@@ -137,10 +137,6 @@ def _render_revision_channel(topic: dict) -> None:
             st.error(t("errors.revision_empty"))
             return
         base = persist_pending_edit()
-        st.session_state["r_revision_requests"].append(
-            {"round": st.session_state["r_n_ai_rounds"] + 1, "text": request}
-        )
-        state.log_event("revision_request", {"chars": len(request)})
         lang = get_lang()
         out = stream_llm(
             prompts.build_system_revision(topic, lang),
@@ -149,12 +145,21 @@ def _render_revision_channel(topic: dict) -> None:
             ),
             group="D-revise",
         )
-        if out is not None:
-            state.add_version(out, "ai")
-            st.session_state["r_n_ai_rounds"] += 1
-            request_editor_refresh()
-            st.session_state["_revision_clear"] = True
-            st.rerun()
+        # Mirror E's _finish_round: only commit the request + version once
+        # generation actually succeeds. Committing beforehand left an orphan
+        # request on failure (empty/None out), which misaligned the history
+        # timeline (requests[ai_idx-1]) and the persisted revision_requests.
+        if not (out and out.strip()):
+            return
+        st.session_state["r_revision_requests"].append(
+            {"round": st.session_state["r_n_ai_rounds"] + 1, "text": request}
+        )
+        state.log_event("revision_request", {"chars": len(request)})
+        state.add_version(out, "ai")
+        st.session_state["r_n_ai_rounds"] += 1
+        request_editor_refresh()
+        st.session_state["_revision_clear"] = True
+        st.rerun()
 
 
 def _render_guidance_channel() -> None:

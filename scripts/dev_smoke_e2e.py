@@ -110,6 +110,9 @@ def safe_run(at):
     for w in list(at.text_input) + list(at.text_area):
         if w.key and w.key not in at.session_state:
             at.session_state[w.key] = ""
+    for c in list(at.checkbox):  # e.g. stale _consent_agree after a page transition
+        if c.key and c.key not in at.session_state:
+            at.session_state[c.key] = False
     for k, v in _injected.items():  # segmented_control & friends
         if k not in at.session_state:
             at.session_state[k] = v
@@ -192,11 +195,11 @@ def _answer_guidance(at, rnd: int, n: int, custom_idx: int = -1, ai_idx: int = -
     answers = {}
     for i in range(n):
         if i == custom_idx:
-            answers[i] = {"opt": None, "custom": "我自己写的:荒诞但温柔"}
+            answers[i] = {"opt": None, "custom": "我自己写的:荒诞但温柔", "ai_decided": False}
         elif i == ai_idx:
-            answers[i] = {"opt": ai_decide_zh, "custom": ""}
+            answers[i] = {"opt": ai_decide_zh, "custom": "", "ai_decided": True}
         elif qs[i]["options"]:
-            answers[i] = {"opt": qs[i]["options"][0], "custom": ""}
+            answers[i] = {"opt": qs[i]["options"][0], "custom": "", "ai_decided": False}
     at.session_state["r_g_answers"] = answers
     at.session_state["r_g_idx"] = n - 1
     safe_run(at)  # render the last question so its finish button appears
