@@ -110,6 +110,48 @@ def init_state() -> None:
         if k not in st.session_state:
             st.session_state[k] = v if not isinstance(v, (dict, list)) else _clone(v)
     _ensure_api_defaults()
+    _attempt_resume()
+
+
+def _resume_token() -> str:
+    """Read the resume token from the URL (?t=…); '' if absent/unavailable."""
+    try:
+        return (st.query_params.get("t") or "").strip()
+    except Exception:  # query params unavailable (e.g. headless AppTest)
+        return ""
+
+
+def _attempt_resume() -> None:
+    """Restore an in-progress participant after a refresh/reconnect (AUD6).
+
+    Without this, a wiped session_state sends the subject back to consent and a
+    re-screening inserts a *second* passed row → a second Latin-square seq →
+    broken balance + inflated sample. We key off an opaque URL token, rebuild the
+    round plan from `seq`, and resume at the first round whose questionnaire
+    hasn't been submitted yet (an unfinished trial is simply re-done; INSERT OR
+    REPLACE keeps it from duplicating)."""
+    if st.session_state.get("participant_id"):
+        return  # already inside a live session
+    p = db.get_participant_by_token(_resume_token())
+    if not p or not p.get("passed"):
+        return
+    st.session_state["participant_id"] = p["id"]
+    st.session_state["seq"] = p["seq"]
+    st.session_state["lang"] = p.get("lang") or st.session_state.get("lang", "ja")
+    if p.get("status") == "done":
+        st.session_state["stage"] = "done"
+        st.session_state["completion_code"] = p.get("completion_code") or ""
+        return
+    topics = load_topics()
+    st.session_state["round_plan"] = plan_for_seq(p["seq"], topics[: config.N_ROUNDS])
+    done_rounds = db.count_questionnaires(p["id"])
+    if done_rounds >= config.N_ROUNDS:
+        st.session_state["stage"] = "done"
+        return
+    st.session_state["round_idx"] = done_rounds + 1
+    st.session_state["stage"] = "rounds"
+    reset_round_payload()
+    log_event("session_resumed", {"round_idx": done_rounds + 1})
 
 
 def _clone(v):
@@ -137,7 +179,7 @@ def plan_for_seq(seq: int, topics: list[dict]) -> list[dict]:
     return [{"condition": c, "topic": dict(topics[i])} for c, i in zip(conds, topic_idx)]
 
 
-def begin_rounds(participant_id: int, seq: int) -> None:
+def begin_rounds(participant_id: int, seq: int, token: str = "") -> None:
     topics = load_topics()
     if len(topics) < config.N_ROUNDS:
         raise RuntimeError(f"topics.json needs >= {config.N_ROUNDS} topics")
@@ -146,6 +188,13 @@ def begin_rounds(participant_id: int, seq: int) -> None:
     st.session_state["stage"] = "rounds"
     st.session_state["round_idx"] = 1
     st.session_state["round_plan"] = plan_for_seq(seq, topics[: config.N_ROUNDS])
+    # Put the resume handle in the URL so a refresh/reconnect restores this
+    # session instead of re-screening (AUD6). Best-effort: never break the flow.
+    if token:
+        try:
+            st.query_params["t"] = token
+        except Exception:
+            pass
     reset_round_payload()
     log_event("round_start")
 
@@ -188,6 +237,10 @@ def reset_for_next() -> None:
     }
     for k in list(st.session_state.keys()):
         del st.session_state[k]
+    try:  # drop the resume token, else init would re-resume the wiped subject
+        st.query_params.clear()
+    except Exception:
+        pass
     init_state()
     st.session_state.update(keep)
 

@@ -140,8 +140,8 @@ def render() -> None:
         "quiz_correct": quiz_correct,
         "is_novice": is_novice,
     }
-    pid, seq = db.insert_participant(
+    pid, seq, token = db.insert_participant(
         st.session_state.get("lang", "ja"), demographics, screening, passed=True
     )
-    state.begin_rounds(pid, seq)
+    state.begin_rounds(pid, seq, token)
     st.rerun()

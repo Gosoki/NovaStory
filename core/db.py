@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import random
+import secrets
 import sqlite3
 import string
 from datetime import datetime
@@ -26,6 +27,7 @@ CREATE TABLE IF NOT EXISTS participants (
   passed INTEGER NOT NULL DEFAULT 0,
   attention_ok INTEGER,
   completion_code TEXT,
+  token TEXT,                 -- opaque resume handle (URL ?t=), not the row id
   status TEXT NOT NULL DEFAULT 'in_progress'
 );
 CREATE TABLE IF NOT EXISTS trials (
@@ -78,14 +80,24 @@ CREATE TABLE IF NOT EXISTS questionnaires (
   tlx_json TEXT,
   intent_violation INTEGER,
   imagine_match INTEGER,
+  satisfaction INTEGER,
   shot_annotations_json TEXT,
   created_at TEXT NOT NULL
 );
 """
 
+# One row per (participant, round): a resume re-doing a round overwrites the
+# orphan trial/questionnaire instead of duplicating it (see INSERT OR REPLACE).
+_INDEXES = [
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_trials_pid_round ON trials(participant_id, round_idx)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_quest_pid_round ON questionnaires(participant_id, round_idx)",
+]
+
 # Columns added after the first deployment; applied via ALTER on existing DBs.
 _MIGRATIONS = [
     "ALTER TABLE questionnaires ADD COLUMN imagine_match INTEGER",
+    "ALTER TABLE questionnaires ADD COLUMN satisfaction INTEGER",
+    "ALTER TABLE participants ADD COLUMN token TEXT",
     # v3 (guided co-creation) trial columns
     "ALTER TABLE trials ADD COLUMN guidance_json TEXT",
     "ALTER TABLE trials ADD COLUMN revision_requests TEXT",
@@ -114,6 +126,11 @@ def init_db() -> None:
                 conn.execute(stmt)
             except sqlite3.OperationalError:
                 pass  # column already exists
+        for stmt in _INDEXES:
+            try:
+                conn.execute(stmt)
+            except sqlite3.IntegrityError:
+                pass  # legacy dev DB already has duplicate (pid, round) rows
 
 
 def _now() -> str:
@@ -131,12 +148,15 @@ def insert_participant(
     demographics: dict,
     screening: dict,
     passed: bool,
-) -> tuple[int, Optional[int]]:
-    """Insert a participant; returns (id, seq).
+) -> tuple[int, Optional[int], str]:
+    """Insert a participant; returns (id, seq, token).
 
     seq (0-8, Latin-square sequence) is assigned at insert time as
     (count of previously passed participants) % 9, None when screened out.
+    token is an opaque resume handle put in the URL (?t=) so a refresh/reconnect
+    restores the session instead of re-screening (which would consume a 2nd seq).
     """
+    token = secrets.token_urlsafe(9)
     with _conn() as conn:
         seq: Optional[int] = None
         if passed:
@@ -146,12 +166,34 @@ def insert_participant(
             seq = n % 9
         cur = conn.execute(
             "INSERT INTO participants"
-            " (created_at, lang, seq, demographics_json, screening_json, passed, status)"
-            " VALUES (?,?,?,?,?,?,?)",
+            " (created_at, lang, seq, demographics_json, screening_json, passed, token, status)"
+            " VALUES (?,?,?,?,?,?,?,?)",
             (_now(), lang, seq, _dumps(demographics), _dumps(screening),
-             int(passed), "in_progress" if passed else "screened_out"),
+             int(passed), token, "in_progress" if passed else "screened_out"),
         )
-        return int(cur.lastrowid), seq
+        return int(cur.lastrowid), seq, token
+
+
+def get_participant_by_token(token: str) -> Optional[dict]:
+    """Look up a participant by their resume token; None if not found."""
+    if not token:
+        return None
+    with _conn() as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT * FROM participants WHERE token=? LIMIT 1", (token,)
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def count_questionnaires(participant_id: int) -> int:
+    """How many rounds this participant has fully completed (a round is done once
+    its questionnaire is submitted) — used to resume at the right round."""
+    with _conn() as conn:
+        return conn.execute(
+            "SELECT COUNT(*) FROM questionnaires WHERE participant_id=?",
+            (participant_id,),
+        ).fetchone()[0]
 
 
 def update_participant(pid: int, **fields: Any) -> None:
@@ -175,8 +217,10 @@ def insert_trial(**f: Any) -> int:
     cols = ", ".join(f.keys())
     marks = ", ".join("?" for _ in f)
     with _conn() as conn:
+        # OR REPLACE: a resume re-doing a round (or a double-click) overwrites the
+        # existing (participant_id, round_idx) row instead of duplicating it.
         cur = conn.execute(
-            f"INSERT INTO trials ({cols}) VALUES ({marks})", tuple(f.values())
+            f"INSERT OR REPLACE INTO trials ({cols}) VALUES ({marks})", tuple(f.values())
         )
         return int(cur.lastrowid)
 
@@ -202,7 +246,8 @@ def insert_questionnaire(**f: Any) -> int:
     marks = ", ".join("?" for _ in f)
     with _conn() as conn:
         cur = conn.execute(
-            f"INSERT INTO questionnaires ({cols}) VALUES ({marks})", tuple(f.values())
+            f"INSERT OR REPLACE INTO questionnaires ({cols}) VALUES ({marks})",
+            tuple(f.values()),
         )
         return int(cur.lastrowid)
 

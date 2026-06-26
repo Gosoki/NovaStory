@@ -87,6 +87,7 @@ def render() -> None:
         likert(f"tlx{i}", t(f"q.tlx{i}"))
     likert("violation", t("q.violation"), anchors="violation")
     likert("imagine", t("q.imagine"), anchors="imagine")
+    likert("sat", t("q.satisfaction"))
 
     # ---- per-shot intent annotation ----
     # Options are the localized labels themselves (no format_func): a
@@ -151,6 +152,7 @@ def _submit(ridx: int, answers: dict, shot_annotations: list[dict]) -> None:
         ),
         intent_violation=answers["violation"],
         imagine_match=answers["imagine"],
+        satisfaction=answers["sat"],
         shot_annotations_json=json.dumps(shot_annotations, ensure_ascii=False),
     )
     if ridx == _ATTENTION_ROUND:

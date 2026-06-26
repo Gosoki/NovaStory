@@ -219,6 +219,7 @@ def _answer_questionnaire(at, round_idx: int, attention: bool = False) -> None:
     set_sc(at, f"_q_tlx1_{round_idx}", 3)
     set_sc(at, f"_q_violation_{round_idx}", 2)
     set_sc(at, f"_q_imagine_{round_idx}", 6)
+    set_sc(at, f"_q_sat_{round_idx}", 6)
     for idx in (1, 2, 3):  # stub scripts parse into 3 shots; option[0] == "mine" label
         bg = next(b for b in at.get("button_group") if b.key == f"_q_shot{idx}_{round_idx}")
         bg.set_value(bg.options[0])
@@ -269,6 +270,7 @@ def _assert_db() -> None:
     assert e["t_pregen"] is not None and e["t_postgen"] is not None
 
     assert len(q) == 3 and q["imagine_match"].notna().all()
+    assert q["satisfaction"].notna().all()
 
     r3 = set(ev[ev["round_idx"] == 3]["type"])
     for needed in ("round_start", "intent_submit", "guidance_shown", "guidance_answer",
@@ -280,5 +282,29 @@ def _assert_db() -> None:
     print(f"db ok: trials={len(tr)} questionnaires={len(q)} events={len(ev)}")
 
 
+def _resume_check() -> None:
+    """AUD6: a refreshed/reconnected participant resumes via the URL token instead
+    of re-screening (which would insert a 2nd passed row + consume a 2nd seq).
+    Seeds an in-progress participant who finished round 1, then boots a fresh
+    session with ?t=<token> and asserts it lands back at round 2 with no dup row."""
+    pid, seq, token = db.insert_participant(
+        "ja", {"age_idx": 0}, {"is_novice": True}, passed=True
+    )
+    db.insert_trial(participant_id=pid, round_idx=1, condition="C", t_total=12.0)
+    db.insert_questionnaire(participant_id=pid, round_idx=1, satisfaction=6)
+    before = len(db.load_table("participants"))
+
+    at = AppTest.from_file("app.py", default_timeout=60)
+    at.query_params["t"] = token          # fresh session + resume token in the URL
+    at.run()
+    ss = at.session_state
+    assert ss["participant_id"] == pid, ss["participant_id"]
+    assert ss["stage"] == "rounds" and ss["round_idx"] == 2, (ss["stage"], ss["round_idx"])
+    assert ss["seq"] == seq and len(ss["round_plan"]) == 3
+    assert len(db.load_table("participants")) == before, "resume inserted a duplicate row"
+    print("resume ok: refresh restored round 2, no duplicate participant / seq")
+
+
 if __name__ == "__main__":
     run()
+    _resume_check()

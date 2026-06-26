@@ -76,10 +76,10 @@ def _skip_intake() -> None:
         "self_rating": 1, "aiexp_idx": 0, "trust": 4, "own_trait": 4,
         "quiz_correct": 0, "is_novice": True, "dev": True,
     }
-    pid, seq = db.insert_participant(
+    pid, seq, token = db.insert_participant(
         st.session_state.get("lang", "ja"), demographics, screening, passed=True
     )
-    state.begin_rounds(pid, seq)
+    state.begin_rounds(pid, seq, token)
 
 
 def _switch_condition(cond: str) -> None:
