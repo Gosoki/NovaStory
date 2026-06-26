@@ -83,6 +83,12 @@ def render() -> None:
         st.error(t("errors.answer_all"))
         return
 
+    # Store categorical answers as language-invariant option indices (not the
+    # localized display string), so ja-subject and zh-researcher rows align in
+    # analysis. `lang` is on the participant row to recover labels if needed.
+    age_idx = [t(f"screening.age_opt{i}") for i in range(1, 6)].index(age)
+    gender_idx = [t(f"screening.gender_opt{i}") for i in range(1, 5)].index(gender)
+    ai_freq_idx = [t(f"screening.ai_freq_opt{i}") for i in range(1, 5)].index(ai_freq)
     quiz1_idx = [t(f"screening.quiz1_opt{i}") for i in range(1, 5)].index(quiz1)
     quiz2_idx = [t(f"screening.quiz2_opt{i}") for i in range(1, 5)].index(quiz2)
     published_idx = [t(f"screening.published_opt{i}") for i in range(1, 4)].index(published)
@@ -98,9 +104,9 @@ def render() -> None:
         and quiz_correct <= 1
     )
 
-    demographics = {"age": age, "gender": gender, "ai_freq": ai_freq}
+    demographics = {"age_idx": age_idx, "gender_idx": gender_idx, "ai_freq_idx": ai_freq_idx}
     screening = {
-        "published": published,
+        "published_idx": published_idx,
         "background": "no" if background == is_no else "yes",
         "written": "no" if written == is_no else "yes",
         "self_rating": int(self_rating),

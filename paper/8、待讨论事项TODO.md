@@ -47,6 +47,19 @@
 - **AUD10**`views/_streaming.py:25` 脚本/修改类 LLM 调用(~75s)等待界面无时间预期,只显示「AIが生成しています…」。→ 加预期文案/进度提示(关联 D23 延迟决策)。
 - **AUD-low/nit(约 40 条,择机)**:DB 无唯一约束/legacy 列易误导分析;`attention` 原始作答值不落库只存 0/1;`devtools` 切条件清空 `r_events` 致时长落 NULL;JSON 模式未用 `response_format=json_object`;per-shot 三标签语义重叠、错误提示不指明哪项、「15秒・3カット」硬/软约束没讲清、提交按钮非绿(与"绿=决定"约定相悖)、履历默认展开 480px 对首轮可能干扰;`scripts/ghost_run.py` 调用了不存在的 `prompts.build_user`(死脚本)、`baseline_gen.py`/`ghost_run.py` 调 `build_*` 不传 lang;`shot_type` 解析后无消费方(死字段)。**完整清单见审计原始结果**(`tasks/wxqj7vwwt.output`)。
 - **误报(2,已剔除)**:devtools `_fill_guidance` 被覆盖(实际不会)、"无任何提示这轮 AI 帮法不同"(intent warning 已有说明)。
+
+### 🔁 第二轮全项目复审(2026-06-26,33 智能体并行 + 对抗验证;18 发现→14 确认)
+> 在首轮 AUD1-10 已修基础上做的独立复审(多维 finder + 对抗 verify + 数据覆盖/MVP/文档一致性分析)。新发现 5 项(N1-N5):已修 4、N4 复核判为"语义选择非 bug"。E2E 复跑通过。
+
+- **N1【✅已修·HIGH】无 client 超时 + edgefn 网关间歇『渠道繁忙』致单次请求挂最长 ~600s** `core/llm.py`。OpenAI SDK 默认 timeout ~600s;edgefn 免费网关返 503 `ChannelNotEnough`(渠道繁忙)时单次请求挂 ~10 分钟才报错(`data/llm.log` 2026-05-26/06-12/06-26 反复出现;memory 早记此坑)。被试最怕的"接口繁忙"即此。→ 加 `REQUEST_TIMEOUT=120` 套到 `_client()` 与 `_guidance_client_and_model()`,挂太久快速失败→走前置自动重试/报错,不再死等。**注:这是治标(免费网关本身不稳),正式收数稳定性仍归 B9 模型锁定。**
+- **N2【✅已修·HIGH】`<think>` 思维链流式直出被试** `views/_streaming.py`。`clean_output` 只在最终字符串剥 `<think>`,**live 流式渲染没过滤**;选 R1 等推理模型时日本被试会实时看到中英文思维链滚动、泄漏实验 prompt/条件设计。→ 新增 `llm.stream_clean()` 增量剥离(处理跨 chunk 分割标签 / 未闭合 `<think>`),`_streaming` 流式套用;单测 7 用例×6 切块粒度全过。
+- **N3【✅已修·MEDIUM】E 引导 fallback 开放题可零内容提交** `views/guidance.py:_answered`。`not q.get("options")` 让降级开放题(JSON 解析失败路径)空提交也过校验 → E 核心自变量可能为空却记为有效 round、塞进 `guidance_json`。与 intent 的 `MIN_INTENT_CHARS=10` 下限不对称。→ 开放/无选项题改为必须有自填文字。
+- **N4【复核判非 bug·未改·MEDIUM?】E follow-up 答题时间归入 t_postgen** `core/state.py:272`。复核结论:按 paper/10 §6.1,`t_postgen` 定义=事后总投入净 LLM 等待,且 `n_ai_rounds` 明确把 E follow-up 引导计为"事后修改";follow-up 答题时间落在 `t_postgen` 内,与 D 的 revision 反馈打字时间**对称**——扣 E 不扣 D 反而偏置 D-vs-E 对比。**故保持现状。** 若要把 `t_postgen` 重定义为"纯手动打磨时间"(排除所有引导/反馈打字时间),需 D/E 一起改 + 改 paper/10 §6.1 口径,属设计决策,**待用户定**。
+- **N5【✅已修·LOW】人口学/published 存本地化字符串(AUD7 扩展)** `views/screening.py`。不止 `published`:`age/gender/ai_freq` 也存日/中显示文案而非 index,跨语言行难对齐。→ 统一存 `*_idx`(与 `quiz*_idx` 一致);`devtools` dev 行同步。现无真实数据,改最干净。
+- **AUD10 状态订正**:原列 medium 未结清,但等待文案+前置自动重试已修(见上"已修清单"③)→ **改判"部分已修"**;剩"动态进度条/倒计时"未做(非阻塞)。
+- **AUD6【待讨论】**:完整会话恢复方案,用户 2026-06-26 决定"**先不动,稍后讨论修改方案**"。lite(consent 提示)保留。
+- **MVP 硬前置复核**:代码 E2E 通过、主分析数据采全;正式开跑前仅两件硬前置——① 默认模型/网关延迟(N1 已加 timeout 治标 + B9 决策治本)② AUD6 会话恢复(待讨论)。
+- **"补不回来"数据缺口(重申,跑被试前优先)**:token 用量(LOG6,`generate_json` 已拿 `resp.usage` 却丢弃)、引导步独立模型 meta(AUD9)、events 细粒度(秒级 ts→毫秒 / 无 trial_id / `guidance_answer` 不存 chosen 文本 / `revision_request` 不存原文)。这三类被试跑完即永久丢失。
 - **✅ 这批 UX/健壮性已修(2026-06-26)**:① 提交/决定类 primary 按钮改**绿色**(`app.py` CSS;"绿=决定",继续AI 仍蓝),原"默认红"决定作废;② 问卷未答全错误**指明具体题目/镜头**(`errors.unanswered` + `questionnaire._short`);③ LLM 等待文案加**时间预期**(30-90秒/繁忙更久)+ 流式**前置自动重试2次**(首 token 前才重试,避免重复;`llm.generate_stream`);④ devtools 加**「🔌 测试模型连通」**(`llm.ping`,报通/不通+延迟,>30s 警告);⑤ 主题蓝主色 `#2563eb`,**同时定义 `[theme.light]` 和 `[theme.dark]` → 跟随系统明暗**(坑:只写裸 `[theme]` 会被锁成单一 light 模式、不跟随系统;须两个子主题都定义才跟随并出 ☰→Settings 切换),消掉默认珊瑚红(进度条/选中态/转圈);决定按钮仍绿、继续AI 仍蓝(CSS `!important` 覆盖主题);⑥ 语言器**移回侧栏外、被试可自选**(AUD4 治标回退,治本布尔保留)。**注:改 `[theme]` 需重启 streamlit 服务才生效。**
 
 ## 📋 逐操作详细日志 — 前瞻设计(规划;系统冻结后一次性加,现在不实现)

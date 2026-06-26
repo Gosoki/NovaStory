@@ -28,11 +28,13 @@ def stream_llm(system: str, user: str, *, group: str) -> Optional[str]:
     t0 = time.time()
     try:
         out = st.write_stream(
-            llm.generate_stream(
-                system,
-                user,
-                group=group,
-                user_id=str(st.session_state.get("participant_id") or ""),
+            llm.stream_clean(
+                llm.generate_stream(
+                    system,
+                    user,
+                    group=group,
+                    user_id=str(st.session_state.get("participant_id") or ""),
+                )
             )
         )
     except llm.LLMCallError as e:

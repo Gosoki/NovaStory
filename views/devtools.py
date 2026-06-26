@@ -70,9 +70,9 @@ def _model_check() -> None:
 
 
 def _skip_intake() -> None:
-    demographics = {"age": "18-24", "gender": "不愿透露", "ai_freq": "几乎每天", "dev": True}
+    demographics = {"age_idx": 0, "gender_idx": 3, "ai_freq_idx": 3, "dev": True}
     screening = {
-        "published": "从未发布过", "background": "no", "written": "no",
+        "published_idx": 0, "background": "no", "written": "no",
         "self_rating": 1, "quiz_correct": 0, "is_novice": True, "dev": True,
     }
     pid, seq = db.insert_participant(

@@ -14,14 +14,67 @@ from core import config
 
 LOG_PATH = Path(__file__).resolve().parent.parent / "data" / "llm.log"
 
+# Per-request timeout (seconds). The OpenAI SDK defaults to ~600s, so a congested
+# free gateway (edgefn returns 503 "渠道繁忙"/ChannelNotEnough) can hang a single
+# request for ~10 min before erroring — a participant would stare at a spinner the
+# whole time. Cap it so a stuck call fails fast and the pre-first-token auto-retry
+# (or the user's manual retry) kicks in instead. Legit slow calls finish well
+# under this (observed: final gen <40s, guidance JSON up to ~92s).
+REQUEST_TIMEOUT = 120
+
 
 # Reasoning models (e.g. DeepSeek-R1) may leak chain-of-thought into content.
 _THINK_RE = re.compile(r"<think>.*?(?:</think>|\Z)\s*", re.DOTALL)
+_THINK_OPEN, _THINK_CLOSE = "<think>", "</think>"
 
 
 def clean_output(text: str) -> str:
     """Strip leaked <think> blocks; applied to every completion before storage."""
     return _THINK_RE.sub("", text or "").strip()
+
+
+def _partial_suffix(s: str, tag: str) -> int:
+    """Length of the longest suffix of s that is a (proper) prefix of tag, so a
+    tag split across streaming chunk boundaries isn't emitted prematurely."""
+    for k in range(min(len(s), len(tag) - 1), 0, -1):
+        if tag.startswith(s[-k:]):
+            return k
+    return 0
+
+
+def stream_clean(chunks: Iterator[str]) -> Iterator[str]:
+    """Strip <think>…</think> reasoning from a LIVE token stream so the participant
+    never sees raw chain-of-thought scroll by (clean_output only cleans the final
+    stored string — too late for the on-screen render). Incremental: holds back
+    only a tiny tail that could be a split tag; drops reasoning content as it goes."""
+    buf = ""
+    in_think = False
+    for chunk in chunks:
+        buf += chunk
+        out = ""
+        while buf:
+            if not in_think:
+                i = buf.find(_THINK_OPEN)
+                if i == -1:
+                    keep = _partial_suffix(buf, _THINK_OPEN)
+                    out += buf[: len(buf) - keep]
+                    buf = buf[len(buf) - keep :]
+                    break
+                out += buf[:i]
+                buf = buf[i + len(_THINK_OPEN) :]
+                in_think = True
+            else:
+                j = buf.find(_THINK_CLOSE)
+                if j == -1:
+                    keep = _partial_suffix(buf, _THINK_CLOSE)
+                    buf = buf[len(buf) - keep :]  # drop reasoning, keep partial-tag tail
+                    break
+                buf = buf[j + len(_THINK_CLOSE) :]
+                in_think = False
+        if out:
+            yield out
+    if buf and not in_think:
+        yield buf
 
 
 class LLMConfigError(RuntimeError):
@@ -56,7 +109,7 @@ def _client() -> OpenAI:
     base_url = (st.session_state.get("base_url") or "").strip()
     if not api_key:
         raise LLMConfigError("missing_api_key")
-    kwargs = {"api_key": api_key}
+    kwargs = {"api_key": api_key, "timeout": REQUEST_TIMEOUT}
     if base_url:
         kwargs["base_url"] = base_url
     return OpenAI(**kwargs)
@@ -178,7 +231,10 @@ def _guidance_client_and_model() -> tuple[OpenAI, str]:
         raise LLMConfigError(f"guidance api_configs[{idx}] unavailable") from e
     if not (cfg.get("api_key") or "").strip():
         raise LLMConfigError(f"guidance api_configs[{idx}] missing api_key")
-    client = OpenAI(api_key=cfg["api_key"], base_url=cfg.get("base_url") or None)
+    client = OpenAI(
+        api_key=cfg["api_key"], base_url=cfg.get("base_url") or None,
+        timeout=REQUEST_TIMEOUT,
+    )
     return client, (cfg.get("model") or "").strip() or "gpt-4o-mini"
 
 

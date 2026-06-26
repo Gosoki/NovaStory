@@ -102,7 +102,12 @@ def render(topic: dict) -> None:
 def _answered(rnd: int, idx: int, q: dict) -> bool:
     custom = (st.session_state.get(f"_g_custom_{rnd}_{idx}") or "").strip()
     chosen = st.session_state.get(f"_g_opt_{rnd}_{idx}")
-    return bool(custom) or chosen is not None or not q.get("options")
+    if not q.get("options"):
+        # Open/fallback question (no options, no "leave it to the AI" choice):
+        # require typed text, else an empty answer would be recorded as a valid
+        # guidance round and pollute condition E's core IV.
+        return bool(custom)
+    return bool(custom) or chosen is not None
 
 
 def _save_current(rnd: int, idx: int) -> None:
