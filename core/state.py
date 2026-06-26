@@ -95,7 +95,7 @@ DEFAULTS: dict[str, Any] = {
     "researcher_ok": False,
     "participant_id": None,
     "seq": None,
-    "stage": "consent",        # consent → screening → rounds → done
+    "stage": "consent",        # consent → screening → rounds → final_survey → done
     "round_idx": 1,
     "round_plan": [],          # [{"condition": str, "topic": dict}] × 3
     "attention_value": None,
@@ -135,18 +135,31 @@ def _attempt_resume() -> None:
     p = db.get_participant_by_token(_resume_token())
     if not p or not p.get("passed"):
         return
-    st.session_state["participant_id"] = p["id"]
-    st.session_state["seq"] = p["seq"]
-    st.session_state["lang"] = p.get("lang") or st.session_state.get("lang", "ja")
-    if p.get("status") == "done":
+
+    def _restore_identity() -> None:
+        st.session_state["participant_id"] = p["id"]
+        st.session_state["seq"] = p["seq"]
+        st.session_state["lang"] = p.get("lang") or st.session_state.get("lang", "ja")
+
+    if p.get("status") == "done":  # finished — restore the completion screen
+        _restore_identity()
         st.session_state["stage"] = "done"
         st.session_state["completion_code"] = p.get("completion_code") or ""
         return
+
+    # Need the round plan from here on; bail (don't half-restore) if topics.json
+    # has been edited below N_ROUNDS — same guard as begin_rounds.
     topics = load_topics()
+    if len(topics) < config.N_ROUNDS:
+        return
+    _restore_identity()
     st.session_state["round_plan"] = plan_for_seq(p["seq"], topics[: config.N_ROUNDS])
     done_rounds = db.count_questionnaires(p["id"])
     if done_rounds >= config.N_ROUNDS:
-        st.session_state["stage"] = "done"
+        # all rounds answered but status != done → final survey not submitted yet
+        st.session_state["round_idx"] = config.N_ROUNDS
+        st.session_state["stage"] = "final_survey"
+        log_event("session_resumed", {"stage": "final_survey"})
         return
     st.session_state["round_idx"] = done_rounds + 1
     st.session_state["stage"] = "rounds"
@@ -215,7 +228,7 @@ def reset_round_payload() -> None:
 
 def advance_round() -> None:
     if st.session_state["round_idx"] >= config.N_ROUNDS:
-        st.session_state["stage"] = "done"
+        st.session_state["stage"] = "final_survey"  # whole-study survey before done
         return
     st.session_state["round_idx"] += 1
     reset_round_payload()

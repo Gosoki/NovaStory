@@ -28,7 +28,7 @@
     "body": "Thank you for taking part in this study!\n\n**What you will do**: You will create 3 short-video storyboard scripts on given topics, each with a different form of AI assistance, and answer a few short questions after each one. The whole session takes about **10-15 minutes**.\n\n**Data**: We record the text you enter, your interactions with the system, and your questionnaire answers. Data are used for academic research only, analyzed anonymously, and nothing that could identify you will be published.\n\n**Voluntary**: You may leave at any time by closing the page, with no negative consequences.\n\nIf you agree, please tick the box below and begin.",
     "agree": "I have read the above and agree to take part in this study",
     "start": "Agree and begin",
-    "no_refresh": "⚠️ Do not refresh the page or use the browser's Back button during the study — your progress will be lost and you will have to start over."
+    "no_refresh": "⚠️ Please try not to refresh or use the browser's Back button. If you do refresh, you'll automatically resume where you left off as long as you stay in the same tab (please don't close the tab)."
   },
   "screening": {
     "title": "Background Questionnaire",
@@ -142,6 +142,16 @@
     "message": "All of your data has been recorded successfully. Here is your completion code:",
     "code_hint": "If you joined through a recruitment platform, please enter the completion code there; otherwise you may simply close this page.",
     "reset": "Reset for the next participant"
+  },
+  "final_survey": {
+    "title": "Finally: looking back",
+    "hint": "Now that you've finished all three rounds, please share your overall impressions.",
+    "q_pref": "Which round's way of creating did you like best?",
+    "q_reuse": "If you use AI to create something in the future, which round's approach would you want to use?",
+    "q_overall": "Overall, how satisfied are you with this creative experience? (1 = not at all satisfied, 7 = very satisfied)",
+    "round_n": "Round {i}",
+    "comment": "Anything else you'd like to add (optional)",
+    "submit": "Submit and finish"
   },
   "researcher": {
     "title": "Experiment Data Dashboard",

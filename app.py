@@ -4,7 +4,9 @@ import streamlit as st
 
 from core import config, db, state
 from i18n import t
-from views import consent, researcher, round_common, screening, sidebar
+from views import (
+    consent, final_survey, researcher, round_common, screening, sidebar,
+)
 
 
 def main() -> None:
@@ -33,6 +35,8 @@ def main() -> None:
         _progress_bar()
         st.divider()
         round_common.render()
+    elif stage == "final_survey":
+        final_survey.render()
     elif stage == "done":
         _done()
 

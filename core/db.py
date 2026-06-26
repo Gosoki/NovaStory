@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS participants (
   attention_ok INTEGER,
   completion_code TEXT,
   token TEXT,                 -- opaque resume handle (URL ?t=), not the row id
+  final_survey_json TEXT,     -- whole-study survey, shown after all rounds
   status TEXT NOT NULL DEFAULT 'in_progress'
 );
 CREATE TABLE IF NOT EXISTS trials (
@@ -98,6 +99,7 @@ _MIGRATIONS = [
     "ALTER TABLE questionnaires ADD COLUMN imagine_match INTEGER",
     "ALTER TABLE questionnaires ADD COLUMN satisfaction INTEGER",
     "ALTER TABLE participants ADD COLUMN token TEXT",
+    "ALTER TABLE participants ADD COLUMN final_survey_json TEXT",
     # v3 (guided co-creation) trial columns
     "ALTER TABLE trials ADD COLUMN guidance_json TEXT",
     "ALTER TABLE trials ADD COLUMN revision_requests TEXT",

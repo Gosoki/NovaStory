@@ -5,27 +5,21 @@ import json
 import streamlit as st
 
 from core import config, state
-from i18n import AVAILABLE_LANGS, LANG_LABELS, t
+from i18n import t
 from views import devtools
+from views._lang import language_radio
 
 
 def render() -> None:
     with st.sidebar:
-        _language_picker()
-        st.divider()
         _researcher_section()
 
 
 def _language_picker() -> None:
+    # Admin-only now (subjects set their language once on the consent page, JP6).
+    # Admins can switch any time for testing.
     st.subheader(t("sidebar.language"))
-    st.radio(
-        label=t("sidebar.language"),
-        options=AVAILABLE_LANGS,
-        format_func=lambda code: LANG_LABELS[code],
-        horizontal=True,
-        label_visibility="collapsed",
-        key="lang",
-    )
+    language_radio("_admin_lang", collapsed=True)
 
 
 def _researcher_section() -> None:
@@ -42,6 +36,7 @@ def _researcher_section() -> None:
                     st.error(t("sidebar.researcher_pw_wrong"))
             return
 
+        _language_picker()
         st.toggle(t("sidebar.researcher_toggle"), key="researcher_mode")
         devtools.render()
         _api_section()

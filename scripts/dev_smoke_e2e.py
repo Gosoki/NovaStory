@@ -129,8 +129,12 @@ def btn_click(at, label):
 def run() -> None:
     at = AppTest.from_file("app.py", default_timeout=60)
     at.run()
-    # Participants default to ja; the researcher (and this test) work in zh.
-    at.session_state["lang"] = "zh"
+    # Participants default to ja; the researcher (and this test) work in zh — pick
+    # it on the consent-page language selector (options[1] == zh), as a subject would.
+    lang_radio = at.radio(key="_consent_lang")
+    lang_radio.set_value(lang_radio.options[1])
+    at.run()
+    assert at.session_state["lang"] == "zh", at.session_state["lang"]
 
     # --- consent + screening (everyone proceeds; novice recorded) ---
     at.checkbox(key="_consent_agree").check().run()
@@ -179,6 +183,10 @@ def run() -> None:
     btn_click(at, "满意了,提交这一版")
     _answer_questionnaire(at, round_idx=3)
 
+    # --- whole-study final survey ---
+    assert at.session_state["stage"] == "final_survey", at.session_state["stage"]
+    _answer_final_survey(at)
+
     # --- done ---
     codes = [el.value for el in at.code]
     assert codes and len(codes[0]) == 8, f"completion code missing: {codes}"
@@ -209,6 +217,14 @@ def _answer_guidance(at, rnd: int, n: int, custom_idx: int = -1, ai_idx: int = -
     btn_click(at, "完成作答,生成脚本")
 
 
+def _answer_final_survey(at) -> None:
+    for i in (0, 1):  # pref + reuse radios → 3rd option (round 3), language-agnostic
+        bg = at.radio[i]
+        bg.set_value(bg.options[2])
+    set_sc(at, "_fs_sat", 6)
+    btn_click(at, "提交并完成")
+
+
 def _answer_questionnaire(at, round_idx: int, attention: bool = False) -> None:
     for i in range(1, 4):
         set_sc(at, f"_q_own{i}_{round_idx}", 5)
@@ -235,6 +251,8 @@ def _assert_db() -> None:
     assert len(p) == 1 and p.iloc[0]["passed"] == 1 and p.iloc[0]["seq"] == 0
     assert p.iloc[0]["attention_ok"] == 1 and p.iloc[0]["status"] == "done"
     assert json.loads(p.iloc[0]["screening_json"])["is_novice"] is True
+    fs = json.loads(p.iloc[0]["final_survey_json"])
+    assert fs["pref_round"] == 3 and fs["reuse_round"] == 3 and fs["overall_sat"] == 6, fs
 
     assert list(tr["condition"]) == ["C", "D", "E"]
     assert tr["model"].notna().all() and tr["t_total"].notna().all()
