@@ -32,16 +32,14 @@ _FIELD_MAP = {
 _SHOT_SPLIT_RE = re.compile(
     r"(?m)^\s*(?:[#*>\-\s]*)?(?:镜头|カット|ショット)?\s*(\d{1,2})\s*[\.、::|]"
 )
+# Every shot leads with its duration field, so it's a reliable fallback boundary
+# when the model omits the numbering _SHOT_SPLIT_RE keys off of.
+_DURATION_START_RE = re.compile(r"【\s*(?:时长|秒数|尺|長さ)[^】]*】")
 
 
-def parse_shots(text: str) -> list[dict]:
-    """Parse into [{idx, shot_type, visual, audio, duration, raw}]; [] on failure."""
-    text = (text or "").strip()
-    if not text:
-        return []
-
+def _split_numbered(text: str) -> list[tuple[int, int, int]]:
+    """Boundaries from ascending shot numbers (1, 2, 3 …); skips stray numbers."""
     bounds = [(m.start(), int(m.group(1))) for m in _SHOT_SPLIT_RE.finditer(text)]
-    # keep only a sane ascending shot numbering (1, 2, 3 …) to skip stray numbers
     blocks: list[tuple[int, int, int]] = []  # (start, end, idx)
     expect = 1
     for pos, num in bounds:
@@ -50,6 +48,34 @@ def parse_shots(text: str) -> list[dict]:
                 blocks[-1] = (blocks[-1][0], pos, blocks[-1][2])
             blocks.append((pos, len(text), num))
             expect += 1
+    return blocks
+
+
+def _split_by_duration(text: str) -> list[tuple[int, int, int]]:
+    """Fallback boundaries: each shot starts with its duration field. Needs >= 2
+    markers to count as a real multi-shot split."""
+    marks = [m.start() for m in _DURATION_START_RE.finditer(text)]
+    if len(marks) < 2:
+        return []
+    return [
+        (s, marks[i + 1] if i + 1 < len(marks) else len(text), i + 1)
+        for i, s in enumerate(marks)
+    ]
+
+
+def parse_shots(text: str) -> list[dict]:
+    """Parse into [{idx, shot_type, visual, audio, duration, raw}]; [] on failure."""
+    text = (text or "").strip()
+    if not text:
+        return []
+
+    # Prefer numbered boundaries; fall back to (or upgrade to) duration-field
+    # boundaries when numbering is missing or only partial — more shots wins, so a
+    # script that dropped its "1. 2. 3." still splits instead of collapsing to one.
+    blocks = _split_numbered(text)
+    dur_blocks = _split_by_duration(text)
+    if len(dur_blocks) > len(blocks):
+        blocks = dur_blocks
     if not blocks:
         return []
 
