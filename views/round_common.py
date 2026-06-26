@@ -89,6 +89,7 @@ def _current_step(cond: str, n_steps: int) -> int:
 
 def _topic_card(topic: dict) -> None:
     lang = get_lang()
+    st.subheader(t("round.topic_heading"))
     with st.container(border=True):
         st.markdown(f"**{state.topic_text(topic, 'title', lang)}**")
         st.write(state.topic_text(topic, "scenario", lang))
@@ -102,7 +103,11 @@ def _topic_card(topic: dict) -> None:
 
 
 def _render_intent(cond: str, topic: dict) -> None:
-    st.warning(t(f"round.instr_{cond}", shot_count=topic["shot_count"]))
+    # This round's flow + the detailed how-to, in one box (flow on top).
+    st.warning(
+        f"**{t(f'round.flow_{cond}')}**\n\n"
+        + t(f"round.instr_{cond}", shot_count=topic["shot_count"])
+    )
     st.markdown(
         t("round.intent_scope", count=topic["shot_count"], total=topic["total_seconds"])
     )

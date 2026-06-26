@@ -23,7 +23,10 @@ def _language_picker() -> None:
 
 
 def _researcher_section() -> None:
-    with st.expander(t("sidebar.researcher_section"), expanded=False):
+    # Stay open once unlocked, so an in-panel rerun (e.g. switching language)
+    # doesn't snap the panel shut on the researcher.
+    expanded = bool(st.session_state.get("researcher_ok"))
+    with st.expander(t("sidebar.researcher_section"), expanded=expanded):
         if not st.session_state.get("researcher_ok"):
             pw = st.text_input(
                 t("sidebar.researcher_pw"), type="password", key="_researcher_pw"

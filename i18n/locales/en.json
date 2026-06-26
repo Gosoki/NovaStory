@@ -28,6 +28,7 @@
     "body": "Thank you for taking part in this study!\n\n**What you will do**: You will create 3 short-video storyboard scripts on given topics, each with a different form of AI assistance, and answer a few short questions after each one. The whole session takes about **10-15 minutes**.\n\n**Data**: We record the text you enter, your interactions with the system, and your questionnaire answers. Data are used for academic research only, analyzed anonymously, and nothing that could identify you will be published.\n\n**Voluntary**: You may leave at any time by closing the page, with no negative consequences.\n\nIf you agree, please tick the box below and begin.",
     "agree": "I have read the above and agree to take part in this study",
     "start": "Agree and begin",
+    "overview": "📋 This study has 3 rounds. Each round goes: write an idea → the AI generates a script → (revise if needed) → questionnaire. The way the AI is involved changes a little each round. There are no right answers — just make what you genuinely want to make.",
     "no_refresh": "⚠️ Please try not to refresh or use the browser's Back button. If you do refresh, you'll automatically resume where you left off as long as you stay in the same tab (please don't close the tab)."
   },
   "screening": {
@@ -83,7 +84,11 @@
   "round": {
     "title": "Creation Round {i} / {n}",
     "progress": "Progress: Round {i} / {n}",
+    "topic_heading": "This round's topic",
     "topic_spec": "{count} shots · {total} seconds total",
+    "flow_C": "📍 This round: write an idea → AI generates the script → review & submit → questionnaire",
+    "flow_D": "📍 This round: write an idea → AI generates → edit directly / tell the AI → submit when satisfied → questionnaire",
+    "flow_E": "📍 This round: write an idea → AI guides with questions → AI generates → polish → submit → questionnaire",
     "instr_C": "In this round the AI will generate a complete {shot_count}-shot storyboard script directly from your idea; review it and submit. First, write your story idea in one or two sentences.",
     "instr_D": "In this round the AI generates a complete script first; you can then edit it directly, or tell the AI what to change (it can be abstract, e.g. \"make it funnier\"), and polish it as many times as you like. First, write your story idea in one or two sentences.",
     "instr_E": "In this round the AI will first ask you a few questions to understand what you want, then generate the script; afterwards you can keep being guided by the AI or edit the script directly until you are happy. First, write your story idea in one or two sentences.",
