@@ -21,9 +21,10 @@ FOLLOWUP_RANGE = (1, 3)
 # JSON robustness: retries before degrading to one open fallback question.
 GUIDANCE_JSON_RETRIES = 2
 # Guidance-step model override: index into secrets [[api_configs]], or None to
-# follow the session's main config. C2 (2026-06-13): mimo quality 8/8 but ~75s
-# latency — re-measure before formal data collection; switch to the OpenAI
-# entry if still >30s (paper/7 D23).
+# follow the session's main config (default = first preset, now KAT-Coder via
+# edgefn; mimo retired 2026-06-26). Re-measure guidance latency before formal
+# data collection; if the main model is slow (>30s) point this at a faster
+# entry (paper/7 D23).
 GUIDANCE_API_INDEX: Optional[int] = None
 
 
