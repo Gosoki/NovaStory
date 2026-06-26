@@ -189,7 +189,7 @@
     "revision_label": "Tell the AI what to change",
     "revision_placeholder": "e.g. make it funnier / cut the dialogue in shot 2 / twist the ending",
     "revision_hint": "You can give an abstract direction or specific edits; or just edit the script above yourself.",
-    "revision_send": "Ask the AI to revise"
+    "revision_send": "Tell the AI"
   },
   "guidance": {
     "wait": "The AI is preparing questions for you — this takes about a minute…",

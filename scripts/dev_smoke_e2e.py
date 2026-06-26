@@ -165,7 +165,7 @@ def run() -> None:
     at.text_area(key="_intent_input").set_value("末班车开走后他跟着夜跑团回家")
     btn_click(at, "确定,开始创作")
     inject(at, "_revision_input", "更搞笑一点")
-    btn_click(at, "让 AI 修改")             # → v2 (ai)
+    btn_click(at, "告诉 AI")                # → v2 (ai)
     assert at.session_state["r_n_ai_rounds"] == 1
     inject(at, "_script_edit", _SCRIPT_REV + EDIT_MARK)
     btn_click(at, "满意了,提交这一版")       # persist → v3 (user_edit) → questionnaire

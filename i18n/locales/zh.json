@@ -189,7 +189,7 @@
     "revision_label": "告诉 AI 你想怎么改",
     "revision_placeholder": "例如:更搞笑一点 / 删掉第 2 镜的台词 / 结局反转",
     "revision_hint": "可以说抽象方向,也可以提具体改动;不想打字也可以直接在上面的稿子里改。",
-    "revision_send": "让 AI 修改"
+    "revision_send": "告诉 AI"
   },
   "guidance": {
     "wait": "AI 正在为你准备问题,大约需要一分钟…",

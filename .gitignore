@@ -223,6 +223,10 @@ __marimo__/
 # NovaStory experiment data (never commit participant data)
 data/*.csv
 data/*.db
+data/*.db-wal
+data/*.db-shm
+data/*.db-journal
+data/llm.log
 data/archive/
 data/baseline/
 data/ghosts/

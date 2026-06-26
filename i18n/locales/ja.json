@@ -189,7 +189,7 @@
     "revision_label": "AI にどう直してほしいか伝える",
     "revision_placeholder": "例:もっと面白く / 2カット目のセリフを削除 / 結末をどんでん返しに",
     "revision_hint": "抽象的な方向でも具体的な修正でも OK。入力せずに上の脚本を直接編集しても構いません。",
-    "revision_send": "AI に修正してもらう"
+    "revision_send": "AIに伝える"
   },
   "guidance": {
     "wait": "AI が質問を準備しています。1 分ほどお待ちください…",
