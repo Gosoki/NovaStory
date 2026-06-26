@@ -33,6 +33,13 @@ def render() -> None:
             [t(f"screening.ai_freq_opt{i}") for i in range(1, 5)],
             index=None,
         )
+        # AI *creative* experience — distinct from ai_freq (general usage); a
+        # covariate for D/E workflow familiarity (paper/10 H1-H3, H7).
+        aiexp = st.selectbox(
+            t("screening.aiexp"),
+            [t(f"screening.aiexp_opt{i}") for i in range(1, 4)],
+            index=None,
+        )
 
         st.subheader(t("screening.exp_section"))
         published = st.radio(
@@ -59,6 +66,19 @@ def render() -> None:
             key="_scr_self",
         )
 
+        # Baseline traits (7-point), measured pre-task so they aren't contaminated
+        # by the experience — covariates/moderators for paper/10 H1 (ownership)
+        # and H7 (reverse branch: trusting novices may be satisfied with C/D).
+        st.subheader(t("screening.trait_section"))
+        trust = st.segmented_control(
+            t("screening.trust"), list(range(1, 8)),
+            selection_mode="single", key="_scr_trust",
+        )
+        own_trait = st.segmented_control(
+            t("screening.own_trait"), list(range(1, 8)),
+            selection_mode="single", key="_scr_own",
+        )
+
         st.subheader(t("screening.quiz_section"))
         quiz1 = st.radio(
             t("screening.quiz1"),
@@ -78,7 +98,8 @@ def render() -> None:
     if not submitted:
         return
 
-    answers = [age, gender, ai_freq, published, background, written, self_rating, quiz1, quiz2]
+    answers = [age, gender, ai_freq, aiexp, published, background, written,
+               self_rating, trust, own_trait, quiz1, quiz2]
     if any(a is None for a in answers):
         st.error(t("errors.answer_all"))
         return
@@ -89,6 +110,7 @@ def render() -> None:
     age_idx = [t(f"screening.age_opt{i}") for i in range(1, 6)].index(age)
     gender_idx = [t(f"screening.gender_opt{i}") for i in range(1, 5)].index(gender)
     ai_freq_idx = [t(f"screening.ai_freq_opt{i}") for i in range(1, 5)].index(ai_freq)
+    aiexp_idx = [t(f"screening.aiexp_opt{i}") for i in range(1, 4)].index(aiexp)
     quiz1_idx = [t(f"screening.quiz1_opt{i}") for i in range(1, 5)].index(quiz1)
     quiz2_idx = [t(f"screening.quiz2_opt{i}") for i in range(1, 5)].index(quiz2)
     published_idx = [t(f"screening.published_opt{i}") for i in range(1, 4)].index(published)
@@ -110,6 +132,9 @@ def render() -> None:
         "background": "no" if background == is_no else "yes",
         "written": "no" if written == is_no else "yes",
         "self_rating": int(self_rating),
+        "aiexp_idx": aiexp_idx,
+        "trust": int(trust),
+        "own_trait": int(own_trait),
         "quiz1_idx": quiz1_idx,
         "quiz2_idx": quiz2_idx,
         "quiz_correct": quiz_correct,

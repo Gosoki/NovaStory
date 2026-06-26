@@ -60,6 +60,7 @@
 - **AUD6【待讨论】**:完整会话恢复方案,用户 2026-06-26 决定"**先不动,稍后讨论修改方案**"。lite(consent 提示)保留。
 - **MVP 硬前置复核**:代码 E2E 通过、主分析数据采全;正式开跑前仅两件硬前置——① 默认模型/网关延迟(N1 已加 timeout 治标 + B9 决策治本)② AUD6 会话恢复(待讨论)。
 - **"补不回来"数据缺口(重申,跑被试前优先)**:token 用量(LOG6,`generate_json` 已拿 `resp.usage` 却丢弃)、引导步独立模型 meta(AUD9)、events 细粒度(秒级 ts→毫秒 / 无 trial_id / `guidance_answer` 不存 chosen 文本 / `revision_request` 不存原文)。这三类被试跑完即永久丢失。
+- **【✅已实现】开局问卷增 3 项基线协变量**(用户授权"按论文需求定",2026-06-26):同意后第一份问卷(`screening`)加 ① AI 创作经验(`aiexp_idx`,分类,区别于 `ai_freq`)② AI 信任倾向(`trust`,7点)③ 心理所有权倾向 trait(`own_trait`,7点);均前测、存 `screening_json`;新增 i18n 键 `screening.{aiexp,aiexp_opt1-3,trait_section,trust,own_trait}`×3 语(165 键×3 一致);`devtools`/`dev_smoke_e2e` 同步,E2E 通过。控制需求(H3 trait)经权衡未加。**仍待定(另议,非开局问卷)**:满意度/整体偏好(H7 可证伪性)——属"结果"测量,放每轮问卷加 1 题 or done 前加一页,跑被试前定。
 - **✅ 这批 UX/健壮性已修(2026-06-26)**:① 提交/决定类 primary 按钮改**绿色**(`app.py` CSS;"绿=决定",继续AI 仍蓝),原"默认红"决定作废;② 问卷未答全错误**指明具体题目/镜头**(`errors.unanswered` + `questionnaire._short`);③ LLM 等待文案加**时间预期**(30-90秒/繁忙更久)+ 流式**前置自动重试2次**(首 token 前才重试,避免重复;`llm.generate_stream`);④ devtools 加**「🔌 测试模型连通」**(`llm.ping`,报通/不通+延迟,>30s 警告);⑤ 主题蓝主色 `#2563eb`,**同时定义 `[theme.light]` 和 `[theme.dark]` → 跟随系统明暗**(坑:只写裸 `[theme]` 会被锁成单一 light 模式、不跟随系统;须两个子主题都定义才跟随并出 ☰→Settings 切换),消掉默认珊瑚红(进度条/选中态/转圈);决定按钮仍绿、继续AI 仍蓝(CSS `!important` 覆盖主题);⑥ 语言器**移回侧栏外、被试可自选**(AUD4 治标回退,治本布尔保留)。**注:改 `[theme]` 需重启 streamlit 服务才生效。**
 
 ## 📋 逐操作详细日志 — 前瞻设计(规划;系统冻结后一次性加,现在不实现)

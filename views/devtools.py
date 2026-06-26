@@ -73,7 +73,8 @@ def _skip_intake() -> None:
     demographics = {"age_idx": 0, "gender_idx": 3, "ai_freq_idx": 3, "dev": True}
     screening = {
         "published_idx": 0, "background": "no", "written": "no",
-        "self_rating": 1, "quiz_correct": 0, "is_novice": True, "dev": True,
+        "self_rating": 1, "aiexp_idx": 0, "trust": 4, "own_trait": 4,
+        "quiz_correct": 0, "is_novice": True, "dev": True,
     }
     pid, seq = db.insert_participant(
         st.session_state.get("lang", "ja"), demographics, screening, passed=True

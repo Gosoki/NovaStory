@@ -138,12 +138,15 @@ def run() -> None:
     at.selectbox[0].select("18-24")
     at.selectbox[1].select("不愿透露")
     at.selectbox[2].select("偶尔(每月几次)")
+    at.selectbox[3].select("从未用过")          # aiexp (AI creative experience)
     at.radio[0].set_value("从未发布过")
     at.radio[1].set_value("否")
     at.radio[2].set_value("否")
     at.radio[3].set_value("我不知道")
     at.radio[4].set_value("我不知道")
     set_sc(at, "_scr_self", 1)
+    set_sc(at, "_scr_trust", 4)               # baseline trait: AI trust
+    set_sc(at, "_scr_own", 5)                 # baseline trait: ownership disposition
     btn_click(at, "提交并继续")
     assert at.session_state["stage"] == "rounds" and at.session_state["seq"] == 0
 
