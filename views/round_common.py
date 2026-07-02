@@ -103,9 +103,9 @@ def _topic_card(topic: dict) -> None:
 
 
 def _render_intent(cond: str, topic: dict) -> None:
-    # This round's flow + the detailed how-to, in one box (flow on top).
+    # This round's flow label + the detailed how-to, in one box.
     st.warning(
-        f"**{t(f'round.flow_{cond}')}**\n\n"
+        f"**{t('round.flow_label')}**\n\n"
         + t(f"round.instr_{cond}", shot_count=topic["shot_count"])
     )
     st.markdown(
