@@ -1,0 +1,475 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NovaStory ── 生成する前に、問いを。</title>
+<style>
+  :root{
+    --bg:#0b0b0f; --bg2:#16161f; --ink:#f3efe6; --muted:#9c968a; --faint:#6a6560;
+    --gold:#e9b64a; --gold-soft:#f2cf82; --teal:#5bc8c4; --rose:#e8836b;
+    --line:#2b2b35; --line2:#3c3c48;
+    --serif:"Hiragino Mincho ProN","Yu Mincho",YuMincho,"Noto Serif JP",serif;
+    --sans:"Hiragino Kaku Gothic ProN","Yu Gothic",YuGothic,"Noto Sans JP",-apple-system,BlinkMacSystemFont,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:var(--bg); color:var(--ink); font-family:var(--sans);
+    overflow:hidden; -webkit-font-smoothing:antialiased; letter-spacing:.01em;
+  }
+  /* film grain + vignette overlay */
+  body::after{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:60;
+    background:
+      radial-gradient(120% 120% at 50% 40%, transparent 55%, rgba(0,0,0,.55) 100%),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.5'/%3E%3C/svg%3E");
+    background-size:cover,180px; opacity:.06; mix-blend-mode:screen;
+  }
+
+  .stage{position:fixed; inset:0}
+  .slide{
+    position:absolute; inset:0; display:flex; flex-direction:column;
+    justify-content:center; padding:min(8vh,86px) min(9vw,120px);
+    opacity:0; visibility:hidden; transform:translateY(14px) scale(.995);
+    transition:opacity .5s ease, transform .5s ease, visibility .5s;
+    background:radial-gradient(140% 100% at 78% 8%, #1b1b26 0%, var(--bg) 62%);
+  }
+  .slide.active{opacity:1; visibility:visible; transform:none}
+
+  /* film strip */
+  .filmstrip{
+    position:fixed; left:0; right:0; height:22px; background:#08080b; z-index:40; pointer-events:none;
+    background-image:repeating-linear-gradient(90deg,transparent 0 9px,rgba(243,239,230,.22) 9px 17px,transparent 17px 26px);
+    background-size:26px 8px; background-repeat:repeat-x; background-position:center;
+    border-top:1px solid #000; border-bottom:1px solid #000;
+  }
+  .filmstrip.gtop{top:0} .filmstrip.gbot{bottom:0}
+
+  /* shared bits */
+  .kicker{
+    font-size:clamp(.72rem,1.2vw,.9rem); letter-spacing:.34em; text-transform:uppercase;
+    color:var(--gold); margin-bottom:clamp(14px,2.4vh,26px); display:flex; align-items:center; gap:14px;
+  }
+  .kicker::before{content:"";width:34px;height:1px;background:var(--gold);opacity:.8}
+  h1{font-family:var(--serif); font-weight:600; line-height:1.18; letter-spacing:.02em}
+  h2{font-size:clamp(1.7rem,4.2vw,3.1rem); font-weight:700; line-height:1.24; margin-bottom:clamp(16px,3vh,34px)}
+  .lead{font-size:clamp(1.05rem,2vw,1.5rem); color:#e7e2d7; line-height:1.72; max-width:34em}
+  .muted{color:var(--muted)} .faint{color:var(--faint)}
+  .gold{color:var(--gold)} .teal{color:var(--teal)} .rose{color:var(--rose)}
+  b,strong{color:#fff; font-weight:700}
+  em{font-style:normal; color:var(--gold-soft); font-weight:600}
+  ul{list-style:none} li{position:relative; padding-left:1.5em; margin:.62em 0;
+    font-size:clamp(1rem,1.7vw,1.32rem); line-height:1.6; color:#e7e2d7}
+  li::before{content:"▸"; position:absolute; left:0; color:var(--gold); font-size:.9em; top:.08em}
+  .cite{font-size:clamp(.76rem,1.2vw,.92rem); color:var(--faint); margin-top:clamp(14px,2.4vh,26px)}
+
+  /* frame motif (16:9) */
+  .frame{position:relative; aspect-ratio:16/9; border:1.5px solid var(--line2);
+    background:#101018; box-shadow:inset 0 0 0 3px #101018, inset 0 0 0 4px #1d1d28;
+    display:flex; align-items:center; justify-content:center; text-align:center}
+
+  /* ---- title slide ---- */
+  .title-wrap{max-width:min(92vw,880px)}
+  .title-wrap h1{font-size:clamp(2.4rem,6.4vw,5.2rem); word-break:keep-all}
+  .title-wrap h1 .ph{display:inline-block}   /* keep each phrase intact; wrap only between them */
+  .title-sub{font-size:clamp(1.02rem,2vw,1.5rem); color:#d8d2c6; margin-top:clamp(20px,3.4vh,40px); line-height:1.6; font-family:var(--sans); max-width:24em}
+  .title-meta{margin-top:clamp(26px,4.6vh,58px); display:flex; flex-wrap:wrap; gap:10px 26px;
+    font-size:clamp(.82rem,1.4vw,1rem); color:var(--muted)}
+  .title-meta span::before{content:"■ "; color:var(--gold); font-size:.7em; vertical-align:2px}
+  .credit{margin-top:clamp(20px,3vh,34px); font-size:clamp(.84rem,1.4vw,1.02rem); color:#cfc9bd}
+  .credit .name{color:#fff; font-weight:600}
+
+  /* two-column */
+  .cols{display:grid; grid-template-columns:1fr 1fr; gap:clamp(20px,3vw,52px); align-items:start}
+  .card{border:1px solid var(--line); border-radius:6px; padding:clamp(16px,2.4vw,30px);
+    background:linear-gradient(180deg,#14141d,#0e0e15)}
+  .card h3{font-size:clamp(1.05rem,1.8vw,1.42rem); margin-bottom:.5em; color:#fff; display:flex; align-items:center; gap:.5em}
+  .tag{font-size:.66em; letter-spacing:.14em; padding:.28em .7em; border-radius:999px; border:1px solid currentColor; font-weight:700}
+  .card p{font-size:clamp(.95rem,1.55vw,1.18rem); color:#d6d0c4; line-height:1.65}
+
+  /* statement slide */
+  .statement{justify-content:center; text-align:left}
+  .statement .big{font-family:var(--serif); font-weight:600; font-size:clamp(1.9rem,5.2vw,4rem);
+    line-height:1.4; letter-spacing:.03em; max-width:20em}
+  .statement .big .hl{color:var(--gold)}
+  .rqrow{display:flex; flex-wrap:wrap; gap:clamp(14px,2vw,34px); margin-top:clamp(26px,4.6vh,56px)}
+  .rq{border-left:2px solid var(--gold); padding:.1em 0 .1em 1em}
+  .rq .n{font-size:.78rem; letter-spacing:.24em; color:var(--gold)}
+  .rq .t{font-size:clamp(1rem,1.7vw,1.28rem); color:#e7e2d7; margin-top:.2em}
+
+  /* 3-lane workflow */
+  .lanes{display:grid; grid-template-columns:repeat(3,1fr); gap:clamp(14px,2vw,30px); margin-top:clamp(8px,1.6vh,18px)}
+  .lane{border:1px solid var(--line2); border-radius:8px; padding:clamp(14px,1.9vw,24px);
+    background:linear-gradient(180deg,#15151f,#0d0d14); display:flex; flex-direction:column; gap:.7em}
+  .lane .lh{display:flex; align-items:baseline; gap:.55em}
+  .lane .code{font-family:var(--serif); font-size:clamp(1.6rem,3vw,2.4rem); font-weight:700; line-height:1}
+  .lane.C .code{color:var(--muted)} .lane.D .code{color:var(--teal)} .lane.E .code{color:var(--gold)}
+  .lane .name{font-size:clamp(.95rem,1.5vw,1.14rem); font-weight:700; color:#fff}
+  .lane .flow{font-size:clamp(.82rem,1.3vw,1rem); color:#cbc5b9; line-height:1.55}
+  .lane .mini{display:flex; gap:5px; margin-top:auto}
+  .lane .mini .frame{flex:1; box-shadow:inset 0 0 0 2px #101018,inset 0 0 0 3px #20202c}
+  .lane.E{box-shadow:0 0 0 1px var(--gold-soft), 0 8px 30px -14px var(--gold)}
+  .lane .badge{align-self:flex-start; font-size:.64rem; letter-spacing:.16em; color:var(--gold);
+    border:1px solid var(--gold); border-radius:999px; padding:.24em .7em; font-weight:700}
+
+  /* 3x3 latin square */
+  .latin{display:inline-grid; grid-template-columns:auto repeat(3,1fr); gap:8px;
+    font-size:clamp(.9rem,1.5vw,1.15rem)}
+  .latin .lh{color:var(--muted); font-size:.78em; align-self:end; text-align:center; letter-spacing:.08em; padding-bottom:.2em}
+  .latin .rl{color:var(--faint); font-size:.8em; align-self:center; padding-right:.5em; white-space:nowrap; text-align:right}
+  .latin .cell{display:flex; align-items:center; justify-content:center; width:clamp(48px,7vw,82px); aspect-ratio:1;
+    border-radius:8px; font-family:var(--serif); font-weight:700; font-size:1.35em; border:1px solid var(--line2)}
+  .latin .cell.C{color:var(--muted); background:#16161d}
+  .latin .cell.D{color:var(--teal); background:rgba(91,200,196,.10); border-color:#2f6b6a}
+  .latin .cell.E{color:var(--gold); background:rgba(233,182,74,.11); border-color:#8a6a2a}
+
+  /* effort bar chart */
+  .chart{display:grid; grid-template-columns:repeat(3,1fr); gap:clamp(24px,5vw,84px);
+    align-items:end; height:min(42vh,340px); margin:clamp(14px,3vh,30px) 0 8px; max-width:44em}
+  .bar{display:flex; flex-direction:column-reverse; align-items:center; height:100%; justify-content:flex-start}
+  .bar .seg{width:clamp(58px,9vw,104px); border-radius:4px 4px 0 0}
+  .bar .pre{background:linear-gradient(180deg,var(--gold),#b8862f)}
+  .bar .post{background:linear-gradient(180deg,var(--teal),#2f8f8c)}
+  .bar .cap{margin-top:12px; text-align:center}
+  .bar .cap .c{font-family:var(--serif); font-size:clamp(1.3rem,2.4vw,1.9rem); font-weight:700}
+  .bar.C .c{color:var(--muted)} .bar.D .c{color:var(--teal)} .bar.E .c{color:var(--gold)}
+  .bar .cap .d{font-size:clamp(.78rem,1.2vw,.94rem); color:var(--muted); margin-top:.1em}
+  .legend{display:flex; gap:22px; margin-top:6px; font-size:clamp(.82rem,1.3vw,1rem); color:#d6d0c4}
+  .legend i{display:inline-block; width:14px; height:14px; border-radius:3px; margin-right:7px; vertical-align:-1px}
+
+  /* hypotheses / list-2col */
+  .grid2{display:grid; grid-template-columns:1fr 1fr; gap:clamp(10px,1.6vw,26px) clamp(24px,4vw,64px)}
+  .hbox{border:1px solid var(--line); border-left:3px solid var(--gold); border-radius:0 6px 6px 0;
+    padding:clamp(12px,1.7vw,20px) clamp(14px,2vw,24px); background:#12121a}
+  .hbox .hh{font-size:.76rem; letter-spacing:.2em; color:var(--gold); font-weight:700}
+  .hbox .ht{font-size:clamp(.98rem,1.55vw,1.24rem); color:#e7e2d7; margin-top:.28em; line-height:1.5}
+
+  .note{display:inline-block; margin-top:clamp(14px,2.4vh,24px); font-size:clamp(.78rem,1.2vw,.94rem);
+    color:var(--faint); border:1px dashed var(--line2); border-radius:5px; padding:.4em .9em}
+
+  /* nav + chrome */
+  .chrome{position:fixed; z-index:50; pointer-events:none; inset:0}
+  .cut{position:fixed; top:clamp(32px,4.6vh,50px); right:clamp(20px,4vw,52px); z-index:55;
+    font-size:clamp(.72rem,1.1vw,.86rem); letter-spacing:.22em; color:var(--muted)}
+  .cut b{color:var(--gold); font-weight:700}
+  .brand{position:fixed; top:clamp(32px,4.6vh,50px); left:clamp(20px,4vw,52px); z-index:55;
+    font-size:clamp(.72rem,1.1vw,.86rem); letter-spacing:.28em; color:var(--faint)}
+  .progress{position:fixed; left:0; bottom:24px; height:3px; background:var(--gold); z-index:55;
+    width:0; transition:width .5s ease; box-shadow:0 0 12px var(--gold)}
+  .hint{position:fixed; bottom:clamp(30px,4.2vh,42px); right:clamp(20px,4vw,52px); z-index:55;
+    font-size:.74rem; color:var(--faint); letter-spacing:.08em}
+  .hint kbd{border:1px solid var(--line2); border-radius:4px; padding:.1em .45em; color:var(--muted); font-family:var(--sans)}
+
+  @media (max-width:820px){
+    .cols,.grid2,.lanes{grid-template-columns:1fr}
+    .chart{gap:24px}
+  }
+
+  /* print → PDF (one slide per page, landscape) */
+  @media print{
+    @page{size:1280px 720px; margin:0}
+    body{overflow:visible; background:var(--bg)}
+    body::after,.chrome,.cut,.brand,.progress,.hint{display:none!important}
+    .stage{position:static}
+    .slide{position:relative; inset:auto; opacity:1!important; visibility:visible!important;
+      transform:none!important; height:720px; width:1280px; page-break-after:always; break-after:page}
+  }
+</style>
+</head>
+<body>
+<div class="filmstrip gtop"></div>
+<div class="filmstrip gbot"></div>
+<div class="brand">NOVASTORY</div>
+<div class="cut">CUT <b id="cutNo">01</b> / <span id="cutTot">15</span></div>
+<div class="progress" id="prog"></div>
+<div class="hint"><kbd>←</kbd> <kbd>→</kbd> でめくる ・ <kbd>F</kbd> 全画面</div>
+
+<div class="stage">
+
+  <!-- 1 · TITLE -->
+  <section class="slide active">
+    <div class="title-wrap">
+      <div class="kicker">研究計画 · Research Proposal</div>
+      <h1><span class="ph">生成する前に、</span><span class="ph gold">問いを。</span></h1>
+      <div class="title-sub">初心者のAI共創における「事前の意図引き出し」と「事後修正」の対照実験</div>
+      <div class="title-meta">
+        <span>絵コンテ創作を題材に</span><span>被験者内 N=36</span><span>C / D / E の3ワークフロー</span>
+      </div>
+      <div class="credit"><span class="name">呉 祖熙</span> ／ 中村ゼミ ・ 2026</div>
+    </div>
+  </section>
+
+  <!-- 2 · PROBLEM -->
+  <section class="slide">
+    <div class="kicker">01 ── 問題</div>
+    <h2>初心者は「思い」を<span class="gold">言葉にできない</span></h2>
+    <p class="lead">
+      生成AIで創作するとき、初心者は主人公の心理・物語の転換点・画面の設計を
+      <b>プロンプトに書けない</b>。すると AI は<em>黙ってデフォルト値で補完する</em>。
+      —— 結果は「思っていたものと、どこか違う」。
+    </p>
+    <div class="cite">cf. Zamfirescu-Pereira et al. 2023 ―― プロンプトの壁（初心者は専門的意図を言語化できない）</div>
+  </section>
+
+  <!-- 3 · REFRAME -->
+  <section class="slide">
+    <div class="kicker">02 ── 再解釈</div>
+    <h2>作品が「似てくる」のは<br>なぜか</h2>
+    <p class="lead">
+      出力が似るのは、<span class="muted">AI が個性を消すから</span>ではない。
+      <em>意図が、一度も引き出されていないから</em>だ。
+      「同質化」は抹消ではなく<b>抽出の失敗</b>である。
+    </p>
+    <div class="cite">cf. Doshi &amp; Hauser 2024 / Anderson 2024 ―― 同質化の議論（対話的に引用、主張の中心には置かない）</div>
+  </section>
+
+  <!-- 4 · TWO WORKFLOWS -->
+  <section class="slide">
+    <div class="kicker">03 ── 二つのワークフロー</div>
+    <h2>事後に直す <span class="muted">vs</span> 事前に問う</h2>
+    <div class="cols">
+      <div class="card">
+        <h3>現状 <span class="tag teal">生成 → 修正</span></h3>
+        <p>まず AI が生成し、ユーザーが自由記述で直していく。
+        いまの ChatGPT 型の既定ワークフロー。</p>
+      </div>
+      <div class="card" style="border-color:var(--gold-soft)">
+        <h3>新しい型 <span class="tag gold">問う → 生成</span></h3>
+        <p>AI が先に意図を問い、確定してから生成する。
+        AskUserQuestion・Deep Research など<b>産業界では普及</b>。</p>
+      </div>
+    </div>
+    <div class="note">創作領域では、この対照の証拠が<b>学術的に欠けている</b>。</div>
+  </section>
+
+  <!-- 5 · SOUL SENTENCE -->
+  <section class="slide statement">
+    <div class="kicker">魂の一句 ── Research Question</div>
+    <div class="big">
+      良いAI共創は、生成の<span class="hl">「後」</span>に手直しを繰り返すのではなく、<br>
+      生成の<span class="hl">「前」</span>に問題を回避すべきだ。
+    </div>
+    <div class="rqrow">
+      <div class="rq"><div class="n">RQ 1</div><div class="t">意図の忠実性</div></div>
+      <div class="rq"><div class="n">RQ 2</div><div class="t">所有感・主導感</div></div>
+      <div class="rq"><div class="n">RQ 3</div><div class="t">努力の再配分</div></div>
+    </div>
+  </section>
+
+  <!-- 6 · NOVELTY -->
+  <section class="slide">
+    <div class="kicker">04 ── 新規性</div>
+    <h2>何が<span class="gold">新しい</span>のか</h2>
+    <p class="lead" style="margin-bottom:.7em">
+      いまの生成AIツールは、ほとんどが「<b>まず作る → 後で直す</b>」。
+      「<b>先に聞いてから作る</b>」という順番は便利ツールでは広がりつつあるが、
+      <em>創作でちゃんと比べた例はまだ少ない</em>。
+    </p>
+    <ul>
+      <li>とくに<b>初心者</b>が<b>作品をまるごと</b>作る場面で、事前に聞く効果を測った研究は見当たらない</li>
+    </ul>
+  </section>
+
+  <!-- 7 · SYSTEM -->
+  <section class="slide">
+    <div class="kicker">05 ── システム</div>
+    <h2>NovaStory：<span class="gold">3つの</span>ワークフロー</h2>
+    <div class="lanes">
+      <div class="lane C">
+        <div class="lh"><span class="code">C</span><span class="name">一発生成</span></div>
+        <div class="flow">アイデア → AIが完成脚本を生成 → 閲覧のみ → 提出。<br>ゼロ・ループ。</div>
+        <div class="mini"><div class="frame"></div><div class="frame"></div><div class="frame"></div></div>
+      </div>
+      <div class="lane D">
+        <div class="lh"><span class="code">D</span><span class="name">生成 → 事後修正</span></div>
+        <div class="flow">生成後、常時編集可＋「AIにこう直して」の自由記述。<br>ChatGPT 型の代理。</div>
+        <div class="mini"><div class="frame"></div><div class="frame"></div><div class="frame"></div></div>
+      </div>
+      <div class="lane E">
+        <div class="badge">本研究の提案</div>
+        <div class="lh"><span class="code">E</span><span class="name">事前引き出し → 生成</span></div>
+        <div class="flow">AI が先に5–7問 → 確定 → 生成 → 追加で引き出しも可。</div>
+        <div class="mini"><div class="frame"></div><div class="frame"></div><div class="frame"></div></div>
+      </div>
+    </div>
+    <div class="cite">タスク：15秒・3カットの絵コンテ（日常の微シーン）を作る</div>
+  </section>
+
+  <!-- 8 · E DESIGN -->
+  <section class="slide">
+    <div class="kicker">06 ── E の設計</div>
+    <h2>E：AI が<span class="gold">「先に問う」</span></h2>
+    <div class="cols">
+      <div>
+        <ul>
+          <li><b>固定3次元</b>：主人公の心理 / 転換点 / 核となる画面</li>
+          <li>＋ AI が <b>2–4問</b>を補完（計 5–7 問）</li>
+          <li>各問 = 選択肢3–4 ＋ <span class="gold">✍ 自分で書く</span> ＋ <span class="teal">🤖 AIに任せる</span></li>
+          <li>追加ラウンド：現稿を読んで 1–3 問（無制限）</li>
+        </ul>
+      </div>
+      <div class="frame" style="aspect-ratio:4/3; flex-direction:column; gap:.7em; padding:1.2em">
+        <div class="muted" style="font-size:.8rem;letter-spacing:.2em">GUIDED ELICITATION</div>
+        <div style="font-size:clamp(1rem,1.6vw,1.3rem);color:#fff;font-weight:700">主人公の心理は？</div>
+        <div style="display:flex;flex-wrap:wrap;gap:.4em;justify-content:center;font-size:.85rem;color:#cbc5b9">
+          <span style="border:1px solid var(--line2);border-radius:6px;padding:.3em .7em">焦り</span>
+          <span style="border:1px solid var(--line2);border-radius:6px;padding:.3em .7em">諦め</span>
+          <span style="border:1px solid var(--gold);color:var(--gold);border-radius:6px;padding:.3em .7em">✍ 自分で</span>
+          <span style="border:1px solid var(--teal);color:var(--teal);border-radius:6px;padding:.3em .7em">🤖 任せる</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 9 · METHOD -->
+  <section class="slide">
+    <div class="kicker">07 ── 手法</div>
+    <h2>手法：<span class="gold">3×3</span> で釣り合いを取る</h2>
+    <div class="cols" style="grid-template-columns:1fr 1.05fr; align-items:center">
+      <div>
+        <ul>
+          <li>被験者内：<b>3条件 × 3題</b>（同じ人が C・D・E を全部体験）</li>
+          <li><b>N = 36</b>、日本の大学生（9通り × 4人で 3×3 が過不足なく揃う）</li>
+          <li>初心者性は<b>測定して記録</b>（誰でも参加可・共変量に）</li>
+          <li>オンライン、所要 <b>10–15分</b></li>
+        </ul>
+      </div>
+      <div style="justify-self:center">
+        <div class="latin">
+          <div></div><div class="lh">1巡目</div><div class="lh">2巡目</div><div class="lh">3巡目</div>
+          <div class="rl">順番 ①</div><div class="cell C">C</div><div class="cell D">D</div><div class="cell E">E</div>
+          <div class="rl">順番 ②</div><div class="cell D">D</div><div class="cell E">E</div><div class="cell C">C</div>
+          <div class="rl">順番 ③</div><div class="cell E">E</div><div class="cell C">C</div><div class="cell D">D</div>
+        </div>
+      </div>
+    </div>
+    <p class="lead" style="max-width:42em; margin-top:clamp(14px,2.6vh,28px); font-size:clamp(.98rem,1.6vw,1.28rem)">
+      「順番のクセ」を打ち消すため、条件の出る順を<em>回転</em>させる。
+      → どの条件も 1・2・3 巡目に<b>均等に登場</b>し、どの題とも<b>均等に組む</b>（二重の釣り合い）。
+    </p>
+  </section>
+
+  <!-- 10 · MEASUREMENT -->
+  <section class="slide">
+    <div class="kicker">08 ── 測定</div>
+    <h2>忠実性の<span class="gold">三角</span> ＋ 所有感 ＋ 三口径の投入</h2>
+    <div class="cols" style="grid-template-columns:1.1fr 1fr">
+      <div>
+        <ul>
+          <li><b>忠実性</b> = 想像一致（主観）＋ ショット単位アノテーション（細粒度）＋ ブラインド評価（LLM-judge・全自動）</li>
+          <li><b>所有感</b> own1–3 ／ <b>主導感</b> soa1–2（1–7）</li>
+          <li><b>投入</b> = 事前 ＋ 事後 ＋ 総計（<em>三口径を併記</em>）</li>
+        </ul>
+      </div>
+      <div class="frame" style="flex-direction:column;gap:.5em;padding:1.4em">
+        <div class="gold" style="letter-spacing:.2em;font-size:.78rem">FIDELITY TRIANGLE</div>
+        <div style="font-size:clamp(.9rem,1.5vw,1.15rem);color:#e7e2d7;line-height:1.7;text-align:center">
+          想像一致<br><span class="faint">＋</span><br>ショット・アノテーション<br><span class="faint">＋</span><br>ブラインド評価
+        </div>
+        <div class="faint" style="font-size:.76rem;margin-top:.4em">三者が収束して初めて強く主張</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 11 · SIGNATURE FIGURE -->
+  <section class="slide">
+    <div class="kicker">09 ── 看板図</div>
+    <h2>予測：努力は<span class="gold">「前」へ</span>移る</h2>
+    <div class="chart">
+      <div class="bar C">
+        <div class="seg post" style="height:4%"></div>
+        <div class="seg pre" style="height:16%"></div>
+        <div class="cap"><div class="c">C</div><div class="d">一発生成</div></div>
+      </div>
+      <div class="bar D">
+        <div class="seg post" style="height:52%"></div>
+        <div class="seg pre" style="height:14%"></div>
+        <div class="cap"><div class="c">D</div><div class="d">事後修正</div></div>
+      </div>
+      <div class="bar E">
+        <div class="seg post" style="height:16%"></div>
+        <div class="seg pre" style="height:50%"></div>
+        <div class="cap"><div class="c">E</div><div class="d">事前引き出し</div></div>
+      </div>
+    </div>
+    <div class="legend">
+      <span><i style="background:var(--gold)"></i>事前投入（問いに答える）</span>
+      <span><i style="background:var(--teal)"></i>事後修正（直す）</span>
+    </div>
+    <div class="note">※ データ収集前 ── 仮説を可視化したイメージ図（実データではありません）</div>
+  </section>
+
+  <!-- 12 · HYPOTHESES -->
+  <section class="slide">
+    <div class="kicker">10 ── 仮説</div>
+    <h2>仮説<span class="faint">（本収集の前に確定）</span></h2>
+    <div class="grid2">
+      <div class="hbox"><div class="hh">H1 · 忠実性</div><div class="ht">意図忠実性：<b>E &gt; D &gt; C</b></div></div>
+      <div class="hbox"><div class="hh">H2 · 所有感</div><div class="ht">所有感・主導感：<b>E ≥ D &gt; C</b></div></div>
+      <div class="hbox"><div class="hh">H3 · 努力再配分</div><div class="ht">E は事前↑・事後↓；総投入と満足のトレードオフ</div></div>
+      <div class="hbox" style="border-left-color:var(--rose)"><div class="hh" style="color:var(--rose)">反対分岐も想定</div><div class="ht">初心者が引き出しを煩わしく感じる → 満足と所有感の乖離（Knijnenburg / Slovic）</div></div>
+    </div>
+    <div class="note">主要指標＝「忠実性の複合」＋「所有感の複合」。pilot で確定する。</div>
+  </section>
+
+  <!-- CLOSING -->
+  <section class="slide statement">
+    <div class="kicker">結び</div>
+    <div class="big">
+      創作ツールは、<br><span class="hl">「生成する前に問う」</span>を<br>組み込むべきだ。
+    </div>
+    <div class="title-meta" style="margin-top:clamp(30px,5vh,60px)">
+      <span>NovaStory</span><span>→ pilot</span><span>→ 本収集 N=36</span>
+    </div>
+    <div class="credit" style="margin-top:clamp(24px,4vh,44px)">
+      ご清聴ありがとうございました ・ <span class="muted">［連絡先］</span>
+    </div>
+  </section>
+
+</div>
+
+<script>
+  const slides = [...document.querySelectorAll('.slide')];
+  const cutNo = document.getElementById('cutNo');
+  const cutTot = document.getElementById('cutTot');
+  const prog = document.getElementById('prog');
+  cutTot.textContent = String(slides.length).padStart(2,'0');
+  let i = 0;
+
+  function show(n){
+    i = Math.max(0, Math.min(slides.length-1, n));
+    slides.forEach((s,k)=>s.classList.toggle('active', k===i));
+    cutNo.textContent = String(i+1).padStart(2,'0');
+    prog.style.width = ((i+1)/slides.length*100)+'%';
+    location.hash = i+1;
+  }
+  function next(){ show(i+1); }
+  function prev(){ show(i-1); }
+
+  document.addEventListener('keydown', e=>{
+    if(['ArrowRight','ArrowDown','PageDown',' '].includes(e.key)){ e.preventDefault(); next(); }
+    else if(['ArrowLeft','ArrowUp','PageUp'].includes(e.key)){ e.preventDefault(); prev(); }
+    else if(e.key==='Home'){ show(0); }
+    else if(e.key==='End'){ show(slides.length-1); }
+    else if(e.key==='f'||e.key==='F'){
+      if(!document.fullscreenElement) document.documentElement.requestFullscreen?.();
+      else document.exitFullscreen?.();
+    }
+  });
+  // click-to-advance (right 65% next, left 35% back); ignore links
+  document.addEventListener('click', e=>{
+    if(e.target.closest('a,button,kbd')) return;
+    (e.clientX > innerWidth*0.35) ? next() : prev();
+  });
+  // swipe
+  let sx=null;
+  addEventListener('touchstart',e=>sx=e.touches[0].clientX,{passive:true});
+  addEventListener('touchend',e=>{ if(sx==null)return; const dx=e.changedTouches[0].clientX-sx;
+    if(Math.abs(dx)>45){ dx<0?next():prev(); } sx=null; });
+
+  const start = parseInt(location.hash.slice(1));
+  show(Number.isFinite(start)&&start>0 ? start-1 : 0);
+</script>
+</body>
+</html>
