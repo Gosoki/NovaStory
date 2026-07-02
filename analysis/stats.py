@@ -1,4 +1,11 @@
 #!/usr/bin/env python
+# ============================================================================
+# ⚠️ v2(ModeMirror/HLZ)时代脚本 — 与 v3 schema 系统性脱节,收数前必须重写。
+# 已知问题(2026-07-02 第三轮审查):主 DV 绑定已废弃的 hlz_z;读 v3 中不存在/
+# 恒空的 v2 列;v3 新列(guidance_json/t_pregen/t_postgen/n_*)与 questionnaires
+# 表(主观量表=主要终点)完全没进管线。重写待 A4(主要终点组合)拍板后进行。
+# 详见 paper/8「分析层」。
+# ============================================================================
 """T7.5 统计分析 — LMM / Wilcoxon / 置换检验 / TOST / 剂量-反应 → stats_report.md。
 
 输入: data/analysis/metrics_per_trial.csv(metrics.py 产出)、

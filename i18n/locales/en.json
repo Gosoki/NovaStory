@@ -175,7 +175,6 @@
   "errors": {
     "no_api_key": "The system API is not configured. Please contact the researcher.",
     "llm_failed": "AI request failed: {error}. Please click any button to retry in a moment, or contact the researcher.",
-    "outline_empty": "The outline is empty. Please fill in the outline first.",
     "intent_too_short": "Please make your idea more specific (at least {n} characters).",
     "answer_all": "Some questions are still unanswered. Please answer all of them before submitting.",
     "unanswered": "Unanswered items → {items}",

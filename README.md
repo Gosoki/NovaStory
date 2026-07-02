@@ -12,11 +12,14 @@ storyboard creators (intent fidelity, psychological ownership, revision effort).
   questions (3 fixed expert dimensions + 2-4 AI-chosen), then generates; the
   user can keep requesting guided follow-up rounds or edit directly
 
-Each participant: consent → background questionnaire (novice status recorded,
-nobody screened out) → 3 rounds (3×3 Latin square over conditions × topics)
-with an in-app questionnaire + per-shot intent annotation after each round →
-completion code. Interaction spec: `paper/7`; engineering: `paper/5`;
-runtime flow: `paper/6`; claim verification: `paper/9`.
+Each participant: consent (language picked once, ja/zh) → background
+questionnaire (novice status recorded, nobody screened out) → 3 rounds (3×3
+Latin square over conditions × topics) with an in-app questionnaire (incl.
+per-round satisfaction) + per-shot intent annotation after each round →
+whole-study final survey → completion code. A resume token in the URL (`?t=`)
+survives refresh/reconnect without duplicating data. Interaction spec:
+`paper/7`; engineering: `paper/5`; runtime flow: `paper/6`; claim
+verification: `paper/9`.
 
 > v1 (A/B/C/D wizard) retired 2026-06-12 (`3a7737b`); v2 (ModeMirror E,
 > outline-editing D) retired 2026-06-13 — both live in git history.
@@ -41,10 +44,10 @@ Everything is written to SQLite (`data/novastory.db`, WAL mode, gitignored):
 
 | table | contents |
 |---|---|
-| `participants` | demographics, screening battery, latin-square seq, attention check, completion code |
-| `trials` | per round: condition, intent, `guidance_json` (E Q&A), `revision_requests` (D), `script_versions` (ai/user_edit), `n_ai_rounds`/`n_hand_edits`/`hand_edit_chars`, `t_pregen`/`t_postgen`, generation params (model/temperature/base_url). (v2-legacy outline/dissent columns kept but unused) |
-| `events` | timestamped interaction log (round_start … questionnaire_submit) |
-| `questionnaires` | ownership / agency / TLX items, intent-violation, imagine-match, per-shot annotations |
+| `participants` | demographics, screening battery (incl. baseline covariates), latin-square seq, attention check, resume `token`, `final_survey_json`, completion code, status |
+| `trials` | per round: condition, intent, `guidance_json` (E Q&A), `revision_requests` (D), `script_versions` (ai/user_edit), `n_ai_rounds`/`n_hand_edits`/`hand_edit_chars`, `t_pregen`/`t_postgen`, generation params (model/temperature/base_url); unique on (participant_id, round_idx) + INSERT OR REPLACE so resumes/double-clicks never duplicate a round |
+| `events` | timestamped interaction log (round_start … trial_submit, session_resumed; `llm_done` carries per-call token usage) |
+| `questionnaires` | ownership / agency / TLX items, intent-violation, imagine-match, satisfaction, per-shot annotations; unique on (participant_id, round_idx) |
 
 Language: participants run in **Japanese** (`ja`, default); the researcher can
 switch to `zh` for testing (topics carry `{ja, zh}`, LLM output follows the
@@ -54,10 +57,11 @@ browser + CSV export + session reset for local testing.
 ## Offline pipeline (analysis)
 
 `scripts/` and `analysis/` hold the non-Streamlit pipeline (machine baselines,
-stats, power simulation, LLM-judge). Note: ghost-run / HLZ metrics are
-**deprecated** (kept for possible reuse); current primary measures are
-intent-fidelity / ownership / revision-effort. See the Makefile and
-`analysis/requirements-analysis.txt`.
+stats, power simulation, LLM-judge). Note: `analysis/{metrics,stats,power_sim}.py`
+are still **v2-era (HLZ) scripts** and must be rewritten against the v3 schema
+before data analysis (see paper/8, analysis layer); ghost-run was deprecated and
+removed 2026-07-02. Current primary measures are intent-fidelity / ownership /
+revision-effort. See the Makefile and `analysis/requirements-analysis.txt`.
 
 ## Tests
 
@@ -67,6 +71,7 @@ intent-fidelity / ownership / revision-effort. See the Makefile and
 
 ## i18n
 
-`i18n/locales/{zh,en,ja}.json` mirror the same key tree (zh is the fallback
-source of truth). Deploy a study in ONE language; topics live in
+`i18n/locales/{ja,zh,en}.json` mirror the same key tree (missing keys fall back
+to `ja`, the study language). Participants pick ja/zh once on the consent page
+(en is admin-only — LLM prompts support ja/zh); topics live in
 `data/topics.json` (first 3 entries are used).

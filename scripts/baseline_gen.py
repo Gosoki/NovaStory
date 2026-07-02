@@ -51,6 +51,8 @@ def main() -> None:
         help="secrets.toml 中 api_configs 序号(默认 0)",
     )
     ap.add_argument("--temperature", type=float, default=0.8)
+    ap.add_argument("--lang", default="ja", choices=("ja", "zh"),
+                    help="生成语言(正式=ja,与被试数据可比;zh 仅测试)")
     args = ap.parse_args()
 
     topics = json.loads(TOPICS_PATH.read_text(encoding="utf-8"))[:3]
@@ -67,11 +69,15 @@ def main() -> None:
             continue
         if done:
             print(f"[topic{i}] 续跑:已有 {done} 份,补到 {args.n}")
-        system = prompts.build_system_script(topic)
+        system = prompts.build_system_script(topic, args.lang)
         with out_path.open("a", encoding="utf-8") as f:
             for j in range(done, args.n):
-                seed = seeds[j % len(seeds)] if seeds else topic.get("scenario", "")
-                text = client.generate(system, prompts.build_user(topic, seed))[0]
+                # scenario is a {ja, zh} dict since 6-24 — localize before use
+                seed = (seeds[j % len(seeds)] if seeds
+                        else prompts._loc(topic.get("scenario", ""), args.lang))
+                text = client.generate(
+                    system, prompts.build_user_script(topic, seed, args.lang)
+                )[0]
                 rec = {
                     "topic_idx": i,
                     "sample_idx": j,

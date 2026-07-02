@@ -88,6 +88,9 @@ def _switch_condition(cond: str) -> None:
     st.session_state["round_plan"][idx]["condition"] = cond
     state.reset_round_payload()
     state.log_event("dev_switch_condition", {"to": cond})
+    # Fresh timing origin — r_events was wiped, so without a new round_start the
+    # restarted round's t_read_intent / t_total would land NULL.
+    state.log_event("round_start")
 
 
 def _fill_current() -> None:
@@ -140,6 +143,7 @@ def _fill_questionnaire() -> None:
     st.session_state[f"_q_tlx1_{ridx}"] = 3
     st.session_state[f"_q_violation_{ridx}"] = 2
     st.session_state[f"_q_imagine_{ridx}"] = 6
+    st.session_state[f"_q_sat_{ridx}"] = 5
     if ridx == 2:  # attention check round
         st.session_state[f"_q_attention_{ridx}"] = 2
     mine_label = t("q.tag_mine")  # shot widgets use localized labels as options

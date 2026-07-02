@@ -175,7 +175,6 @@
   "errors": {
     "no_api_key": "系统接口未配置,请联系实验员。",
     "llm_failed": "AI 调用失败:{error}。请稍后点击任意按钮重试,或联系实验员。",
-    "outline_empty": "大纲为空,请先填写大纲。",
     "intent_too_short": "请把创意写得具体一点(至少 {n} 个字)。",
     "answer_all": "还有未回答的题目,请全部作答后再提交。",
     "unanswered": "还有未回答的题目 → {items}",

@@ -128,6 +128,19 @@ def current_meta(temperature: float | None = None) -> dict:
     }
 
 
+# --------- token usage (LOG6) ---------
+# Stashed per call in session_state (generate_stream is a generator consumed by
+# st.write_stream, so it can't return usage); the _streaming wrappers read it
+# into the llm_done event payload. None when the gateway doesn't report usage.
+
+def _stash_usage(usage) -> None:
+    st.session_state["_last_llm_usage"] = None if usage is None else {
+        "prompt": getattr(usage, "prompt_tokens", None),
+        "completion": getattr(usage, "completion_tokens", None),
+        "total_tokens": getattr(usage, "total_tokens", None),
+    }
+
+
 # --------- streaming ---------
 
 def ping(max_tokens: int = 5) -> tuple[bool, float, str]:
@@ -184,14 +197,20 @@ def generate_stream(
     ]
     _log(group, user_id, f"start model={model} base={base_url}")
     t0 = time.time()
+    _stash_usage(None)
     for attempt in range(retries + 1):
         total_len = 0
         first = True
         try:
             stream = client.chat.completions.create(
                 model=model, messages=messages, temperature=temperature, stream=True,
+                stream_options={"include_usage": True},
             )
             for chunk in stream:
+                # The usage chunk arrives last with choices=[] — read it before
+                # the empty-choices skip below.
+                if getattr(chunk, "usage", None):
+                    _stash_usage(chunk.usage)
                 if not chunk.choices:
                     continue
                 delta = chunk.choices[0].delta
@@ -204,7 +223,9 @@ def generate_stream(
                     first = False
                 total_len += len(content)
                 yield content
-            _log(group, user_id, f"done elapsed={time.time()-t0:.2f}s len={total_len}")
+            _log(group, user_id,
+                 f"done elapsed={time.time()-t0:.2f}s len={total_len}"
+                 f" usage={st.session_state.get('_last_llm_usage')}")
             return
         except Exception as e:  # noqa: BLE001
             if first and attempt < retries:  # safe to retry: nothing streamed yet
@@ -258,6 +279,8 @@ def generate_json(
     client, model = _guidance_client_and_model()
     _log(group, user_id, f"json_start model={model}")
     t0 = time.time()
+    _stash_usage(None)
+    spent: dict = {}
     last_err = ""
     msg_user = user
     for attempt in range(retries + 1):
@@ -273,6 +296,14 @@ def generate_json(
         except Exception as e:  # noqa: BLE001
             _log(group, user_id, f"json_error elapsed={time.time()-t0:.2f}s err={e!r}")
             raise LLMCallError(str(e)) from e
+        usage = getattr(resp, "usage", None)
+        if usage:  # accumulate across JSON-retry attempts — cost is what we track
+            for k, attr in (("prompt", "prompt_tokens"), ("completion", "completion_tokens"),
+                            ("total_tokens", "total_tokens")):
+                v = getattr(usage, attr, None)
+                if v is not None:
+                    spent[k] = spent.get(k, 0) + v
+            st.session_state["_last_llm_usage"] = dict(spent)
         raw = clean_output(resp.choices[0].message.content or "")
         raw = _FENCE_RE.sub("", raw).strip()
         try:

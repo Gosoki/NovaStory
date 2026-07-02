@@ -37,6 +37,12 @@ def render(topic: dict) -> None:
             # transient call/config error: offer an explicit retry (never hard-stuck)
             if st.button(t("round.retry"), type="primary", width="stretch"):
                 st.rerun()
+            # Follow-up rounds have a draft to fall back to — offer the same
+            # escape hatch as below, or a persistently busy gateway locks the
+            # participant on this screen with nothing but a retry button.
+            if st.session_state["r_versions"] and st.button(t("guidance.cancel"), width="stretch"):
+                st.session_state["r_phase"] = "postgen"
+                st.rerun()
             return
 
     qs = st.session_state["r_g_questions"]

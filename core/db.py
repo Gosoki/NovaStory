@@ -38,11 +38,6 @@ CREATE TABLE IF NOT EXISTS trials (
   condition TEXT NOT NULL,
   topic_json TEXT,
   intent_statement TEXT,
-  ai_outline TEXT,            -- v2 legacy (outline layer), unused in v3
-  edited_outline TEXT,        -- v2 legacy
-  dissent_json TEXT,          -- v2 legacy (ModeMirror)
-  adjudication TEXT,          -- v2 legacy
-  adjudication_reason TEXT,   -- v2 legacy
   final_output TEXT,
   parse_ok INTEGER,
   regen_count INTEGER DEFAULT 0,
@@ -50,8 +45,6 @@ CREATE TABLE IF NOT EXISTS trials (
   temperature REAL,
   base_url TEXT,
   t_read_intent REAL,
-  t_edit REAL,                -- v2 legacy
-  t_dissent REAL,             -- v2 legacy
   t_llm_wait REAL,
   t_total REAL,
   guidance_json TEXT,         -- E: rounds of option-style Q&A (paper/7 §6)
@@ -162,8 +155,15 @@ def insert_participant(
     with _conn() as conn:
         seq: Optional[int] = None
         if passed:
+            # CG1: take the write lock BEFORE counting, so two participants
+            # passing screening in the same instant can't both read the same
+            # count and grab the same Latin-square seq.
+            conn.execute("BEGIN IMMEDIATE")
+            # Researcher-injected test subjects (screening_json {"dev": true})
+            # must not shift real participants' Latin-square rotation.
             n = conn.execute(
                 "SELECT COUNT(*) FROM participants WHERE passed=1"
+                " AND COALESCE(json_extract(screening_json, '$.dev'), 0) != 1"
             ).fetchone()[0]
             seq = n % 9
         cur = conn.execute(

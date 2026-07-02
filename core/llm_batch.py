@@ -36,7 +36,9 @@ class BatchClient:
         self.model = model.strip()
         self.temperature = temperature
         self.base_url = (base_url or "").strip()
-        kwargs: dict = {"api_key": api_key.strip()}
+        # Same per-request cap as core/llm.py — a congested gateway must not
+        # hang an offline batch run for the SDK's ~600s default.
+        kwargs: dict = {"api_key": api_key.strip(), "timeout": 120}
         if self.base_url:
             kwargs["base_url"] = self.base_url
         self._client = OpenAI(**kwargs)

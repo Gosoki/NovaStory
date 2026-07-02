@@ -165,6 +165,10 @@ def _attempt_resume() -> None:
     st.session_state["stage"] = "rounds"
     reset_round_payload()
     log_event("session_resumed", {"round_idx": done_rounds + 1})
+    # Fresh timing origin: r_events was just wiped, and round_durations anchors
+    # t_read_intent / t_total on round_start — without this the resumed round's
+    # duration columns land NULL.
+    log_event("round_start")
 
 
 def _clone(v):
@@ -233,10 +237,6 @@ def advance_round() -> None:
     st.session_state["round_idx"] += 1
     reset_round_payload()
     log_event("round_start")
-
-
-def is_last_round() -> bool:
-    return st.session_state["round_idx"] >= config.N_ROUNDS
 
 
 def reset_for_next() -> None:
@@ -363,11 +363,21 @@ def load_topics() -> list[dict]:
         return [dict(t) for t in _SEED_TOPICS]
     try:
         data = json.loads(TOPICS_FILE.read_text(encoding="utf-8"))
-        if isinstance(data, list) and data:
-            return [_normalize_topic(t) for t in data]
+        if isinstance(data, list):
+            topics = [_normalize_topic(t) for t in data if isinstance(t, dict)]
+            if topics:
+                return topics
     except json.JSONDecodeError:
         pass
     return [dict(t) for t in _SEED_TOPICS]
+
+
+def _int_or(v, default: int) -> int:
+    """Dirty legacy topics.json values (CG3) must never crash topic loading."""
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return default
 
 
 def _normalize_topic(t: dict) -> dict:
@@ -375,23 +385,10 @@ def _normalize_topic(t: dict) -> dict:
     (per-shot duration). Translate it to the new `total_seconds` (whole clip)."""
     out = dict(t)
     if "total_seconds" not in out and "shot_seconds" in out:
-        out["total_seconds"] = int(out.pop("shot_seconds")) * int(out.get("shot_count", 1))
-    out.setdefault("total_seconds", 15)
-    out.setdefault("shot_count", 3)
+        out["total_seconds"] = _int_or(out.pop("shot_seconds"), 5) * _int_or(out.get("shot_count", 1), 3)
+    out["total_seconds"] = _int_or(out.get("total_seconds"), 15)
+    out["shot_count"] = _int_or(out.get("shot_count"), 3)
     return out
-
-
-def save_topic_preset(topic: dict) -> None:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    topics = load_topics()
-    for t in topics:
-        if t.get("title") == topic.get("title") and t.get("scenario") == topic.get("scenario"):
-            return
-    topics.append(topic)
-    TOPICS_FILE.write_text(
-        json.dumps(topics, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
 
 
 # ---------------- api configs (from .streamlit/secrets.toml) -----------------

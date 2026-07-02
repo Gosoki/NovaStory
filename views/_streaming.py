@@ -38,14 +38,19 @@ def stream_llm(system: str, user: str, *, group: str) -> Optional[str]:
             )
         )
     except llm.LLMCallError as e:
-        state.log_event("llm_error", {"group": group, "elapsed": round(time.time() - t0, 2)})
+        elapsed = round(time.time() - t0, 2)
+        # Failed waits are still AI-wait, not creative time — count them too,
+        # else a retried failure (up to 120s each) inflates t_pregen/t_postgen.
+        state.add_llm_wait(elapsed)
+        state.log_event("llm_error", {"group": group, "elapsed": elapsed})
         status.update(label=t("llm.failed"), state="error")
         st.error(t("errors.llm_failed", error=str(e)))
         return None
 
     elapsed = round(time.time() - t0, 2)
     state.add_llm_wait(elapsed)
-    state.log_event("llm_done", {"group": group, "elapsed": elapsed})
+    state.log_event("llm_done", {"group": group, "elapsed": elapsed,
+                                 "usage": st.session_state.get("_last_llm_usage")})
     status.update(label=t("llm.completed"), state="complete")
     text = out if isinstance(out, str) else "".join(out)
     return llm.clean_output(text)
@@ -70,21 +75,20 @@ def call_llm_json(system: str, user: str, *, group: str) -> Optional[dict]:
         st.error(t("errors.no_api_key"))
         return "RETRY"  # transient: caller should offer retry, not degrade
     except llm.LLMCallError as e:
-        state.log_event(
-            "llm_error",
-            {"group": group, "elapsed": round(time.time() - t0, 2), "kind": "call"},
-        )
+        elapsed = round(time.time() - t0, 2)
+        state.add_llm_wait(elapsed)  # failed wait is still AI-wait, not creative time
+        state.log_event("llm_error", {"group": group, "elapsed": elapsed, "kind": "call"})
         st.error(t("errors.llm_failed", error=str(e)))
         return "RETRY"
     except llm.LLMJsonError as e:
         # Model responded but JSON was unparseable after retries → degrade to
         # the open fallback question (paper/7 §2).
-        state.log_event(
-            "llm_error",
-            {"group": group, "elapsed": round(time.time() - t0, 2), "kind": "json"},
-        )
+        elapsed = round(time.time() - t0, 2)
+        state.add_llm_wait(elapsed)
+        state.log_event("llm_error", {"group": group, "elapsed": elapsed, "kind": "json"})
         return None
     elapsed = round(time.time() - t0, 2)
     state.add_llm_wait(elapsed)
-    state.log_event("llm_done", {"group": group, "elapsed": elapsed})
+    state.log_event("llm_done", {"group": group, "elapsed": elapsed,
+                                 "usage": st.session_state.get("_last_llm_usage")})
     return data

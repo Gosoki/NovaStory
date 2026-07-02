@@ -22,12 +22,19 @@ def _loc(value, lang: str) -> str:
     return value or ""
 
 
+def _int_or(v, default: int) -> int:
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return default
+
+
 def _shots(topic: dict) -> int:
-    return int(topic.get("shot_count", 3))
+    return _int_or(topic.get("shot_count"), 3)
 
 
 def _total(topic: dict) -> int:
-    return int(topic.get("total_seconds", 15))
+    return _int_or(topic.get("total_seconds"), 15)
 
 
 def _topic_block(topic: dict, intent: str, lang: str) -> str:
@@ -87,7 +94,7 @@ def build_user_script(topic: dict, intent: str, lang: str = _DEFAULT_LANG) -> st
     )
 
 
-def _answer_lines(answers: list[dict], lang: str) -> tuple[str, list[str]]:
+def _answer_lines(answers: list[dict]) -> tuple[str, list[str]]:
     lines = "\n".join(
         f"- {a['question']} → {a['chosen']}"
         for a in answers
@@ -102,7 +109,7 @@ def build_user_script_from_answers(
 ) -> str:
     """E first generation: intent + the user's confirmed Q&A answers."""
     n, total = _shots(topic), _total(topic)
-    lines, delegated = _answer_lines(answers, lang)
+    lines, delegated = _answer_lines(answers)
     block = _topic_block(topic, intent, lang)
     if _norm(lang) == "zh":
         parts = [block]
@@ -121,8 +128,8 @@ def build_user_script_from_answers(
     if delegated:
         parts.append("以下の点はユーザーがあなたに一任しています:\n" + "\n".join(f"- {q}" for q in delegated))
     parts.append(
-        f"以上の条件にもとづき、{n} カット・合計 {total} 秒の絵コンテを作成してください"
-        "(各カットの長さの合計は総尺と一致させること)。"
+        f"以上の条件にもとづき、{n} カット・合計 {total} 秒の絵コンテを作成してください。"
+        "各カットの長さはテンポに合わせて配分してください(合計は総尺と一致させること)。"
     )
     return "\n\n".join(parts)
 
@@ -179,7 +186,7 @@ def build_user_revision_from_answers(
     topic: dict, intent: str, current_script: str, answers: list[dict], lang: str = _DEFAULT_LANG
 ) -> str:
     """E follow-up rounds: revise the latest script per the new Q&A answers."""
-    lines, delegated = _answer_lines(answers, lang)
+    lines, delegated = _answer_lines(answers)
     block = _topic_block(topic, intent, lang)
     if _norm(lang) == "zh":
         parts = [block, f"当前脚本:\n{current_script.strip()}"]
