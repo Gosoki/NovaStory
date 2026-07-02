@@ -46,7 +46,7 @@ Everything is written to SQLite (`data/novastory.db`, WAL mode, gitignored):
 |---|---|
 | `participants` | demographics, screening battery (incl. baseline covariates), latin-square seq, attention check, resume `token`, `final_survey_json`, completion code, status |
 | `trials` | per round: condition, intent, `guidance_json` (E Q&A), `revision_requests` (D), `script_versions` (ai/user_edit), `n_ai_rounds`/`n_hand_edits`/`hand_edit_chars`, `t_pregen`/`t_postgen`, generation params (model/temperature/base_url); unique on (participant_id, round_idx) + INSERT OR REPLACE so resumes/double-clicks never duplicate a round |
-| `events` | timestamped interaction log (round_start … trial_submit, session_resumed; `llm_done` carries per-call token usage) |
+| `events` | millisecond-timestamped interaction log (round_start … trial_submit, session_resumed) with per-round ordering (`seq_in_round`), session-segment `attempt` ids and post-submit `trial_id` backfill; `llm_done` carries per-call token usage |
 | `questionnaires` | ownership / agency / TLX items, intent-violation, imagine-match, satisfaction, per-shot annotations; unique on (participant_id, round_idx) |
 
 Language: participants run in **Japanese** (`ja`, default); the researcher can

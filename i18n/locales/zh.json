@@ -4,7 +4,7 @@
     "subtitle": "一项关于人与 AI 共同创作的在线研究"
   },
   "common": {
-    "loading": "AI 生成中…(通常需要 30〜90 秒,接口繁忙时可能稍久,请耐心等待)"
+    "loading": "AI 生成中,请稍候…"
   },
   "sidebar": {
     "language": "界面语言",
@@ -194,7 +194,7 @@
     "revision_send": "告诉 AI"
   },
   "guidance": {
-    "wait": "AI 正在为你准备问题,大约需要一分钟…",
+    "wait": "AI 正在为你准备问题…",
     "title": "和 AI 一起完善你的故事",
     "progress": "第 {i} / {n} 问",
     "pick_label": "选一个最接近你想法的",

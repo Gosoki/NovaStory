@@ -1,4 +1,8 @@
 #!/usr/bin/env python
+# ⚠️ 注(2026-07-02):判定口径已改,本脚本待 A1 终稿时重写——judge 全用 OpenAI
+# 单家族×3+自一致性(拍板⑥,下文"异家族"协议作废);无人评(拍板④,--human-sample
+# 废弃);缺"盲评保真"模式;四维与 A1 已定 rubric 不一致;提示需改日语(JP3)。
+# 现行口径见 paper/8 A1 / paper/10 §6.3。
 """T7.7 LLM-judge — 对 trials 的 final_output 按 4 维 rubric 各评 3 次。
 
 维度: 连贯性 / 画面感 / 新颖性 / 可拍摄性,1-7 分。

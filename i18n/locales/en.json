@@ -4,7 +4,7 @@
     "subtitle": "An online study on human–AI co-creation"
   },
   "common": {
-    "loading": "AI is generating… (usually 30–90 seconds; may take longer if the service is busy — please wait)"
+    "loading": "The AI is generating… please wait a moment."
   },
   "sidebar": {
     "language": "Interface language",
@@ -194,7 +194,7 @@
     "revision_send": "Tell the AI"
   },
   "guidance": {
-    "wait": "The AI is preparing questions for you — this takes about a minute…",
+    "wait": "The AI is preparing your questions…",
     "title": "Build your story together with the AI",
     "progress": "Question {i} / {n}",
     "pick_label": "Pick the option closest to what you have in mind",

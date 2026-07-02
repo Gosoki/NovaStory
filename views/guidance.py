@@ -128,6 +128,9 @@ def _save_current(rnd: int, idx: int) -> None:
         # (e.g. after a language switch) is unreliable.
         "ai_decided": opt == _AI_DECIDE(),
     }
+    # Per-question timing anchor (log batch 7-02): with ms timestamps, the gap
+    # between consecutive saves ≈ time spent on each question (dose analysis).
+    state.log_event("guidance_answer_saved", {"round": rnd, "q": idx})
 
 
 def _generate_questions(topic: dict) -> None:

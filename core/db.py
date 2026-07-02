@@ -61,9 +61,12 @@ CREATE TABLE IF NOT EXISTS events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   participant_id INTEGER,
   round_idx INTEGER,
-  ts TEXT NOT NULL,
+  ts TEXT NOT NULL,              -- millisecond ISO since 2026-07-02 (LOG3)
   type TEXT NOT NULL,
-  payload_json TEXT
+  payload_json TEXT,
+  seq_in_round INTEGER,          -- 1-based order within the round attempt (LOG3)
+  attempt TEXT,                  -- session segment id; a redo round gets a new one (LOG4)
+  trial_id INTEGER               -- backfilled at trial submit for the winning attempt (LOG4)
 );
 CREATE TABLE IF NOT EXISTS questionnaires (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -102,6 +105,10 @@ _MIGRATIONS = [
     "ALTER TABLE trials ADD COLUMN hand_edit_chars INTEGER",
     "ALTER TABLE trials ADD COLUMN t_pregen REAL",
     "ALTER TABLE trials ADD COLUMN t_postgen REAL",
+    # detailed-log batch (LOG3/LOG4, 2026-07-02)
+    "ALTER TABLE events ADD COLUMN seq_in_round INTEGER",
+    "ALTER TABLE events ADD COLUMN attempt TEXT",
+    "ALTER TABLE events ADD COLUMN trial_id INTEGER",
 ]
 
 
@@ -232,13 +239,31 @@ def insert_event(
     round_idx: Optional[int],
     type_: str,
     payload: Optional[dict] = None,
+    seq_in_round: Optional[int] = None,
+    attempt: Optional[str] = None,
 ) -> None:
+    ts = datetime.now().isoformat(timespec="milliseconds")  # LOG3: sub-second gaps matter
     with _conn() as conn:
         conn.execute(
-            "INSERT INTO events (participant_id, round_idx, ts, type, payload_json)"
-            " VALUES (?,?,?,?,?)",
-            (participant_id, round_idx, _now(), type_,
-             _dumps(payload) if payload else None),
+            "INSERT INTO events (participant_id, round_idx, ts, type, payload_json,"
+            " seq_in_round, attempt) VALUES (?,?,?,?,?,?,?)",
+            (participant_id, round_idx, ts, type_,
+             _dumps(payload) if payload else None, seq_in_round, attempt),
+        )
+
+
+def attach_trial_to_events(
+    trial_id: int, participant_id: int, round_idx: int, attempt: Optional[str]
+) -> None:
+    """LOG4: after a trial lands, stamp its id onto the events of the attempt
+    that produced it — a redone round's stale attempts stay trial_id NULL."""
+    if not attempt:
+        return
+    with _conn() as conn:
+        conn.execute(
+            "UPDATE events SET trial_id=? WHERE participant_id=? AND round_idx=?"
+            " AND attempt=?",
+            (trial_id, participant_id, round_idx, attempt),
         )
 
 

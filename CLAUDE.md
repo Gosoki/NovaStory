@@ -18,7 +18,7 @@ Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-s
  - 同时：方向/设计变更后，检查 paper/ 里被取代的文档是否需要加过时横幅（保留历史决策与原因，但不要让旧文档被误读为当前状态）。
 
 ### 0.2 当前权威文档（避免引用过时内容）
- - 研究方向/论文骨架：`paper/10`　实验交互规格：`paper/7 v4.1`　工程：`paper/5 v2.0`　运行流程：`paper/6`　主张/文献核查：`paper/9`　文献库：`paper/reference/`　待办：`paper/8`
+ - 研究方向/论文骨架：`paper/10`　实验交互规格：`paper/7 v4.1`　工程：`paper/5 v2.0`（留档性质，细节以代码为准）　运行流程：`paper/6`　主张/文献核查：`paper/9`　文献库：`paper/reference/`　待办：`paper/8`　数据字典/可计算指标：`paper/12`
  - 已过时（仅留档）：`paper/1`（v1 四组）、`paper/2`/`paper/3`（v2 ModeMirror）、`paper/4`（部分失效，§5.1/5.4/6 等）
 
 ### 0.3 语言（实验对象是日本人）

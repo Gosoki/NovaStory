@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import difflib
 import json
+import secrets
 import time
 from pathlib import Path
 from typing import Any, Optional
@@ -83,6 +84,7 @@ ROUND_PAYLOAD_DEFAULTS: dict[str, Any] = {
     "r_llm_wait_pre": 0.0,        # E round-1: waits inside [guidance_shown, guidance_submit)
     "r_events": [],               # [(epoch_seconds, type)] session mirror for durations
     "r_trial_id": None,
+    "r_attempt": "",              # session segment id (LOG4); fresh per round attempt
 }
 
 DEFAULTS: dict[str, Any] = {
@@ -223,6 +225,9 @@ def current_round() -> dict:
 def reset_round_payload() -> None:
     for k, v in ROUND_PAYLOAD_DEFAULTS.items():
         st.session_state[k] = v if not isinstance(v, (dict, list)) else _clone(v)
+    # Every (re)start of a round gets its own segment id, so a redone round's
+    # events can be told apart from the discarded attempt's (LOG4).
+    st.session_state["r_attempt"] = secrets.token_hex(4)
     # Ephemeral widget keys (Streamlit usually cleans these on unmount; pop
     # defensively so a new round never inherits stale editor content).
     for k in list(st.session_state.keys()):
@@ -298,6 +303,8 @@ def log_event(type_: str, payload: Optional[dict] = None) -> None:
         st.session_state.get("round_idx"),
         type_,
         payload,
+        seq_in_round=len(st.session_state["r_events"]),  # LOG3: 1-based within attempt
+        attempt=st.session_state.get("r_attempt") or None,
     )
 
 

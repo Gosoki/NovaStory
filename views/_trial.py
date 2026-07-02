@@ -44,4 +44,11 @@ def submit_trial(final_text: str) -> None:
         **durs,
     )
     st.session_state["r_trial_id"] = trial_id
+    # LOG4: stamp this attempt's events with the trial id they produced.
+    db.attach_trial_to_events(
+        trial_id,
+        st.session_state["participant_id"],
+        st.session_state["round_idx"],
+        st.session_state.get("r_attempt"),
+    )
     st.session_state["r_phase"] = "questionnaire"
