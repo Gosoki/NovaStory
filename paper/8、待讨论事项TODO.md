@@ -83,6 +83,13 @@
 
 ## ✅ 已结清(留痕)
 
+### 2026-07-02(深夜③)· 问卷前分镜预览表
+- 每轮问卷**开头**把终稿渲染成分镜表(No. / 景别·カメラ / 画面 / 情节 / 台词;前 3 镜连续编号 1.2.3 + 第 4 行整行留空),替代原来的纯文本回顾;被试答题前先视觉化确认自己的成品。解析失败(散文稿)时退回纯文本,不出破表。
+- 为此**恢复 `shots.py` 的 shot_type 解析**(填 景别/カメラ 列;7-02 白天曾作死代码删除,现有真实消费者);HTML 表格用户文本 `html.escape` 防注入。
+- **视觉升级(07-03)**:做成真·絵コンテ纸样式——「画面」列改为 **16:9 空画框**(相框内阴影)+ 圆圈剪辑号 + 秒数角标 + 纸张底色 + 顶部标题栏(絵コンテ + 本轮题目名)。纯 CSS(方法 1;另评估过 PIL/SVG/AI 生图,前者字体慢、后者=未来占位)。占位「今後実装予定」在画框内。
+- 新增 i18n `storyboard.*`(col_shot/frame/plot/line + frame_todo)三语 181 键;验证:parser 捕获 shot_type(zh+ja)、HTML 结构/占位×3/转义/编号 1-3、fallback、E2E 全绿。
+- **⏳ 未来功能(占位已埋)**:「画面」列现填占位「后续更新 / 今後実装予定」——预留**为每镜生成分镜草图**(文生图),用户日后决定是否开发。
+
 ### 2026-07-02(深夜)· LOG 精简批次实装 + 进度条 + 决策批②(报酬/judge/N4/分析延后)
 - ~~LOG3/LOG4/E 逐题时刻~~ → **实装**(见 §📋):events 毫秒 ts + `seq_in_round` + `attempt` 段标记 + `trial_id` 回填 + `guidance_answer_saved`;三项 DB 迁移向后兼容,E2E 全绿,机制单测(毫秒/序号/分段/回填)全过。
 - ~~AUD10 进度条~~ → **实装**:引导出题步线程化 + st.progress(60s 封顶缓动;`add_script_run_ctx` 保 session_state 线程可用,AppTest 兼容);三语等待文案去掉长等待措辞。
@@ -101,7 +108,7 @@
 - ~~consent 语言器暴露 en~~:选 en 会得到"英文 UI+日文 AI 输出"混语言会话(prompts 只支持 ja/zh)→ 被试端只开 ja/zh,en 仅管理员。
 - ~~devtools 一键填充漏满意度题~~(6-26 新题没跟上)→ 补 `_q_sat_`。
 **死代码清理(用户要求"精简完全没用上的"):**
-- 删除:`scripts/ghost_run.py`(已废弃+调不存在函数,连带 Makefile ghosts 目标)、`shots.py` shot_type 字段(标签保留作解析锚)、`state.is_last_round`/`save_topic_preset`、`config.CONDITIONS`/`GUIDANCE_FIXED_DIMS`(零引用)、i18n 死键 `errors.outline_empty`×3、`trials` 表 7 个 v2 旧列出 schema(旧库既有列保留无害)、空目录 `samples/vsc_workspace`、`prompts._answer_lines` 死参。
+- 删除:`scripts/ghost_run.py`(已废弃+调不存在函数,连带 Makefile ghosts 目标)、~~`shots.py` shot_type 字段~~(**7-02 深夜③已恢复**——问卷前的分镜表 景别/カメラ 列要用,见文末「分镜预览表」)、`state.is_last_round`/`save_topic_preset`、`config.CONDITIONS`/`GUIDANCE_FIXED_DIMS`(零引用)、i18n 死键 `errors.outline_empty`×3、`trials` 表 7 个 v2 旧列出 schema(旧库既有列保留无害)、空目录 `samples/vsc_workspace`、`prompts._answer_lines` 死参。
 - 修复保留:`baseline_gen.py`(A3 还要用)——调不存在的 `build_user`→`build_user_script`、scenario `{ja,zh}` 字典本地化、加 `--lang`(默认 ja);`llm_batch` 加 120s 超时。
 - 标记不删:`analysis/{metrics,stats,power_sim}.py` 加"v2 时代,收数前必须重写"横幅 → 立项 A6。
 **其他:** prompts ja 版补「单镜时长自行分配」句(zh/ja 对称);config 引导步注释按 B9 拍板更新。
