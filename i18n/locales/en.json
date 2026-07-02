@@ -206,5 +206,13 @@
     "continue_btn": "Let the AI keep guiding me",
     "fallback_q": "In a few words, what direction or details do you still want?",
     "cancel": "Cancel and return to the draft"
+  },
+  "storyboard": {
+    "col_shot": "Shot",
+    "col_frame": "Frame",
+    "col_plot": "Action",
+    "col_line": "Dialogue",
+    "frame_todo": "Coming soon",
+    "title": "Storyboard"
   }
 }

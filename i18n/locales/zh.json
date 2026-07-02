@@ -206,5 +206,13 @@
     "continue_btn": "让 AI 继续引导",
     "fallback_q": "用几句话告诉 AI,你还想要什么样的方向或细节?",
     "cancel": "取消,返回草稿"
+  },
+  "storyboard": {
+    "col_shot": "景别",
+    "col_frame": "画面",
+    "col_plot": "情节",
+    "col_line": "台词",
+    "frame_todo": "后续更新",
+    "title": "分镜表"
   }
 }

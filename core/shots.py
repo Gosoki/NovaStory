@@ -13,9 +13,9 @@ Callers must handle an empty result (-> whole-text fallback, parse_ok=0).
 """
 
 # Field label (inside 【】) → canonical key; covers zh + ja labels and aliases.
-# Shot-type labels (景别/拍法/カメラ/サイズ…) stay in _FIELD_RE as split anchors
-# (so their text never bleeds into visual/audio content) but map to no key —
-# nothing consumes a shot_type field (v3 measures use visual/audio only).
+# Shot-type labels (景别/拍法/カメラ/サイズ…) map to shot_type — surfaced in the
+# pre-questionnaire storyboard table (景别/カメラ column); they also act as split
+# anchors so their text never bleeds into the visual/audio fields.
 _FIELD_RE = re.compile(
     r"【\s*(景别|拍法|画面描写|台词/音效|台词|音效|时长"
     r"|サイズ|ショットサイズ|カメラ|映像|画面|ビジュアル|セリフ・音|セリフ|音声|効果音|音|尺|秒数|長さ|時間)"
@@ -23,9 +23,10 @@ _FIELD_RE = re.compile(
 )
 _FIELD_MAP = {
     # zh
-    "画面描写": "visual",
+    "景别": "shot_type", "拍法": "shot_type", "画面描写": "visual",
     "台词/音效": "audio", "台词": "audio", "音效": "audio", "时长": "duration",
     # ja
+    "サイズ": "shot_type", "ショットサイズ": "shot_type", "カメラ": "shot_type",
     "映像": "visual", "画面": "visual", "ビジュアル": "visual",
     "セリフ・音": "audio", "セリフ": "audio", "音声": "audio", "効果音": "audio", "音": "audio",
     "尺": "duration", "秒数": "duration", "長さ": "duration", "時間": "duration",
@@ -89,7 +90,7 @@ def _split_by_duration(text: str) -> list[tuple[int, int, int]]:
 
 
 def parse_shots(text: str) -> list[dict]:
-    """Parse into [{idx, visual, audio, duration, raw}]; [] on failure."""
+    """Parse into [{idx, shot_type, visual, audio, duration, raw}]; [] on failure."""
     text = (text or "").strip()
     if not text:
         return []

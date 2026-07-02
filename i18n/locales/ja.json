@@ -206,5 +206,13 @@
     "continue_btn": "AI のガイドを続ける",
     "fallback_q": "ほかにどんな方向やディテールがほしいか、数語で教えてください。",
     "cancel": "キャンセルして草案に戻る"
+  },
+  "storyboard": {
+    "col_shot": "カメラ",
+    "col_frame": "画面",
+    "col_plot": "内容",
+    "col_line": "セリフ・音",
+    "frame_todo": "今後実装予定",
+    "title": "絵コンテ"
   }
 }
