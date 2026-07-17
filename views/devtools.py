@@ -11,9 +11,9 @@ assigning to a main-area widget key here happens before that widget is
 instantiated in the same run, which Streamlit allows."""
 
 TEST_INTENTS = {  # keyed by zh title (researcher tests in zh)
-    "下不去的满员电车": "主角终于挤到门边,门却在他面前关上了",
-    "打工最后一天的那句话": "主角把想说的话写在了递出去的最后一杯咖啡的杯套上",
-    "放榜的早晨": "主角不敢看公告栏,先盯着周围人的表情猜自己的结果",
+    "捡到的失物（别人掉的东西）": "主角捡到一个钱包,犹豫再三,最后追上前面的人还了回去",
+    "最后一口（分享还是独享）": "两个人都盯着最后一块蛋糕,主角假装大方让出去,对方却真的一口吃了",
+    "陌生街道的第一步": "主角刚下车,深吸一口气,朝着完全陌生的方向迈出了第一步",
 }
 _FALLBACK_INTENT = "主角在最普通的一天里发现了一件完全说不通的小事"
 EDIT_SNIPPET = "\n(我的修改:结局反转——主角把这一切拍成视频发到了网上,火了)"
