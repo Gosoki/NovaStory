@@ -5,7 +5,7 @@ import streamlit as st
 from core import config, db, state
 from i18n import t
 from views import (
-    consent, final_survey, researcher, round_common, screening, sidebar,
+    consent, final_survey, intro, researcher, round_common, screening, sidebar,
 )
 
 
@@ -29,6 +29,8 @@ def main() -> None:
     stage = st.session_state["stage"]
     if stage == "consent":
         consent.render()
+    elif stage == "intro":
+        intro.render()
     elif stage == "screening":
         screening.render()
     elif stage == "rounds":

@@ -17,7 +17,6 @@ def render() -> None:
     st.divider()
     st.header(t("consent.title"))
     st.markdown(t("consent.body"))
-    st.info(t("consent.overview"))  # how the study works (3 rounds, flow, no right answers)
     st.warning(t("consent.no_refresh"))
     agree = st.checkbox(t("consent.agree"), key="_consent_agree")
     if st.button(
@@ -26,5 +25,6 @@ def render() -> None:
         disabled=not agree,
         width="stretch",
     ):
-        st.session_state["stage"] = "screening"
+        # The "how it works" page (flow + input-freedom) comes next, before screening.
+        st.session_state["stage"] = "intro"
         st.rerun()

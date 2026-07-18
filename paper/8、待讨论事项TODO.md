@@ -39,7 +39,7 @@
 **📌 已确立(可直接写论文)**:E 三维内容效度背书(McKee/Field/Katz/絵コンテ,paper/14 §1,投稿前修 3 处逐字引用);客观评价方案(数据科学栈,paper/14 §5);预注册做法 + 无 pilot 调整(paper/14 §4)。
 
 **🆕 新待办**:
-- **B4 提示词正式实验前必须重新校验**(换 OpenAI 后重测引导出题质量/延迟/JSON 健壮性)。
+- ✅ **B4 提示词已在 OpenAI 上重新校验(2026-07-19,gpt-4o-mini)**:脚本(ja/en/zh 格式+时长和=15+解析)、引导 JSON(6/6 首次干净解析、3 固定维全在)、修订、延迟(2-7s)全过。**5 路对抗审阅(prompt-review 工作流,11 确认/6 驳回)发现并修复**:①**高危**——E 追问(followup)prompt 漏了「不问秒数」禁令 → 模型真的问了「1秒/2秒/3秒/4秒」,已补三语禁令、复测 0/6 泄漏;②引导问题偶尔套模板空话 → Requirement 3 加「点到具体情节」好/坏例(三维具体化);③选项数硬底(必 3-4、禁 2);④ja 的 why 改大白话 + 敬体统一。留观(pilot 看):ending 补充维偶与 turning_point 重叠(个例)。
 - ✅ **主题 norming 已跑(2026-07-18)**:`analysis/norming.py` + OpenAI 基线×12/题;三题规格 100% 合规、gzip_cr 3.19-3.22(极差~1%)、distinct-2 ~0.38 → **开放度高度可比,题面可冻结**。(embedding 发散度等增强指标可选后补。)
 - ✅ **A6 分析管线 v3 —— 全部构建完成并自测(2026-07-18)**:`analysis/{textstats,v3,norming,power_sim,stats,embed,figures}.py`。**v3**=结构完整度/多样性(CR三件套)/逐镜头保真/版本演化/努力再分配/主观复合(dev 库跑通);**stats**=LMM `DV~条件+题目+顺序+(1|被试)` + E−D 主对比(Holm)+ TOST 非劣 + Wilcoxon + 剂量-反应(合成 N=400 复原注入效应 ✅ + 真 CSV 集成 ✅);**power_sim**=SESOI 先验功效(N=36→80% 功效 dz≈0.48);**embed**=相对基线保真 Δ(数学自测 ✅,API 路径待真数据);**figures**=招牌图(努力再分配)+ 主 DV(已渲染);**norming**=主题开放度(待 baseline 生成完)。全接 Makefile(`make v3/embed/stats/power/figures/norming`,`make analysis` 串全链)。**旧 `metrics.py`(v2 HLZ)已被 v3.py 取代**,收数验收后删。真数据一到即可出全套结果+图。A1/judge 仍为「可选小样本效度锚」。
 - ✅ **「AI 问得好不好」问卷题**(用户需求):已加 E 轮 `ai_q_quality`(1-7,agree 锚点,仅 E 显示、C/D 存 NULL);DB 迁移 + E2E 回归就位(2026-07-18)。

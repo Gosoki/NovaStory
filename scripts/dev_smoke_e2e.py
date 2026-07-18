@@ -136,9 +136,11 @@ def run() -> None:
     at.run()
     assert at.session_state["lang"] == "zh", at.session_state["lang"]
 
-    # --- consent + screening (everyone proceeds; novice recorded) ---
+    # --- consent → intro (how-it-works page) → screening ---
     at.checkbox(key="_consent_agree").check().run()
     btn_click(at, "同意并开始")
+    assert at.session_state["stage"] == "intro", at.session_state["stage"]
+    btn_click(at, "开始")                          # intro "start" button
     at.selectbox[0].select("18-24")
     at.selectbox[1].select("不愿透露")
     at.selectbox[2].select("偶尔(每月几次)")
