@@ -147,6 +147,7 @@ def _fill_questionnaire() -> None:
     st.session_state[f"_q_sat_{ridx}"] = 5
     if state.current_round()["condition"] == "E":
         st.session_state[f"_q_ai_q_quality_{ridx}"] = 6
+        st.session_state[f"_q_ai_q_amount_{ridx}"] = 4  # ai_q_best radio is optional
     if ridx == 2:  # attention check round
         st.session_state[f"_q_attention_{ridx}"] = 2
     mine_label = t("q.tag_mine")  # shot widgets use localized labels as options

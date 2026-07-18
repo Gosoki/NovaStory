@@ -124,6 +124,9 @@
     "imagine": "How close is the final script to what you pictured in your mind?",
     "satisfaction": "Overall, I am satisfied with the final result of this round",
     "ai_q_quality": "The questions the AI asked were on-point and helped me develop my ideas.",
+    "ai_q_amount": "How was the number of questions the AI asked you?",
+    "ai_q_best": "Which of those questions helped you (helped you think it through)?",
+    "ai_q_best_ph": "Select all that apply — or none, if none of them helped.",
     "script_review": "The storyboard you just finished",
     "anchor_disagree": "Strongly disagree",
     "anchor_neutral": "Neutral",
@@ -131,7 +134,10 @@
     "anchor_viol_low": "Not at all",
     "anchor_viol_high": "Severely",
     "anchor_imag_low": "Not at all",
-    "anchor_imag_high": "Very close"
+    "anchor_imag_high": "Very close",
+    "anchor_amt_low": "Too few",
+    "anchor_amt_mid": "Just right",
+    "anchor_amt_high": "Too many"
   },
   "history": {
     "title": "History",

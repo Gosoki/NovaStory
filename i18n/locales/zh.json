@@ -124,6 +124,9 @@
     "imagine": "最终脚本和你想象中的画面有多接近?",
     "satisfaction": "我对这一轮的最终成品整体上满意",
     "ai_q_quality": "AI 提出的引导问题问得到位,帮我把想法想得更清楚。",
+    "ai_q_amount": "AI 抛出的问题数量,对你来说怎么样?",
+    "ai_q_best": "其中,哪些问题对你有帮助(帮你想清楚了)?",
+    "ai_q_best_ph": "可多选;若没有觉得有帮助的,也可以一个都不选。",
     "script_review": "你刚完成的脚本",
     "anchor_disagree": "完全不同意",
     "anchor_neutral": "一般",
@@ -131,7 +134,10 @@
     "anchor_viol_low": "完全没有",
     "anchor_viol_high": "严重违背",
     "anchor_imag_low": "完全不像",
-    "anchor_imag_high": "非常接近"
+    "anchor_imag_high": "非常接近",
+    "anchor_amt_low": "太少了",
+    "anchor_amt_mid": "刚刚好",
+    "anchor_amt_high": "太多了"
   },
   "history": {
     "title": "历史记录",

@@ -23,6 +23,7 @@ _ANCHOR_SETS = {
     "agree": ("anchor_disagree", "anchor_neutral", "anchor_agree"),
     "violation": ("anchor_viol_low", "anchor_neutral", "anchor_viol_high"),
     "imagine": ("anchor_imag_low", "anchor_neutral", "anchor_imag_high"),
+    "amount": ("anchor_amt_low", "anchor_amt_mid", "anchor_amt_high"),
 }
 
 
@@ -136,6 +137,38 @@ def _render_storyboard(script: str) -> None:
     )
 
 
+def _ai_q_best_pick(ridx: int):
+    """E-only, optional: let the subject flag the guiding questions that helped —
+    multi-select over every question asked this trial, each shown as
+    'question → the answer you gave' so it is recognizable. Returns a list of
+    {idx, dimension, question, chosen} (empty if none flagged), or None when <2
+    were asked. Not added to `missing` — it is optional."""
+    asked = [
+        it for r in st.session_state.get("r_guidance_rounds", [])
+        for it in r.get("items", [])
+        if it.get("question")
+    ]
+    if len(asked) < 2:
+        return None
+
+    def _answer(it: dict) -> str:
+        if it.get("ai_decided"):
+            return t("guidance.ai_decide")
+        return (it.get("chosen") or "").strip()
+
+    st.markdown(t("q.ai_q_best"))
+    st.caption(t("q.ai_q_best_ph"))
+    chosen = []
+    for i, it in enumerate(asked):
+        ans = _answer(it)
+        label = f"{it['question']} → {ans}" if ans else it["question"]
+        if st.checkbox(label, key=f"_q_aqbest_{ridx}_{i}"):
+            chosen.append({"idx": i, "dimension": it.get("dimension", "other"),
+                           "question": it.get("question", ""), "chosen": ans})
+    st.divider()
+    return chosen
+
+
 def render() -> None:
     ridx = st.session_state["round_idx"]
     # Show the finished script as a storyboard table above the questionnaire so
@@ -171,9 +204,13 @@ def render() -> None:
     likert("imagine", t("q.imagine"), anchors="imagine")
     likert("sat", t("q.satisfaction"))
     # E-only: rate the quality of the AI's guiding questions (E is the only
-    # condition where the AI asks structured questions).
+    # condition where the AI asks structured questions). ai_q_amount = did it ask
+    # too few / just right / too many; ai_q_best = which single question landed
+    # (optional). Both exploratory, stored E-only (NULL for C/D).
     if state.current_round()["condition"] == "E":
         likert("ai_q_quality", t("q.ai_q_quality"))
+        likert("ai_q_amount", t("q.ai_q_amount"), anchors="amount")
+        answers["ai_q_best"] = _ai_q_best_pick(ridx)
 
     # ---- per-shot intent annotation ----
     # Options are the localized labels themselves (no format_func): a
@@ -240,6 +277,9 @@ def _submit(ridx: int, answers: dict, shot_annotations: list[dict]) -> None:
         imagine_match=answers["imagine"],
         satisfaction=answers["sat"],
         ai_q_quality=answers.get("ai_q_quality"),  # E only; NULL for C/D
+        ai_q_amount=answers.get("ai_q_amount"),    # E only; NULL for C/D
+        ai_q_best_json=(json.dumps(answers["ai_q_best"], ensure_ascii=False)
+                        if answers.get("ai_q_best") else None),
         shot_annotations_json=json.dumps(shot_annotations, ensure_ascii=False),
     )
     if ridx == _ATTENTION_ROUND:

@@ -124,6 +124,9 @@
     "imagine": "完成した絵コンテは、あなたが頭の中で思い描いていた映像にどのくらい近いですか?",
     "satisfaction": "このラウンドの最終的な成果物に、全体として満足している",
     "ai_q_quality": "AI が出してきた質問は、的確で、自分の考えを深めるのに役立った。",
+    "ai_q_amount": "AI が投げかけてきた質問の数は、あなたにとってどうでしたか?",
+    "ai_q_best": "その中で、役に立った(考えを深めてくれた)質問はどれですか?",
+    "ai_q_best_ph": "複数選択できます。役に立ったものがなければ、選ばなくてもかまいません。",
     "script_review": "今回完成した絵コンテ",
     "anchor_disagree": "まったくそう思わない",
     "anchor_neutral": "どちらともいえない",
@@ -131,7 +134,10 @@
     "anchor_viol_low": "まったく反していない",
     "anchor_viol_high": "大きく反している",
     "anchor_imag_low": "全く違う",
-    "anchor_imag_high": "とても近い"
+    "anchor_imag_high": "とても近い",
+    "anchor_amt_low": "少なすぎた",
+    "anchor_amt_mid": "ちょうどよかった",
+    "anchor_amt_high": "多すぎた"
   },
   "history": {
     "title": "これまでの履歴",

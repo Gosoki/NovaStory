@@ -79,6 +79,8 @@ CREATE TABLE IF NOT EXISTS questionnaires (
   imagine_match INTEGER,
   satisfaction INTEGER,
   ai_q_quality INTEGER,
+  ai_q_amount INTEGER,          -- E only: 1=too few · 4=just right · 7=too many
+  ai_q_best_json TEXT,          -- E only: the guiding question flagged most useful (optional)
   shot_annotations_json TEXT,
   created_at TEXT NOT NULL
 );
@@ -96,6 +98,8 @@ _MIGRATIONS = [
     "ALTER TABLE questionnaires ADD COLUMN imagine_match INTEGER",
     "ALTER TABLE questionnaires ADD COLUMN satisfaction INTEGER",
     "ALTER TABLE questionnaires ADD COLUMN ai_q_quality INTEGER",
+    "ALTER TABLE questionnaires ADD COLUMN ai_q_amount INTEGER",
+    "ALTER TABLE questionnaires ADD COLUMN ai_q_best_json TEXT",
     "ALTER TABLE participants ADD COLUMN token TEXT",
     "ALTER TABLE participants ADD COLUMN final_survey_json TEXT",
     # v3 (guided co-creation) trial columns

@@ -237,8 +237,13 @@ def _answer_questionnaire(at, round_idx: int, attention: bool = False,
     set_sc(at, f"_q_violation_{round_idx}", 2)
     set_sc(at, f"_q_imagine_{round_idx}", 6)
     set_sc(at, f"_q_sat_{round_idx}", 6)
-    if ai_q:  # E-only item: quality of the AI's guiding questions
+    if ai_q:  # E-only items: quality + amount of the AI's guiding questions
         set_sc(at, f"_q_ai_q_quality_{round_idx}", 6)
+        set_sc(at, f"_q_ai_q_amount_{round_idx}", 4)
+        # ai_q_best checkboxes must render in E (this trial asked >=2 guidance
+        # questions); optional, so we leave them unchecked but assert they appear.
+        assert any((c.key or "").startswith(f"_q_aqbest_{round_idx}_") for c in at.checkbox), \
+            "ai_q_best checkboxes missing in E questionnaire"
     for idx in (1, 2, 3):  # stub scripts parse into 3 shots; option[0] == "mine" label
         bg = next(b for b in at.get("button_group") if b.key == f"_q_shot{idx}_{round_idx}")
         bg.set_value(bg.options[0])
@@ -294,6 +299,8 @@ def _assert_db() -> None:
     assert q["satisfaction"].notna().all()
     aqq = q.set_index("round_idx")["ai_q_quality"]  # E-only (round 3); NULL for C/D
     assert pd.notna(aqq[3]) and pd.isna(aqq[1]) and pd.isna(aqq[2]), aqq.to_dict()
+    aqa = q.set_index("round_idx")["ai_q_amount"]   # E-only (round 3); NULL for C/D
+    assert aqa[3] == 4 and pd.isna(aqa[1]) and pd.isna(aqa[2]), aqa.to_dict()
 
     r3 = set(ev[ev["round_idx"] == 3]["type"])
     for needed in ("round_start", "intent_submit", "guidance_shown", "guidance_answer",

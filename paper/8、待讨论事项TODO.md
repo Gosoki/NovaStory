@@ -42,7 +42,8 @@
 - **B4 提示词正式实验前必须重新校验**(换 OpenAI 后重测引导出题质量/延迟/JSON 健壮性)。
 - ✅ **主题 norming 已跑(2026-07-18)**:`analysis/norming.py` + OpenAI 基线×12/题;三题规格 100% 合规、gzip_cr 3.19-3.22(极差~1%)、distinct-2 ~0.38 → **开放度高度可比,题面可冻结**。(embedding 发散度等增强指标可选后补。)
 - ✅ **A6 分析管线 v3 —— 全部构建完成并自测(2026-07-18)**:`analysis/{textstats,v3,norming,power_sim,stats,embed,figures}.py`。**v3**=结构完整度/多样性(CR三件套)/逐镜头保真/版本演化/努力再分配/主观复合(dev 库跑通);**stats**=LMM `DV~条件+题目+顺序+(1|被试)` + E−D 主对比(Holm)+ TOST 非劣 + Wilcoxon + 剂量-反应(合成 N=400 复原注入效应 ✅ + 真 CSV 集成 ✅);**power_sim**=SESOI 先验功效(N=36→80% 功效 dz≈0.48);**embed**=相对基线保真 Δ(数学自测 ✅,API 路径待真数据);**figures**=招牌图(努力再分配)+ 主 DV(已渲染);**norming**=主题开放度(待 baseline 生成完)。全接 Makefile(`make v3/embed/stats/power/figures/norming`,`make analysis` 串全链)。**旧 `metrics.py`(v2 HLZ)已被 v3.py 取代**,收数验收后删。真数据一到即可出全套结果+图。A1/judge 仍为「可选小样本效度锚」。
-- ✅ **「AI 问得好不好」问卷题**(用户需求):已加 E 轮 `ai_q_quality`(1-7,agree 锚点,仅 E 显示、C/D 存 NULL);DB 迁移 + E2E 回归就位(2026-07-18)。可选后续:加一条「问得太多/麻烦」反向题喂 H7 反向分支(留待你决定)。
+- ✅ **「AI 问得好不好」问卷题**(用户需求):已加 E 轮 `ai_q_quality`(1-7,agree 锚点,仅 E 显示、C/D 存 NULL);DB 迁移 + E2E 回归就位(2026-07-18)。
+- ✅ **E 引导「量+哪道好」探索数据**(用户 7-18 需求,"稍微收集,我们来讨论"):再加 E 轮 `ai_q_amount`(问得多还是少,1-7:太少↔刚好↔太多,必答)+ `ai_q_best`(选填,从本轮问过的问题里挑最有用的一道,存 `{idx,dimension,question}`)。仅 E、C/D 存 NULL;探索性、暂不进主管线;可交叉 guidance_json 的 dimension 看哪类问题最受用。DB 迁移(幂等)+ E2E(断言 ai_q_amount 仅 E 记录)全绿。这也顺带覆盖了此前「问得太多」反向题的意图(量的过多端=负担信号,喂 H7 反向分支)。
 
 ## 🎓 修士答辩前必修(2026-07-18 多专家评估 + bug 猎杀)
 
