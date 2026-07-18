@@ -21,11 +21,11 @@ REVISION_SAMPLE = "(测试)整体更搞笑一点,最后一镜加个反转"
 
 
 def render() -> None:
-    st.subheader("🧪 测试工具")
+    st.subheader(t("admin.tools_title"))
     _model_check()
     stage = st.session_state.get("stage")
     if stage in ("consent", "screening"):
-        if st.button("跳过同意+筛查(注入测试被试)", width="stretch"):
+        if st.button(t("admin.skip_intake"), width="stretch"):
             _skip_intake()
             st.rerun()
     elif stage == "rounds":
@@ -33,39 +33,40 @@ def render() -> None:
         plan = " → ".join(
             f"R{i + 1}:{r['condition']}" for i, r in enumerate(st.session_state["round_plan"])
         )
-        st.caption(f"序列 seq={st.session_state['seq']} | {plan}")
+        st.caption(t("admin.seq_line", seq=st.session_state["seq"], plan=plan))
         st.caption(
-            f"当前:第 {st.session_state['round_idx']} 轮 · 条件 **{rd['condition']}** · "
-            f"阶段 {st.session_state['r_phase']}"
+            t("admin.cur_line", i=st.session_state["round_idx"],
+              cond=rd["condition"], phase=st.session_state["r_phase"])
         )
-        st.button("一键填充当前页输入", width="stretch", on_click=_fill_current)
+        st.button(t("admin.fill_current"), width="stretch", on_click=_fill_current)
         cols = st.columns(3)
         for col, cond in zip(cols, ("C", "D", "E")):
             col.button(
-                f"切到 {cond}",
+                t("admin.switch_to", cond=cond),
                 width="stretch",
                 disabled=cond == rd["condition"],
                 on_click=_switch_condition,
                 args=(cond,),
             )
-        st.caption("切换会重置本轮已有输入(从写创意重新开始)。")
-    st.caption("成套输入:samples/test_inputs.md;全自动回归:scripts/dev_smoke_e2e.py")
+        st.caption(t("admin.switch_hint"))
+    st.caption(t("admin.test_refs"))
 
 
 def _model_check() -> None:
     """Researcher connectivity probe — ping the configured model and report
     通/不通 + latency, so 接口繁忙/慢/挂 can be caught before a participant starts."""
     meta = llm.current_meta()
-    st.caption(f"模型:`{meta['model']}` · {meta['base_url'] or '(默认 OpenAI)'}")
-    if st.button("🔌 测试模型连通", width="stretch", key="btn_model_ping"):
-        with st.spinner("正在调用模型…"):
+    st.caption(t("admin.model_line", model=meta["model"],
+                 base=meta["base_url"] or t("admin.model_default")))
+    if st.button(t("admin.model_ping"), width="stretch", key="btn_model_ping"):
+        with st.spinner(t("admin.model_pinging")):
             ok, elapsed, detail = llm.ping()
         if ok:
-            st.success(f"✅ 通 · {elapsed:.1f}s · 返回:{detail[:40]}")
+            st.success(t("admin.ping_ok", s=f"{elapsed:.1f}", detail=detail[:40]))
             if elapsed > 30:
-                st.warning("⚠️ 延迟 >30s,正式收数体验差,考虑切 OpenAI(见 config.GUIDANCE_API_INDEX)")
+                st.warning(t("admin.ping_slow"))
         else:
-            st.error(f"❌ 不通 · {elapsed:.1f}s · {detail[:200]}")
+            st.error(t("admin.ping_fail", s=f"{elapsed:.1f}", detail=detail[:200]))
     st.divider()
 
 

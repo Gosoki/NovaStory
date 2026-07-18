@@ -18,13 +18,14 @@ Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-s
  - 同时：方向/设计变更后，检查 paper/ 里被取代的文档是否需要加过时横幅（保留历史决策与原因，但不要让旧文档被误读为当前状态）。
 
 ### 0.2 当前权威文档（避免引用过时内容）
- - 研究方向/论文骨架+假设表：`paper/10`　实验交互规格：`paper/7 v4.1`　工程：`paper/5 v2.0`（留档性质，细节以代码为准）　运行流程：`paper/6`　主张/文献核查：`paper/9`　文献库：`paper/reference/`　待办/下一步：`paper/8`　数据字典/可计算指标：`paper/12`　数据管理与合规：`paper/13`　案头研究(维度/量表/主题/预注册/客观评价)：`paper/14`　日语研究背景与目的(草案)：`paper/15`
- - 分析管线：`analysis/{v3,stats,power_sim,embed,figures,norming,textstats}.py`（A6 v3，`make analysis` 串全链）；旧 `analysis/metrics.py` 为 v2(HLZ) 遗留，收数验收后删。
+ - 研究方向/论文骨架+假设表：`paper/10`　实验交互规格：`paper/7 v4.1`　工程：`paper/5 v2.0`（留档性质，细节以代码为准）　运行流程：`paper/6`　主张/文献核查：`paper/9`　文献库：`paper/reference/`　待办/下一步：`paper/8`　数据字典/可计算指标：`paper/12`　数据管理与合规：`paper/13`　案头研究(维度/量表/主题/预注册/客观评价)：`paper/14`　日语研究背景与目的(草案)：`paper/15`　**试测决策树与后手**：`paper/16`
+ - 分析管线：`analysis/{v3,stats,power_sim,embed,figures,norming,textstats}.py`（A6 v3，`make analysis` 串全链）；**试测健康检查 `analysis/pilot_check.py`（`make pilot`；4 生死问题→🟢🟡🔴 + 后手分支）**；旧 `analysis/metrics.py` 为 v2(HLZ) 遗留，收数验收后删。
  - 多专家充分性评估（2026-07-18）：裁决=**勉强够**（纸面超标、押在未采数据）；答辩火力点与「答辩前必修」清单见 `paper/8 §🎓`。
  - 已过时（仅留档，勿引用为当前状态）：`paper/1`（v1 四组/同质化×介入点）、`paper/2`/`paper/3`（v2 ModeMirror）、`paper/4`（v2 方案书，待重写）
 
 ### 0.3 语言（实验对象是日本人）
- - 被试默认日语（`ja`），研究员测试用 `zh`。UI 文案在 `i18n/locales/{ja,zh,en}.json`（三语键树必须一致）；**LLM 输出语言由 `prompts.build_*` 的 `lang` 参数控制**（调用点传 `i18n.get_lang()`）；脚本主题 `data/topics.json` 字段为 `{ja, zh}` 字典。改 UI/prompt 时务必中日同步，别让日本被试看到中文。
+ - 被试默认日语（`ja`），研究员测试用 `zh`。**ja/zh/en 三语现在都是全链路可用**（UI + `prompts.build_*` 输出 + `data/topics.json` 的 `{ja,zh,en}` 情境 + `core/shots.py` 分镜解析），被试同意页三语可选（默认 ja）；研究员后台随语言选择器切换。
+ - 硬约束:①UI 文案 `i18n/locales/{ja,zh,en}.json` 三语键树必须一致(占位符也要对齐);②**LLM 输出语言由 `prompts.build_*` 的 `lang` 参数控制**(调用点传 `i18n.get_lang()`),每个 `build_*` 都有 zh/en/ja 三分支;③改分镜字段标记(【时长】/【Duration】…)时,`prompts.py` 与 `core/shots.py` 解析器必须同步。**改一处务必三语同步,别让被试看到混杂语言。**
  
  
 

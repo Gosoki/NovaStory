@@ -4,6 +4,13 @@ runOnSave = true
 [browser]
 gatherUsageStats = false
 
+[client]
+# Hide Streamlit's own English chrome (the "Deploy" button + ☰ hamburger menu)
+# so a Japanese participant never sees stray English. Researcher tools live in
+# the sidebar, not this toolbar, so nothing is lost. ("minimal" keeps only items
+# the app itself adds — here, none.)
+toolbarMode = "minimal"
+
 # Theme: blue accent that FOLLOWS each participant's system light/dark preference.
 # Streamlit auto-switches (and shows the ☰ → Settings toggle) ONLY when BOTH
 # [theme.light] and [theme.dark] are defined; a bare [theme] would lock the app

@@ -4,18 +4,18 @@ import streamlit as st
 
 from core import db
 from i18n import t
+from views import analysis_panel, monitor_panel
 
 
 def render() -> None:
     st.header(t("researcher.title"))
+    monitor_panel.render()      # 概览卡片 + 采数进度/平衡统计图
+    st.divider()
+    _data_browser()             # 四表原始浏览 + CSV 导出
+    analysis_panel.render()     # 📊 数据分析(一键出结果/图)
 
-    c = db.counts()
-    cols = st.columns(4)
-    cols[0].metric(t("researcher.n_participants"), c["participants"])
-    cols[1].metric(t("researcher.n_passed"), c["passed"])
-    cols[2].metric(t("researcher.n_done"), c["done"])
-    cols[3].metric(t("researcher.n_trials"), c["trials"])
 
+def _data_browser() -> None:
     table = st.selectbox(t("researcher.table_label"), db.TABLES)
     df = db.load_table(table)
     if df.empty:

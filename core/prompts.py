@@ -12,7 +12,7 @@ _DEFAULT_LANG = "ja"
 
 
 def _norm(lang: str) -> str:
-    return "zh" if lang == "zh" else "ja"
+    return lang if lang in ("zh", "ja", "en") else "ja"
 
 
 def _loc(value, lang: str) -> str:
@@ -43,6 +43,8 @@ def _topic_block(topic: dict, intent: str, lang: str) -> str:
     intent = (intent or "").strip()
     if _norm(lang) == "zh":
         return f"主题:{title}\n情境:{scenario}\n用户的核心创意:{intent}"
+    if _norm(lang) == "en":
+        return f"Theme: {title}\nSituation: {scenario}\nThe user's core idea: {intent}"
     return f"テーマ:{title}\n状況:{scenario}\nユーザーの核となるアイデア:{intent}"
 
 
@@ -62,6 +64,22 @@ def build_system_script(topic: dict, lang: str = _DEFAULT_LANG) -> str:
             "格式示例:`1. 【时长】3 秒 【拍法】特写 【画面描写】… 【台词/音效】…`\n"
             "只输出这个编号列表,禁止添加解释、前言或总结。\n"
             "输出语言:中文。"
+        )
+    if _norm(lang) == "en":
+        return (
+            "You are a professional short-video storyboard writer.\n"
+            f"You must output exactly {n} shots, {total} seconds in total.\n"
+            "You decide each shot's length by the pacing of the content (a close-up/"
+            "insert can be as short as 1–2 seconds; an action/dialogue shot can run "
+            "6–8 seconds or longer), but the durations of all shots MUST sum to "
+            f"**exactly {total} seconds**.\n"
+            "Every shot **must begin with its number** (`1.`, `2.`, `3.` …), followed "
+            "by 4 fields (in this order): 【Duration】X s (X is the number of seconds "
+            "you assigned to that shot), 【Shot】(push/pull, wide/tight, etc.), "
+            "【Visual】, 【Audio】.\n"
+            "Format example: `1. 【Duration】3 s 【Shot】close-up 【Visual】… 【Audio】…`\n"
+            "Output only this numbered list; add no explanation, preamble, or summary.\n"
+            "Output language: English."
         )
     return (
         "あなたはプロのショート動画の絵コンテ作成アシスタントです。\n"
@@ -86,6 +104,13 @@ def build_user_script(topic: dict, intent: str, lang: str = _DEFAULT_LANG) -> st
             f"{block}\n\n"
             f"请围绕以上条件生成 {n} 个镜头、总时长 {total} 秒的分镜脚本,"
             "单镜时长请你自己按节奏分配(加总须等于总时长)。"
+        )
+    if _norm(lang) == "en":
+        return (
+            f"{block}\n\n"
+            f"Based on the conditions above, create a storyboard of {n} shots totaling "
+            f"{total} seconds; you allocate each shot's length by pacing (the total must "
+            "equal the overall duration)."
         )
     return (
         f"{block}\n\n"
@@ -122,6 +147,18 @@ def build_user_script_from_answers(
             "单镜时长请你自己按节奏分配(加总须等于总时长)。"
         )
         return "\n\n".join(parts)
+    if _norm(lang) == "en":
+        parts = [block]
+        if lines:
+            parts.append(f"Settings the user confirmed via the Q&A (these MUST be reflected in the script):\n{lines}")
+        if delegated:
+            parts.append("The user leaves the following up to you:\n" + "\n".join(f"- {q}" for q in delegated))
+        parts.append(
+            f"Based on the conditions above, create a storyboard of {n} shots totaling "
+            f"{total} seconds; you allocate each shot's length by pacing (the total must "
+            "equal the overall duration)."
+        )
+        return "\n\n".join(parts)
     parts = [block]
     if lines:
         parts.append(f"ユーザーが質問への回答で確定した設定(必ず脚本に反映すること):\n{lines}")
@@ -150,6 +187,23 @@ def build_system_revision(topic: dict, lang: str = _DEFAULT_LANG) -> str:
             "例:`1. 【时长】3 秒 【拍法】… 【画面描写】… 【台词/音效】…`。\n"
             "4. 只输出脚本本身,禁止解释或前言。输出语言:中文。"
         )
+    if _norm(lang) == "en":
+        return (
+            "You are a professional short-video storyboard revision assistant. The user "
+            "will give you the current storyboard and a revision request.\n"
+            "Rules:\n"
+            "1. Revise strictly per the user's request; **leave the parts they did not ask "
+            "to change as they are** (including wording the user edited themselves).\n"
+            "2. The request may be abstract (e.g. 'make it funnier', 'make it more "
+            "explosive'); turn it into concrete changes to the visuals/dialogue.\n"
+            f"3. Output the complete revised script: {n} shots, totaling exactly {total} "
+            "seconds. **Every shot must begin with its number** (`1.`, `2.`, `3.` …, add "
+            "numbering even if the original lacked it), followed by the 4 fields "
+            "【Duration】X s 【Shot】【Visual】【Audio】 (in this order), e.g. "
+            "`1. 【Duration】3 s 【Shot】… 【Visual】… 【Audio】…`.\n"
+            "4. Output only the script itself, no explanation or preamble. Output "
+            "language: English."
+        )
     return (
         "あなたはプロのショート動画の絵コンテ修正アシスタントです。"
         "ユーザーが現在の絵コンテと修正の要望を渡します。\n"
@@ -176,6 +230,11 @@ def build_user_revision(
             f"{block}\n\n当前脚本:\n{current_script.strip()}\n\n"
             f"用户的修改要求:{request_text.strip()}"
         )
+    if _norm(lang) == "en":
+        return (
+            f"{block}\n\nCurrent script:\n{current_script.strip()}\n\n"
+            f"The user's revision request: {request_text.strip()}"
+        )
     return (
         f"{block}\n\n現在の脚本:\n{current_script.strip()}\n\n"
         f"ユーザーの修正の要望:{request_text.strip()}"
@@ -195,6 +254,13 @@ def build_user_revision_from_answers(
         if delegated:
             parts.append("以下方面用户交给你自由发挥:\n" + "\n".join(f"- {q}" for q in delegated))
         return "\n\n".join(parts)
+    if _norm(lang) == "en":
+        parts = [block, f"Current script:\n{current_script.strip()}"]
+        if lines:
+            parts.append(f"The revision direction the user confirmed via this new round of Q&A (must be applied):\n{lines}")
+        if delegated:
+            parts.append("The user leaves the following up to you:\n" + "\n".join(f"- {q}" for q in delegated))
+        return "\n\n".join(parts)
     parts = [block, f"現在の脚本:\n{current_script.strip()}"]
     if lines:
         parts.append(f"ユーザーが新たな質問への回答で確定した修正の方向(必ず反映すること):\n{lines}")
@@ -211,6 +277,10 @@ _JSON_SPEC_ZH = (
 )
 _JSON_SPEC_JA = (
     "JSONのみを出力してください。それ以外の文章やmarkdownのコードブロックは不要です。形式:"
+    '{"questions":[{"dimension":"...","question":"...","options":["...","..."],"why":"..."}]}'
+)
+_JSON_SPEC_EN = (
+    "Output JSON only — no other text and no markdown code block. Format:"
     '{"questions":[{"dimension":"...","question":"...","options":["...","..."],"why":"..."}]}'
 )
 
@@ -230,6 +300,31 @@ def build_system_guidance_round1(lang: str = _DEFAULT_LANG) -> str:
             "options 为 3-4 个具体、互斥、可直接选用的选项;why 为一句话说明为什么这个问题对这个故事重要。\n"
             f"4. {_JSON_SPEC_ZH}\n"
             "5. question / options / why 全部使用中文(dimension 除外)。"
+        )
+    if _norm(lang) == "en":
+        return (
+            "You are a guide for short-video storyboard creation. The user is a complete "
+            "novice with no filmmaking experience and has just submitted a story idea. "
+            "Your job is to generate a set of guiding questions that help the user put "
+            "what is in their head into words.\n"
+            "Requirements:\n"
+            "1. You must include three fixed dimensions, with the dimension field set to "
+            "\"psychology\" (what the protagonist most wants to get / most wants to avoid "
+            "right now — desire and motivation, not merely a mood), \"turning_point\" "
+            "(where, within these 15 seconds, the situation/value flips — e.g. "
+            "hope→disappointment), \"key_shot\" (which single frame · what composition "
+            "carries the dramatic center of the whole piece).\n"
+            f"2. Then, based on the specifics of this idea, add {lo}-{hi} other dimensions "
+            "you think matter most for this story (use a short English slug for dimension, "
+            "e.g. \"pacing\", \"tone\", \"ending\", \"sound\"); if the idea fits, add a "
+            "\"pacing\" one first (how to split the 15 seconds across the 3 shots, "
+            "fast/slow rhythm).\n"
+            "3. For each question: question is one concrete question (it MUST tie to the "
+            "specifics of the user's idea, never be generic); options are 3-4 concrete, "
+            "mutually exclusive, directly selectable choices; why is one sentence on why "
+            "this question matters for this story.\n"
+            f"4. {_JSON_SPEC_EN}\n"
+            "5. question / options / why must all be in English (except dimension)."
         )
     return (
         "あなたはショート動画の絵コンテ制作のガイドです。"
@@ -264,6 +359,19 @@ def build_system_guidance_followup(lang: str = _DEFAULT_LANG) -> str:
             f"{_JSON_SPEC_ZH}\n"
             "question / options / why 全部使用中文(dimension 除外)。"
         )
+    if _norm(lang) == "en":
+        return (
+            "You are a guide for short-video storyboard creation. The user already has a "
+            "draft storyboard and has asked you to keep guiding them. "
+            f"Read the current draft, find the {lo}-{hi} weak spots most worth probing, "
+            "and generate guiding questions.\n"
+            "For each question: use a short English slug for dimension; question ties to "
+            "the specifics of the draft; options are 3-4 concrete, mutually exclusive, "
+            "directly selectable choices; why is one sentence giving the reason for "
+            "probing.\n"
+            f"{_JSON_SPEC_EN}\n"
+            "question / options / why must all be in English (except dimension)."
+        )
     return (
         "あなたはショート動画の絵コンテ制作のガイドです。"
         "ユーザーはすでに絵コンテの草案を持っていて、続けてガイドしてほしいと求めています。"
@@ -281,4 +389,6 @@ def build_user_guidance_followup(
     block = _topic_block(topic, intent, lang)
     if _norm(lang) == "zh":
         return f"{block}\n\n当前分镜稿:\n{current_script.strip()}"
+    if _norm(lang) == "en":
+        return f"{block}\n\nCurrent storyboard draft:\n{current_script.strip()}"
     return f"{block}\n\n現在の絵コンテ草案:\n{current_script.strip()}"

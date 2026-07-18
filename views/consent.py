@@ -10,9 +10,10 @@ def render() -> None:
     # Subject picks their language once, here, before consenting. After this it is
     # not shown to the subject anywhere (only admins can switch it) — keeps a
     # Japanese subject from ever flipping into another language mid-study (JP6).
-    # en is admin-only: LLM prompts/topics support ja/zh, so an en subject would
-    # get an English UI over Japanese AI output.
-    language_radio("_consent_lang", langs=("ja", "zh"))
+    # All three languages are fully wired end-to-end (UI + LLM prompts + topics +
+    # shot parser), so a subject gets a single-language session in whichever they
+    # pick; ja is the default (langs[0]) for the formal Japanese cohort.
+    language_radio("_consent_lang")
     st.divider()
     st.header(t("consent.title"))
     st.markdown(t("consent.body"))

@@ -25,9 +25,9 @@ def language_radio(
     render at once (admin on the consent page) only the clicked one updates,
     avoiding a rerun fight.
 
-    `langs` narrows the choices: subjects only get languages the LLM prompts
-    actually support (ja/zh) — en UI would pair with ja AI output (prompts._norm
-    folds non-zh to ja), a mixed-language session no one should end up in.
+    `langs` can narrow the choices, but all three (ja/zh/en) are now fully wired
+    end-to-end — UI, LLM prompts (prompts._norm passes each through), topics, and
+    the shot parser — so any pick yields a single-language session.
     """
     cur = st.session_state.get("lang", langs[0])
     st.radio(

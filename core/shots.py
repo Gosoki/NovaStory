@@ -16,10 +16,13 @@ Callers must handle an empty result (-> whole-text fallback, parse_ok=0).
 # Shot-type labels (景别/拍法/カメラ/サイズ…) map to shot_type — surfaced in the
 # pre-questionnaire storyboard table (景别/カメラ column); they also act as split
 # anchors so their text never bleeds into the visual/audio fields.
+# Labels are matched case-insensitively so English 【Duration】/【duration】 both hit.
 _FIELD_RE = re.compile(
     r"【\s*(景别|拍法|画面描写|台词/音效|台词|音效|时长"
-    r"|サイズ|ショットサイズ|カメラ|映像|画面|ビジュアル|セリフ・音|セリフ|音声|効果音|音|尺|秒数|長さ|時間)"
-    r"[^】]*】\s*[::]?\s*"
+    r"|サイズ|ショットサイズ|カメラ|映像|画面|ビジュアル|セリフ・音|セリフ|音声|効果音|音|尺|秒数|長さ|時間"
+    r"|Duration|Seconds|Sec|Shot|Camera|Visual|Action|Audio|Dialogue|Sound)"
+    r"[^】]*】\s*[::]?\s*",
+    re.IGNORECASE,
 )
 _FIELD_MAP = {
     # zh
@@ -30,17 +33,36 @@ _FIELD_MAP = {
     "映像": "visual", "画面": "visual", "ビジュアル": "visual",
     "セリフ・音": "audio", "セリフ": "audio", "音声": "audio", "効果音": "audio", "音": "audio",
     "尺": "duration", "秒数": "duration", "長さ": "duration", "時間": "duration",
+    # en (canonical Title-case; _field_key() folds other casings onto these)
+    "Duration": "duration", "Seconds": "duration", "Sec": "duration",
+    "Shot": "shot_type", "Camera": "shot_type",
+    "Visual": "visual", "Action": "visual",
+    "Audio": "audio", "Dialogue": "audio", "Sound": "audio",
 }
-# Shot boundary: "1." / "1、" / "镜头1" / "カット1" / "**1." / "#### 镜头 1"
+
+
+def _field_key(label: str) -> str | None:
+    """Canonical field key for a matched label; case-folds English labels
+    (【DURATION】/【duration】 → 'duration') while leaving CJK labels untouched."""
+    label = label.strip()
+    return _FIELD_MAP.get(label) or _FIELD_MAP.get(label.title())
+
+
+# Shot boundary: "1." / "1、" / "镜头1" / "カット1" / "Shot 1" / "**1." / "#### 镜头 1"
 _SHOT_SPLIT_RE = re.compile(
-    r"(?m)^\s*(?:[#*>\-\s]*)?(?:镜头|カット|ショット)?\s*(\d{1,2})\s*[\.、::|]"
+    r"(?m)^\s*(?:[#*>\-\s]*)?(?:镜头|カット|ショット|Shot|Cut)?\s*(\d{1,2})\s*[\.、::|]",
+    re.IGNORECASE,
 )
 # Every shot leads with its duration field, so it's a reliable fallback boundary
 # when the model omits the numbering _SHOT_SPLIT_RE keys off of.
-_DURATION_START_RE = re.compile(r"【\s*(?:时长|秒数|尺|長さ|時間)[^】]*】")
+_DURATION_START_RE = re.compile(
+    r"【\s*(?:时长|秒数|尺|長さ|時間|Duration|Seconds|Sec)[^】]*】", re.IGNORECASE
+)
 # A bare next-shot number dangling at a duration-block tail ("2." alone) —
 # trimmed so it doesn't pollute the previous shot's audio/raw.
-_TRAILING_NUM_RE = re.compile(r"[\s\-*#>]*(?:镜头|カット|ショット)?\s*\d{1,2}\s*[\.、::|]?\s*$")
+_TRAILING_NUM_RE = re.compile(
+    r"[\s\-*#>]*(?:镜头|カット|ショット|Shot|Cut)?\s*\d{1,2}\s*[\.、::|]?\s*$", re.IGNORECASE
+)
 
 
 def _split_numbered(text: str) -> list[tuple[int, int, int]]:
@@ -58,7 +80,7 @@ def _split_numbered(text: str) -> list[tuple[int, int, int]]:
 
 
 def _has_visual(seg: str) -> bool:
-    return any(_FIELD_MAP.get(m.group(1)) == "visual" for m in _FIELD_RE.finditer(seg))
+    return any(_field_key(m.group(1)) == "visual" for m in _FIELD_RE.finditer(seg))
 
 
 def _split_by_duration(text: str) -> list[tuple[int, int, int]]:
@@ -116,7 +138,7 @@ def parse_shots(text: str) -> list[dict]:
         # split() with one capture group returns [prefix, label1, content1, label2, content2, …]
         parts = _FIELD_RE.split(raw)
         for label, content in zip(parts[1::2], parts[2::2]):
-            key = _FIELD_MAP.get(label)
+            key = _field_key(label)
             if not key:
                 continue
             content = content.strip().strip("|").strip()

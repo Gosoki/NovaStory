@@ -121,7 +121,7 @@ def _render_storyboard(script: str) -> None:
     )
     header = "".join(
         f"<th>{html.escape(h)}</th>"
-        for h in ("No.", t("storyboard.col_shot"), t("storyboard.col_frame"),
+        for h in (t("storyboard.col_no"), t("storyboard.col_shot"), t("storyboard.col_frame"),
                   t("storyboard.col_plot"), t("storyboard.col_line"))
     )
     rd = state.current_round()

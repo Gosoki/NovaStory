@@ -1,27 +1,30 @@
 [
   {
-    "title": { "ja": "拾った切符（誰かの落とし物）", "zh": "捡到的失物（别人掉的东西）" },
+    "title": { "ja": "拾った切符（誰かの落とし物）", "zh": "捡到的失物（别人掉的东西）", "en": "The Ticket You Picked Up (someone's lost item)" },
     "scenario": {
       "ja": "道で、誰かが落とした小さな物を拾う。中を見るか、届けるか、それとも——。",
-      "zh": "在路上捡到别人掉落的小东西。是打开看看、拿去归还,还是——。"
+      "zh": "在路上捡到别人掉落的小东西。是打开看看、拿去归还,还是——。",
+      "en": "On the street you pick up something small that someone dropped. Do you peek inside, hand it in, or——?"
     },
     "shot_count": 3,
     "total_seconds": 15
   },
   {
-    "title": { "ja": "最後のひと口（分け合う/独り占め）", "zh": "最后一口（分享还是独享）" },
+    "title": { "ja": "最後のひと口（分け合う/独り占め）", "zh": "最后一口（分享还是独享）", "en": "The Last Bite (share it or keep it)" },
     "scenario": {
       "ja": "目の前に、好きなものがたったひとつだけ残っている。誰かと分けるか、自分で食べるか。ほんの数秒の攻防。",
-      "zh": "眼前只剩最后一口喜欢的东西。是分给别人,还是自己吃掉——短短几秒的拉锯。"
+      "zh": "眼前只剩最后一口喜欢的东西。是分给别人,还是自己吃掉——短短几秒的拉锯。",
+      "en": "Just one bite of your favorite thing is left in front of you. Share it with someone, or keep it for yourself? A standoff of just a few seconds."
     },
     "shot_count": 3,
     "total_seconds": 15
   },
   {
-    "title": { "ja": "はじめての街の、最初の一歩", "zh": "陌生街道的第一步" },
+    "title": { "ja": "はじめての街の、最初の一歩", "zh": "陌生街道的第一步", "en": "The First Step in an Unfamiliar Town" },
     "scenario": {
       "ja": "見慣れない街に降り立った、最初の一歩。地図を見るか、匂いをたどるか、誰かに声をかけるか。",
-      "zh": "降落在陌生的街道,迈出第一步。是看地图、循着气味走,还是开口问路。"
+      "zh": "降落在陌生的街道,迈出第一步。是看地图、循着气味走,还是开口问路。",
+      "en": "Your first step after arriving in an unfamiliar town. Do you check a map, follow a scent, or call out to someone?"
     },
     "shot_count": 3,
     "total_seconds": 15
