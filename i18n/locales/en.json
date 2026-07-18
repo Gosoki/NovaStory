@@ -123,6 +123,7 @@
     "submit": "Submit this round's questionnaire",
     "imagine": "How close is the final script to what you pictured in your mind?",
     "satisfaction": "Overall, I am satisfied with the final result of this round",
+    "ai_q_quality": "The questions the AI asked were on-point and helped me develop my ideas.",
     "script_review": "The storyboard you just finished",
     "anchor_disagree": "Strongly disagree",
     "anchor_neutral": "Neutral",

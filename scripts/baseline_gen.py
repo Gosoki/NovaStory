@@ -29,6 +29,21 @@ def count_lines(path: Path) -> int:
         return sum(1 for line in f if line.strip())
 
 
+def assert_consistent(path: Path, client) -> None:
+    """续跑前校验已有行的 model/temperature/base_url 与当前 client 一致,
+    防止换 --config-index/--temperature 续跑时同一题基线混用不同模型/温度。"""
+    with path.open(encoding="utf-8") as f:
+        first = f.readline().strip()
+    if not first:
+        return
+    prev, meta = json.loads(first), client.meta()
+    for k in ("model", "temperature", "base_url"):
+        if k in prev and k in meta and prev[k] != meta[k]:
+            raise SystemExit(
+                f"[{path.name}] 续跑配置不一致:已有 {k}={prev[k]!r} vs 当前 {meta[k]!r}。"
+                " 同一题基线不能混用模型/温度——删除该文件重跑,或换回原配置。")
+
+
 def load_seeds(path: Path | None) -> list[str]:
     """意图列表(每行一条,空行忽略);为空时调用方退回题目情境。"""
     if path is None:
@@ -68,6 +83,7 @@ def main() -> None:
             print(f"[topic{i}] 已有 {done} 份,跳过")
             continue
         if done:
+            assert_consistent(out_path, client)  # 防续跑换模型/温度混入同一题
             print(f"[topic{i}] 续跑:已有 {done} 份,补到 {args.n}")
         system = prompts.build_system_script(topic, args.lang)
         with out_path.open("a", encoding="utf-8") as f:

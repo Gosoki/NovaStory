@@ -170,6 +170,10 @@ def render() -> None:
     likert("violation", t("q.violation"), anchors="violation")
     likert("imagine", t("q.imagine"), anchors="imagine")
     likert("sat", t("q.satisfaction"))
+    # E-only: rate the quality of the AI's guiding questions (E is the only
+    # condition where the AI asks structured questions).
+    if state.current_round()["condition"] == "E":
+        likert("ai_q_quality", t("q.ai_q_quality"))
 
     # ---- per-shot intent annotation ----
     # Options are the localized labels themselves (no format_func): a
@@ -235,6 +239,7 @@ def _submit(ridx: int, answers: dict, shot_annotations: list[dict]) -> None:
         intent_violation=answers["violation"],
         imagine_match=answers["imagine"],
         satisfaction=answers["sat"],
+        ai_q_quality=answers.get("ai_q_quality"),  # E only; NULL for C/D
         shot_annotations_json=json.dumps(shot_annotations, ensure_ascii=False),
     )
     if ridx == _ATTENTION_ROUND:

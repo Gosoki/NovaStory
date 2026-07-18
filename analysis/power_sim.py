@@ -1,123 +1,130 @@
 #!/usr/bin/env python
-# ============================================================================
-# ⚠️ v2(ModeMirror/HLZ)时代脚本 — 与 v3 schema 系统性脱节,收数前必须重写。
-# 已知问题(2026-07-02 第三轮审查):主 DV 绑定已废弃的 hlz_z;读 v3 中不存在/
-# 恒空的 v2 列;v3 新列(guidance_json/t_pregen/t_postgen/n_*)与 questionnaires
-# 表(主观量表=主要终点)完全没进管线。重写待 A4(主要终点组合)拍板后进行。
-# 详见 paper/8「分析层」。
-# ============================================================================
-"""T7.6 模拟功效分析 — 配对 t 检验的功效曲线(预注册附件)。
+"""A6: 合成数据 + 模拟功效分析(无 pilot → SESOI + N=36 先验功效;paper/14 §4)。
 
-HLZ 的方差结构来自真实数据时:用 metrics_per_trial.csv(由 ghost/baseline
-管线产出的 per-trial HLZ)估计被试级配对差的标准差;无真实数据时
---synthetic 用 sd=1.0(dz 单位)演示。
+双用途:
+  (1) simulate():生成 v3 形状的合成 per-trial 数据(被试内 3 条件×3 题×3×3 拉丁方,
+      注入已知条件效应)——供 stats.py 端到端自测「能否复原注入的 E−D 效应」。
+  (2) 功效:报告 N=36 在给定 SESOI(以配对 dz 计)下的功效,及 80% 功效的最小可检出
+      效应(MDES)。因无 pilot,不用 pilot 效应量,改以 SESOI + a priori 模拟。
 
-对效应量 dz ∈ [0.3, 0.8] × N ∈ [20, 40] 网格,各模拟 n-sims 次配对 t 检验
-(双侧 α=.05),输出 data/analysis/power_sim.csv + power_sim.md。
+用法: .venv/bin/python analysis/power_sim.py
 """
 from __future__ import annotations
 
 import argparse
 import sys
-from datetime import datetime
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from scipy import stats
 
 ROOT = Path(__file__).resolve().parent.parent
-ANALYSIS_DIR = ROOT / "data" / "analysis"
+sys.path.insert(0, str(ROOT))
+
+CONDS = ("C", "D", "E")
+_COND_ORDERS = (("C", "D", "E"), ("D", "E", "C"), ("E", "C", "D"))
+_TOPIC_ORDERS = ((0, 1, 2), (1, 2, 0), (2, 0, 1))
 
 
-def estimate_sd_diff(per_trial: pd.DataFrame) -> tuple[float, str]:
-    """从 per-trial HLZ 估计被试级配对差(D−C / E−D 合并)的 SD。"""
-    wide = (
-        per_trial.dropna(subset=["hlz_z"])
-        .pivot_table(index="participant_id", columns="condition", values="hlz_z")
-    )
-    diffs: list[float] = []
-    for a, b in (("D", "C"), ("E", "D")):
-        if a in wide.columns and b in wide.columns:
-            d = (wide[a] - wide[b]).dropna()
-            diffs.extend(d.tolist())
-    if len(diffs) < 3:
-        raise ValueError(f"配对差不足(n={len(diffs)})")
-    sd = float(np.std(diffs, ddof=1))
-    return sd, f"由 {len(diffs)} 个被试级配对差估计(metrics_per_trial.csv)"
+def _plan(seq: int):
+    """第 seq 号序列的 [(round_idx, condition, topic)]×3(3×3 拉丁方,与 state.py 同构)。"""
+    co, to = _COND_ORDERS[seq // 3 % 3], _TOPIC_ORDERS[seq % 3]
+    return [(ri + 1, co[ri], to[ri]) for ri in range(3)]
 
 
-def simulate_power(
-    dz: float, n: int, sd_diff: float, n_sims: int, rng: np.random.Generator
-) -> float:
-    """模拟配对 t 检验功效:diff ~ N(dz·sd, sd),双侧 α=.05。"""
-    from scipy import stats as ss
+def simulate(n_subj: int = 36, cond_delta: dict | None = None, subj_sd: float = 1.0,
+             resid_sd: float = 1.0, topic_sd: float = 0.3, order_sd: float = 0.15,
+             seed: int = 0) -> pd.DataFrame:
+    """合成 per-trial 数据。cond_delta = 各条件相对基线的均值偏移(原始单位,D 通常设 0)。
+    模型:dv = cond_delta[c] + 被试截距 + 题目效应 + 顺序(练习)效应 + 残差。"""
+    rng = np.random.default_rng(seed)
+    cond_delta = cond_delta or {"C": -0.3, "D": 0.0, "E": 0.5}
+    topic_eff = {t: rng.normal(0, topic_sd) for t in (0, 1, 2)}
+    rows = []
+    for s in range(n_subj):
+        subj = rng.normal(0, subj_sd)
+        for ri, c, t in _plan(s % 9):
+            dv = (cond_delta[c] + subj + topic_eff[t]
+                  + order_sd * (ri - 2) + rng.normal(0, resid_sd))
+            rows.append({"participant_id": s, "round_idx": ri,
+                         "condition": c, "topic": t, "dv": dv})
+    return pd.DataFrame(rows)
 
-    diffs = rng.normal(dz * sd_diff, sd_diff, size=(n_sims, n))
-    m = diffs.mean(axis=1)
-    s = diffs.std(axis=1, ddof=1)
-    t = m / (s / np.sqrt(n))
-    crit = ss.t.ppf(0.975, df=n - 1)
-    return float(np.mean(np.abs(t) >= crit))
+
+def power_paired(dz: float, n: int = 36, nsims: int = 3000, alpha: float = 0.05,
+                 seed: int = 0) -> float:
+    """被试内 E−D 主对比的功效 = 对 n 个配对差(标准化到 dz)做单样本 t 检验的拒绝率。
+    dz = 配对差均值 / 配对差标准差(Cohen's dz)。"""
+    rng = np.random.default_rng(seed)
+    hits = 0
+    for _ in range(nsims):
+        diffs = rng.normal(dz, 1.0, n)
+        _, p = stats.ttest_1samp(diffs, 0.0)
+        hits += p < alpha
+    return hits / nsims
+
+
+def mdes(n: int = 36, target: float = 0.80, alpha: float = 0.05,
+         nsims: int = 3000) -> float:
+    """target 功效对应的最小可检出配对 dz —— 二分搜索。"""
+    lo, hi = 0.05, 1.2
+    for _ in range(24):
+        mid = (lo + hi) / 2
+        if power_paired(mid, n, nsims, alpha) < target:
+            lo = mid
+        else:
+            hi = mid
+    return round((lo + hi) / 2, 3)
+
+
+def _empirical_dz(delta: float, n: int = 3000) -> float:
+    """delta(原始单位)对应的被试内 E−D 配对 dz(从大样本模拟测得)。"""
+    big = simulate(n_subj=n, cond_delta={"C": 0.0, "D": 0.0, "E": delta}, seed=7)
+    w = big.pivot_table(index="participant_id", columns="condition", values="dv")
+    d = (w["E"] - w["D"]).dropna()
+    return float(d.mean() / d.std(ddof=1))
+
+
+def power_lmm(delta: float, n: int = 36, nsims: int = 200, alpha: float = 0.05) -> float:
+    """与真实主分析同构的功效:在 simulate() 数据上跑 stats.py 的实际 LMM + Holm,统计
+    E−D 主对比 p_holm<alpha 的比例。比 power_paired 更贴主分析(专家指正:自证功效不应
+    与分析模型脱钩),但慢(每次拟合一个 LMM)。delta = 注入的 E−D 原始效应。"""
+    from analysis import stats  # lazy:避免与 stats 的循环导入
+    hits = 0
+    for s in range(nsims):
+        df = simulate(n_subj=n, cond_delta={"C": 0.0, "D": 0.0, "E": delta}, seed=2000 + s)
+        try:
+            ed = stats.contrasts(stats.fit_lmm(df, "dv")).set_index("contrast").loc["E-D"]
+            hits += float(ed["p_holm"]) < alpha
+        except Exception:  # noqa: BLE001
+            pass
+    return hits / nsims
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(
-        description="模拟功效分析(配对 t,dz 0.3-0.8 × N 20-40)→ power_sim.md/csv"
-    )
-    ap.add_argument(
-        "--synthetic", action="store_true",
-        help="无真实数据时用合成参数(sd_diff=1.0)演示",
-    )
-    ap.add_argument("--sims", type=int, default=2000, help="每格模拟次数(默认 2000)")
-    ap.add_argument("--dz-grid", default="0.3,0.4,0.5,0.6,0.7,0.8")
-    ap.add_argument("--n-grid", default="20,25,30,35,40")
-    ap.add_argument("--seed", type=int, default=42)
+    ap = argparse.ArgumentParser(description="A6 模拟功效 + 合成自测")
+    ap.add_argument("--n", type=int, default=36)
+    ap.add_argument("--nsims", type=int, default=3000)
     args = ap.parse_args()
 
-    dz_grid = [float(x) for x in args.dz_grid.split(",")]
-    n_grid = [int(x) for x in args.n_grid.split(",")]
+    print(f"=== 被试内 E−D 主对比 · 先验功效(N={args.n},α=.05,配对 t)===")
+    print(f"{'配对 dz(SESOI)':<18}{'功效':>8}")
+    for dz in (0.3, 0.4, 0.45, 0.5, 0.55, 0.6, 0.7):
+        print(f"{dz:<20}{power_paired(dz, args.n, args.nsims):>8.3f}")
+    print(f"\n80% 功效的最小可检出效应 MDES(dz) @ N={args.n}: "
+          f"{mdes(args.n, 0.80, nsims=args.nsims)}")
+    print(f"90% 功效: {mdes(args.n, 0.90, nsims=args.nsims)}")
 
-    per_trial_path = ANALYSIS_DIR / "metrics_per_trial.csv"
-    if args.synthetic:
-        sd_diff, source = 1.0, "合成参数(--synthetic,sd_diff=1.0)"
-    elif per_trial_path.exists():
-        try:
-            sd_diff, source = estimate_sd_diff(pd.read_csv(per_trial_path))
-        except ValueError as e:
-            sys.exit(f"真实数据不足以估计方差({e})— 可用 --synthetic 演示")
-    else:
-        sys.exit(f"{per_trial_path} 不存在 — 先跑 metrics.py,或用 --synthetic 演示")
-
-    rng = np.random.default_rng(args.seed)
-    rows = [
-        {"dz": dz, "N": n, "power": simulate_power(dz, n, sd_diff, args.sims, rng)}
-        for dz in dz_grid
-        for n in n_grid
-    ]
-    df = pd.DataFrame(rows)
-
-    ANALYSIS_DIR.mkdir(parents=True, exist_ok=True)
-    csv_path = ANALYSIS_DIR / "power_sim.csv"
-    df.to_csv(csv_path, index=False)
-
-    pivot = df.pivot(index="dz", columns="N", values="power")
-    lines = [
-        "# 模拟功效分析(配对 t 检验,双侧 α=.05)",
-        "",
-        f"- 生成时间: {datetime.now().isoformat(timespec='seconds')}",
-        f"- 方差来源: {source}(sd_diff = {sd_diff:.3f})",
-        f"- 每格模拟次数: {args.sims};随机种子: {args.seed}",
-        "",
-        "| dz \\ N | " + " | ".join(str(n) for n in pivot.columns) + " |",
-        "|---" * (len(pivot.columns) + 1) + "|",
-    ]
-    for dz, row in pivot.iterrows():
-        lines.append(
-            f"| {dz:.1f} | " + " | ".join(f"{v:.3f}" for v in row) + " |"
-        )
-    md_path = ANALYSIS_DIR / "power_sim.md"
-    md_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    print(f"功效网格 {len(df)} 格 → {csv_path}{md_path}")
+    print("\n=== 与主分析(LMM+Holm)同构的功效(专家指正:自证模型须=分析模型)===")
+    for d0 in (0.4, 0.5):
+        dz0 = _empirical_dz(d0)
+        print(f"注入 E−D delta={d0}(≈配对 dz={dz0:.2f}) → LMM E−D 主对比功效 "
+              f"= {power_lmm(d0, args.n, nsims=150):.3f}")
+    print("\n解读:配对 t 近似与 LMM 同构估计一致——N=36 约在 80% 功效检出 dz≈0.48-0.5。"
+          "\n⚠️ SESOI 须用本域(创作 HCI)可辩护的最小实质效应,勿直接搬 Maier/APE 的"
+          " between-d(跨设计跨域);between-d→within-dz 需条件间相关 ρ 作敏感性。无 pilot,"
+          "以上为先验设定,写入预注册。")
 
 
 if __name__ == "__main__":

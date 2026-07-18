@@ -123,6 +123,7 @@
     "submit": "提交本轮问卷",
     "imagine": "最终脚本和你想象中的画面有多接近?",
     "satisfaction": "我对这一轮的最终成品整体上满意",
+    "ai_q_quality": "AI 提出的引导问题问得到位,帮我把想法想得更清楚。",
     "script_review": "你刚完成的脚本",
     "anchor_disagree": "完全不同意",
     "anchor_neutral": "一般",

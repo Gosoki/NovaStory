@@ -78,6 +78,7 @@ CREATE TABLE IF NOT EXISTS questionnaires (
   intent_violation INTEGER,
   imagine_match INTEGER,
   satisfaction INTEGER,
+  ai_q_quality INTEGER,
   shot_annotations_json TEXT,
   created_at TEXT NOT NULL
 );
@@ -94,6 +95,7 @@ _INDEXES = [
 _MIGRATIONS = [
     "ALTER TABLE questionnaires ADD COLUMN imagine_match INTEGER",
     "ALTER TABLE questionnaires ADD COLUMN satisfaction INTEGER",
+    "ALTER TABLE questionnaires ADD COLUMN ai_q_quality INTEGER",
     "ALTER TABLE participants ADD COLUMN token TEXT",
     "ALTER TABLE participants ADD COLUMN final_survey_json TEXT",
     # v3 (guided co-creation) trial columns
@@ -256,10 +258,18 @@ def attach_trial_to_events(
     trial_id: int, participant_id: int, round_idx: int, attempt: Optional[str]
 ) -> None:
     """LOG4: after a trial lands, stamp its id onto the events of the attempt
-    that produced it — a redone round's stale attempts stay trial_id NULL."""
+    that produced it — a redone round's stale attempts stay trial_id NULL.
+    A redo does INSERT OR REPLACE → a *new* trial id, so first clear any trial_id
+    left on OTHER attempts of this round; otherwise their events would dangle at a
+    now-deleted trial id (they keep their own `attempt` segment id for lineage)."""
     if not attempt:
         return
     with _conn() as conn:
+        conn.execute(
+            "UPDATE events SET trial_id=NULL WHERE participant_id=? AND round_idx=?"
+            " AND (attempt IS NULL OR attempt!=?)",
+            (participant_id, round_idx, attempt),
+        )
         conn.execute(
             "UPDATE events SET trial_id=? WHERE participant_id=? AND round_idx=?"
             " AND attempt=?",

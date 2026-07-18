@@ -4,6 +4,8 @@ numpy
 scipy
 pandas
 statsmodels
+matplotlib      # analysis/figures.py(招牌图 + 主 DV)
+# openai 已在主 requirements.txt(analysis/embed.py 用其 embedding 接口)
 
 # 可选:仅 `analysis/metrics.py --backend local` 需要(副 embedding 模型
 # intfloat/multilingual-e5-small;会连带安装 torch,体积大,按需手动装):

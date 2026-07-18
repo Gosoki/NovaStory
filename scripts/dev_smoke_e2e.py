@@ -181,7 +181,7 @@ def run() -> None:
     assert at.session_state["r_n_ai_rounds"] == 1
     inject(at, "_script_edit", _SCRIPT_REV + EDIT_MARK)
     btn_click(at, "满意了,提交这一版")
-    _answer_questionnaire(at, round_idx=3)
+    _answer_questionnaire(at, round_idx=3, ai_q=True)
 
     # --- whole-study final survey ---
     assert at.session_state["stage"] == "final_survey", at.session_state["stage"]
@@ -225,7 +225,8 @@ def _answer_final_survey(at) -> None:
     btn_click(at, "提交并完成")
 
 
-def _answer_questionnaire(at, round_idx: int, attention: bool = False) -> None:
+def _answer_questionnaire(at, round_idx: int, attention: bool = False,
+                          ai_q: bool = False) -> None:
     for i in range(1, 4):
         set_sc(at, f"_q_own{i}_{round_idx}", 5)
     for i in range(1, 3):
@@ -236,6 +237,8 @@ def _answer_questionnaire(at, round_idx: int, attention: bool = False) -> None:
     set_sc(at, f"_q_violation_{round_idx}", 2)
     set_sc(at, f"_q_imagine_{round_idx}", 6)
     set_sc(at, f"_q_sat_{round_idx}", 6)
+    if ai_q:  # E-only item: quality of the AI's guiding questions
+        set_sc(at, f"_q_ai_q_quality_{round_idx}", 6)
     for idx in (1, 2, 3):  # stub scripts parse into 3 shots; option[0] == "mine" label
         bg = next(b for b in at.get("button_group") if b.key == f"_q_shot{idx}_{round_idx}")
         bg.set_value(bg.options[0])
@@ -289,6 +292,8 @@ def _assert_db() -> None:
 
     assert len(q) == 3 and q["imagine_match"].notna().all()
     assert q["satisfaction"].notna().all()
+    aqq = q.set_index("round_idx")["ai_q_quality"]  # E-only (round 3); NULL for C/D
+    assert pd.notna(aqq[3]) and pd.isna(aqq[1]) and pd.isna(aqq[2]), aqq.to_dict()
 
     r3 = set(ev[ev["round_idx"] == 3]["type"])
     for needed in ("round_start", "intent_submit", "guidance_shown", "guidance_answer",
@@ -323,6 +328,30 @@ def _resume_check() -> None:
     print("resume ok: refresh restored round 2, no duplicate participant / seq")
 
 
+def _redo_dangling_check() -> None:
+    """回归 core/db.py:234 —— 轮内 trial 提交后重做(OR REPLACE 换新自增 id),
+    旧 attempt 的 events 不得残留指向已删除 trial id 的悬挂引用。"""
+    pid, _, _ = db.insert_participant("ja", {"age_idx": 0}, {"is_novice": True}, passed=True)
+    db.insert_event(pid, 1, "round_start", attempt="A")          # attempt A
+    tid_a = db.insert_trial(participant_id=pid, round_idx=1, condition="C", t_total=9.0)
+    db.attach_trial_to_events(tid_a, pid, 1, "A")                # A 的 events 打 tid_a
+    db.insert_event(pid, 1, "round_start", attempt="B")          # 中断后重做:attempt B
+    tid_b = db.insert_trial(participant_id=pid, round_idx=1, condition="C", t_total=10.0)
+    db.attach_trial_to_events(tid_b, pid, 1, "B")                # OR REPLACE 删 tid_a
+    assert tid_b != tid_a, "OR REPLACE 应分配新 id"
+    with db._conn() as c:
+        dangling = c.execute(
+            "SELECT COUNT(*) FROM events WHERE trial_id IS NOT NULL"
+            " AND trial_id NOT IN (SELECT id FROM trials)").fetchone()[0]
+        a_tid = c.execute(
+            "SELECT trial_id FROM events WHERE participant_id=? AND round_idx=1 AND attempt='A'",
+            (pid,)).fetchone()[0]
+    assert dangling == 0, f"有 {dangling} 条 events 悬挂指向已删除 trial"
+    assert a_tid is None, f"旧 attempt A 的 events.trial_id 应清回 NULL,实为 {a_tid}"
+    print("redo ok: no dangling trial_id after round redo")
+
+
 if __name__ == "__main__":
     run()
     _resume_check()
+    _redo_dangling_check()

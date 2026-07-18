@@ -1,20 +1,31 @@
-# NovaStory 离线管线。用法: make baseline / metrics / stats / power / analysis
-# 注意: metrics/stats/power 仍是 v2(HLZ)时代脚本,收数前需按 v3 schema 重写
-# (paper/8 分析层);ghost-run 已废弃删除(paper/7 D10)。
+# NovaStory 离线分析管线(A6 v3)。安装依赖: pip install -r analysis/requirements-analysis.txt
+# 全流程(真数据到手后): make baseline → make analysis(= v3 → embed → stats → figures)
 PY := .venv/bin/python
 
-.PHONY: baseline metrics stats power analysis
+.PHONY: baseline norming v3 embed stats power figures analysis
 
-baseline:        ## 采样地板:每题 30 份纯机器 C 式输出(A3 机器地板)
-	$(PY) scripts/baseline_gen.py
+baseline:   ## 机器基线(norming / embed 的输入):每题 N 份纯机器稿 → data/baseline/
+	$(PY) scripts/baseline_gen.py --n 12 --lang ja
 
-metrics:         ## [待 v3 重写] HLZ / 多样性 / 编辑距离 → tidy CSV
-	$(PY) analysis/metrics.py --backend openai
+norming:    ## 主题开放度 norming(先 make baseline)→ 三题是否可比
+	$(PY) analysis/norming.py
 
-stats:           ## [待 v3 重写] LMM / Wilcoxon / 置换 / TOST → stats_report.md
+v3:         ## 确定性指标(结构/多样性/逐镜头保真/版本演化/努力再分配/主观复合)→ v3_per_trial.csv
+	$(PY) analysis/v3.py
+
+embed:      ## embedding 相对基线保真 Δ,合入 CSV(需 OpenAI + baseline)
+	$(PY) analysis/embed.py
+
+stats:      ## LMM / E−D 主对比(Holm)/ TOST 非劣 / Wilcoxon / 剂量-反应(无 CSV 则合成自测)
 	$(PY) analysis/stats.py
 
-power:           ## [待 v3 重写] 模拟功效分析 → power_sim.md/csv
+power:      ## 模拟功效 + MDES(SESOI 先验,无 pilot;paper/14 §4)
 	$(PY) analysis/power_sim.py
 
-analysis: metrics stats power
+figures:    ## 招牌图(努力再分配)+ 主 DV 分条件 → data/analysis/figures/
+	$(PY) analysis/figures.py
+
+# 真数据到手后的完整链路
+analysis: v3 embed stats figures
+
+# 注:v2(HLZ)的 analysis/metrics.py 已被 v3.py 取代,收数验收后删除。
