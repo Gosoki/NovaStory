@@ -4,7 +4,7 @@ import json
 
 import streamlit as st
 
-from core import db, shots, state
+from core import db, imagegen, shots, state
 from i18n import get_lang, t
 from views import _storyboard
 
@@ -88,14 +88,43 @@ def _ai_q_best_pick(ridx: int):
     return chosen
 
 
+@st.fragment(run_every=2)
+def _live_storyboard(script: str, subtitle: str, pid: int, ridx: int, n: int) -> None:
+    """Poll the archive folder every 2s and show images as they finish; one full
+    rerun once all are done so the outer render goes static and polling stops."""
+    _storyboard.render(script, subtitle,
+                       sketches=imagegen.frame_htmls(pid, ridx, n, t("storyboard.generating")))
+    if imagegen.all_done(pid, ridx, n):
+        st.rerun()  # full rerun → outer renders static, polling stops
+
+
+def _render_storyboard_area(ridx: int) -> None:
+    """Storyboard preview above the questionnaire. With OpenAI, the 画面 column
+    fills with gpt-image-1 illustrations generated in the background AFTER submit
+    (not during the creative task, so it doesn't touch t_pregen/t_postgen)."""
+    script = state.current_script()
+    subtitle = state.topic_text(state.current_round()["topic"], "title", get_lang())
+    if imagegen.enabled():
+        parsed = shots.parse_shots(script)
+        if parsed:
+            pid, n = st.session_state["participant_id"], len(parsed)
+            if imagegen.all_done(pid, ridx, n):
+                _storyboard.render(script, subtitle,
+                                   sketches=imagegen.frame_htmls(pid, ridx, n, t("storyboard.generating")))
+            else:
+                imagegen.ensure_started(pid, ridx, parsed,
+                                        st.session_state.get("api_key", ""),
+                                        st.session_state.get("base_url", ""))
+                _live_storyboard(script, subtitle, pid, ridx, n)
+            return
+    _storyboard.render(script, subtitle)
+
+
 def render() -> None:
     ridx = st.session_state["round_idx"]
     # Show the finished script as a storyboard table above the questionnaire so
     # the participant can refer to it while answering.
-    _storyboard.render(
-        state.current_script(),
-        state.topic_text(state.current_round()["topic"], "title", get_lang()),
-    )
+    _render_storyboard_area(ridx)
     st.subheader(t("q.title"))
     st.caption(t("q.hint"))
 

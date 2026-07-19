@@ -31,13 +31,14 @@ td.sb-no{text-align:center;vertical-align:middle}
 td.sb-no .cut{display:inline-flex;align-items:center;justify-content:center;width:27px;height:27px;
   border:1.5px solid #3f3f3f;border-radius:50%;font-weight:700;font-size:1rem;font-family:Georgia,serif}
 td.sb-pic{vertical-align:middle;padding:7px}
-.sb-frame{position:relative;aspect-ratio:16/9;border:1.5px solid #3f3f3f;background:#fff;
-  display:flex;align-items:center;justify-content:center;
+.sb-frame{position:relative;width:100%;height:0;padding-bottom:56.25%;
+  border:1.5px solid #3f3f3f;background:#fff;overflow:hidden;
   box-shadow:inset 0 0 0 3px #fff,inset 0 0 0 4px #ececec}
-.sb-frame .lbl{color:#c3bfb4;font-style:italic;font-size:.82rem}
+.sb-frame .lbl{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  color:#c3bfb4;font-style:italic;font-size:.82rem;white-space:pre-line;text-align:center;padding:0 6px}
 .sb-frame .secs{position:absolute;right:5px;bottom:4px;font-size:.72rem;color:#6a6a6a;
-  background:rgba(255,255,255,.85);padding:0 3px;border-radius:2px}
-.sb-frame img{width:100%;height:100%;object-fit:cover;display:block}
+  background:rgba(255,255,255,.85);padding:0 3px;border-radius:2px;z-index:1}
+.sb-frame img{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:contain;display:block}
 table.sb-tbl .cell{white-space:pre-wrap;word-break:break-word;line-height:1.42}
 tr.sb-blank td{height:74px}
 tr.sb-blank .sb-frame .lbl{display:none}

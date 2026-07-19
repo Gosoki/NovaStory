@@ -241,6 +241,7 @@
     "col_plot": "Action",
     "col_line": "Dialogue",
     "frame_todo": "Coming soon",
+    "generating": "Generating…\nfeel free to answer the questionnaire below first",
     "title": "Storyboard"
   },
   "admin": {

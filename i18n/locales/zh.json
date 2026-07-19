@@ -241,6 +241,7 @@
     "col_plot": "情节",
     "col_line": "台词",
     "frame_todo": "后续更新",
+    "generating": "生成中…\n下方的问卷可以先回答",
     "title": "分镜表"
   },
   "admin": {
