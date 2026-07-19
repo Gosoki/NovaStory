@@ -206,7 +206,9 @@ def _submit(ridx: int, answers: dict, shot_annotations: list[dict]) -> None:
     )
     if ridx == _ATTENTION_ROUND:
         db.update_participant(
-            pid, attention_ok=int(answers.get("attention") == _ATTENTION_EXPECTED)
+            pid,
+            attention_ok=int(answers.get("attention") == _ATTENTION_EXPECTED),
+            attention_raw=answers.get("attention"),  # keep the raw value (#31)
         )
     state.log_event("questionnaire_submit")
     state.advance_round()

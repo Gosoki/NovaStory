@@ -24,7 +24,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from analysis import v3  # noqa: E402
+from analysis import prereg, v3  # noqa: E402
 
 DEFAULT_DB = ROOT / "data" / "novastory.db"
 G, Y, R = "🟢", "🟡", "🔴"
@@ -65,7 +65,7 @@ def check_d_floor(df: pd.DataFrame) -> None:
     zero = ((nai == 0) & (hec == 0)).mean()
     print(f"   n_ai_rounds 中位={nai.median():.1f}  手改字符中位={hec.median():.0f}  "
           f"t_postgen 中位={d['t_postgen'].median():.0f}s  零返工比例={zero:.0%}")
-    fl = _flag(zero, 0.30, 0.60, higher_better=False)
+    fl = _flag(zero, prereg.D_FLOOR_ZERO_GREEN, prereg.D_FLOOR_ZERO_YELLOW, higher_better=False)
     print(f"   {fl}  {'返工充足' if fl==G else '返工偏少' if fl==Y else '地板!返工≈0'}")
     if fl == R:
         print("   → 后手A(paper/16):招牌叙事从「返工↓」移到「保真/所有权↑ + 努力再分配」"
@@ -85,8 +85,9 @@ def check_c_ceiling(df: pd.DataFrame) -> None:
         cim = df[df.condition == "C"]["imagine_match"]
         eim = df[df.condition == "E"]["imagine_match"] if "E" in have else pd.Series(dtype=float)
         gap = (eim.mean() - cim.mean()) if len(eim) else np.nan
-        ceil = cim.mean() >= 6.0 and cim.std() < 1.0
-        fl = R if (ceil and (np.isnan(gap) or gap < 0.3)) else (Y if cim.mean() >= 5.5 else G)
+        ceil = cim.mean() >= prereg.C_CEIL_MEAN and cim.std() < prereg.C_CEIL_SD
+        fl = R if (ceil and (np.isnan(gap) or gap < prereg.C_CEIL_GAP)) else (
+            Y if cim.mean() >= prereg.C_CEIL_YELLOW_MEAN else G)
         print(f"   {fl}  C 均值={cim.mean():.2f} SD={cim.std():.2f}  E−C 差={gap:.2f}"
               if not np.isnan(gap) else f"   {fl}  C 均值={cim.mean():.2f} SD={cim.std():.2f}")
         if fl == R:
@@ -96,13 +97,15 @@ def check_c_ceiling(df: pd.DataFrame) -> None:
 
 def check_novice(con: sqlite3.Connection) -> None:
     p = pd.read_sql("SELECT screening_json, status FROM participants", con)
+    # exclude dev/test participants (#20): they are not real subjects
+    p = p[~p["screening_json"].map(lambda x: bool(v3._loads(x, {}).get("dev")))]
     p = p[p["status"] == "done"] if "status" in p and (p["status"] == "done").any() else p
     print(f"\n③ novice 占比  N(完成)={len(p)}")
     if not len(p):
         print(f"   {Y} 无完成被试"); return
     isnov = p["screening_json"].map(lambda x: bool(v3._loads(x, {}).get("is_novice")))
     share = isnov.mean()
-    fl = _flag(share, 0.60, 0.40)
+    fl = _flag(share, prereg.NOVICE_SHARE_GREEN, prereg.NOVICE_SHARE_YELLOW)
     print(f"   达标 novice = {isnov.sum()}/{len(p)} = {share:.0%}   {fl}")
     if fl != G:
         print("   → 后手C(paper/16):预注册把「仅 novice 子集」前置为主分析群体(非事后稳健性);"
@@ -116,14 +119,16 @@ def check_reliability(df: pd.DataFrame) -> None:
     soa = _items(q1, "soa_json", ["soa1", "soa2"]).apply(pd.to_numeric, errors="coerce")
     a_own = cronbach_alpha(own)
     r_soa = soa.dropna().corr().iloc[0, 1] if soa.dropna().shape[0] >= 3 else float("nan")
-    allv = pd.concat([own, soa], axis=1).values.ravel()
-    allv = allv[~np.isnan(allv)]
+    allv = pd.to_numeric(
+        pd.Series(pd.concat([own, soa], axis=1).values.ravel()), errors="coerce"
+    ).dropna().to_numpy()
     mid = float((allv == 4).mean()) if len(allv) else float("nan")
     print(f"   own1-3 Cronbach α={a_own:.2f}   soa1-2 相关 r={r_soa:.2f}   "
           f"中点(4)应答比={mid:.0%}   总方差 SD={np.nanstd(allv):.2f}")
-    fl = _flag(min([x for x in (a_own, r_soa) if not np.isnan(x)] or [np.nan]), 0.70, 0.60)
+    fl = _flag(min([x for x in (a_own, r_soa) if not np.isnan(x)] or [np.nan]),
+               prereg.RELIABILITY_GREEN, prereg.RELIABILITY_YELLOW)
     print(f"   {fl}  {'信度良好' if fl==G else '信度勉强' if fl==Y else '信度崩!'}")
-    if fl == R or (not np.isnan(a_own) and a_own < 0.6):
+    if fl == R or (not np.isnan(a_own) and a_own < prereg.OWN_ALPHA_FLOOR):
         print("   → 后手D(paper/16):所有权主终点改用已验证的 J-SoAS SoPA(soa),own 降次要并报;"
               "所有分析用被试内差分(消中点应答偏差);own 若 α 崩考虑补第 4 题。")
 

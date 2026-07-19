@@ -11,6 +11,8 @@ from typing import Any, Optional
 
 import pandas as pd
 
+from core import config
+
 ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = ROOT / "data" / "novastory.db"
 
@@ -26,6 +28,7 @@ CREATE TABLE IF NOT EXISTS participants (
   screening_json TEXT,
   passed INTEGER NOT NULL DEFAULT 0,
   attention_ok INTEGER,
+  attention_raw INTEGER,        -- raw response to the attention item (careless-check, #31)
   completion_code TEXT,
   token TEXT,                 -- opaque resume handle (URL ?t=), not the row id
   final_survey_json TEXT,     -- whole-study survey, shown after all rounds
@@ -100,6 +103,7 @@ _MIGRATIONS = [
     "ALTER TABLE questionnaires ADD COLUMN ai_q_quality INTEGER",
     "ALTER TABLE questionnaires ADD COLUMN ai_q_amount INTEGER",
     "ALTER TABLE questionnaires ADD COLUMN ai_q_best_json TEXT",
+    "ALTER TABLE participants ADD COLUMN attention_raw INTEGER",
     "ALTER TABLE participants ADD COLUMN token TEXT",
     "ALTER TABLE participants ADD COLUMN final_survey_json TEXT",
     # v3 (guided co-creation) trial columns
@@ -160,7 +164,7 @@ def insert_participant(
     """Insert a participant; returns (id, seq, token).
 
     seq (0-8, Latin-square sequence) is assigned at insert time as
-    (count of previously passed participants) % 9, None when screened out.
+    (count of previously passed participants) % LATIN_SQUARE_N (18), None when screened out.
     token is an opaque resume handle put in the URL (?t=) so a refresh/reconnect
     restores the session instead of re-screening (which would consume a 2nd seq).
     """
@@ -178,7 +182,7 @@ def insert_participant(
                 "SELECT COUNT(*) FROM participants WHERE passed=1"
                 " AND COALESCE(json_extract(screening_json, '$.dev'), 0) != 1"
             ).fetchone()[0]
-            seq = n % 9
+            seq = n % config.LATIN_SQUARE_N  # 18 Williams seqs (#1)
         cur = conn.execute(
             "INSERT INTO participants"
             " (created_at, lang, seq, demographics_json, screening_json, passed, token, status)"

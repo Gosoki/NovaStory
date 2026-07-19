@@ -38,13 +38,23 @@ _TAGS = ("mine", "ai_ok", "ai_against")
 # ---------------- load ----------------
 
 def load(db_path: Path) -> pd.DataFrame:
-    """trials ⟕ questionnaires,按 (participant_id, round_idx);容忍缺列。"""
+    """trials ⟕ questionnaires,按 (participant_id, round_idx);容忍缺列。
+
+    **排除研究员/dev 注入的测试被试**(`screening_json.dev == true`,devtools 的
+    「跳过同意+筛查」)——它们不是真被试,绝不能进任何分析(保真/所有权/TOST/功效/
+    试测健康)。此前无过滤,dev 走查行会静默污染毕业数据(深度评审 2026-07-19,#20)。
+    """
     con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     try:
         trials = pd.read_sql("SELECT * FROM trials", con)
         quest = pd.read_sql("SELECT * FROM questionnaires", con)
+        parts = pd.read_sql("SELECT id, screening_json FROM participants", con)
     finally:
         con.close()
+    dev_ids = {int(r.id) for r in parts.itertuples()
+               if _loads(r.screening_json, {}).get("dev")}
+    if dev_ids:
+        trials = trials[~trials["participant_id"].isin(dev_ids)]
     # avoid column collisions on merge (id/created_at exist in both)
     quest = quest.drop(columns=[c for c in ("id", "created_at") if c in quest], errors="ignore")
     df = trials.merge(quest, on=["participant_id", "round_idx"], how="left",
@@ -109,8 +119,13 @@ def version_evo(script_versions, final_output: str) -> dict:
 def subjective(row: pd.Series) -> dict:
     own = _loads(row.get("ownership_json"), {})
     soa = _loads(row.get("soa_json"), {})
+    tlx = _loads(row.get("tlx_json"), {})
     own_vals = [own.get(f"own{i}") for i in (1, 2, 3) if own.get(f"own{i}") is not None]
     soa_vals = [soa.get(f"soa{i}") for i in (1, 2) if soa.get(f"soa{i}") is not None]
+    # straight-lining careless-response flag: every item in the Likert block
+    # (own1-3 + soa1-2 + tlx1) identical, with ≥4 items answered (deep-review #31).
+    block = own_vals + soa_vals + ([tlx.get("tlx1")] if tlx.get("tlx1") is not None else [])
+    straightline = int(len(block) >= 4 and len(set(block)) == 1)
     return {
         "own_mean": float(np.mean(own_vals)) if own_vals else np.nan,
         "soa_mean": float(np.mean(soa_vals)) if soa_vals else np.nan,
@@ -118,6 +133,7 @@ def subjective(row: pd.Series) -> dict:
         "imagine": _num(row.get("imagine_match")),
         "satisfaction": _num(row.get("satisfaction")),
         "ai_q_quality": _num(row.get("ai_q_quality")),  # E only
+        "straightline": straightline,
     }
 
 
@@ -193,7 +209,7 @@ _SUMMARY_COLS = [
     "own_mean", "soa_mean", "satisfaction", "imagine", "violation", "ai_q_quality",
     "mine_ratio", "ai_against_ratio", "final_vs_firstai_sim",
     "pre_investment", "post_investment", "total_investment",
-    "n_ai_rounds", "hand_edit_chars",
+    "n_ai_rounds", "hand_edit_chars", "straightline",
 ]
 
 

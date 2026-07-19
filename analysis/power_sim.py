@@ -23,13 +23,19 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 CONDS = ("C", "D", "E")
-_COND_ORDERS = (("C", "D", "E"), ("D", "E", "C"), ("E", "C", "D"))
+# mirror core/state.py: 6 condition orders (Williams) × 3 topic rotations = 18 seqs.
+_COND_ORDERS = (
+    ("C", "D", "E"), ("C", "E", "D"),
+    ("D", "C", "E"), ("D", "E", "C"),
+    ("E", "C", "D"), ("E", "D", "C"),
+)
 _TOPIC_ORDERS = ((0, 1, 2), (1, 2, 0), (2, 0, 1))
+_N_SEQ = len(_COND_ORDERS) * len(_TOPIC_ORDERS)  # 18
 
 
 def _plan(seq: int):
-    """第 seq 号序列的 [(round_idx, condition, topic)]×3(3×3 拉丁方,与 state.py 同构)。"""
-    co, to = _COND_ORDERS[seq // 3 % 3], _TOPIC_ORDERS[seq % 3]
+    """第 seq 号序列的 [(round_idx, condition, topic)]×3(Williams 18 seq,与 state.py 同构)。"""
+    co, to = _COND_ORDERS[seq // 3], _TOPIC_ORDERS[seq % 3]
     return [(ri + 1, co[ri], to[ri]) for ri in range(3)]
 
 
@@ -44,7 +50,7 @@ def simulate(n_subj: int = 36, cond_delta: dict | None = None, subj_sd: float = 
     rows = []
     for s in range(n_subj):
         subj = rng.normal(0, subj_sd)
-        for ri, c, t in _plan(s % 9):
+        for ri, c, t in _plan(s % _N_SEQ):
             dv = (cond_delta[c] + subj + topic_eff[t]
                   + order_sd * (ri - 2) + rng.normal(0, resid_sd))
             rows.append({"participant_id": s, "round_idx": ri,

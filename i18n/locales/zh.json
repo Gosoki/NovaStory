@@ -275,7 +275,8 @@
     "col_cond": "条件",
     "col_date": "日期",
     "balance_title": "**条件 × 题目 计数**　(拉丁方平衡:各格应接近相等,越绿越多)",
-    "seq_title": "**序列 seq 分布**　(应均匀,每序列 ~N/9)",
+    "seq_title": "**各 seq(条件×题目)的完成数**　—— 采到全部均等为止(流失靠超招募吸收)",
+    "seq_target": "目标:每个 seq {n} 名完成者",
     "none": "（暂无）",
     "no_seq": "（暂无 seq）",
     "daily_title": "**每日完成数**",
@@ -283,7 +284,13 @@
     "ownership": "心理所有权",
     "satisfaction": "满意度",
     "imagine": "想象匹配",
-    "descriptive_title": "**各条件主观均值(1-7,描述性)**　—— 严谨统计(LMM/对比/TOST)见下方「📊 数据分析」"
+    "descriptive_title": "**各条件主观均值(1-7,描述性)**　—— 严谨统计(LMM/对比/TOST)见下方「📊 数据分析」",
+    "health_title": "数据健康(采数期异常监控)",
+    "health_parse": "解析失败率",
+    "health_llm_err": "LLM 报错率",
+    "health_fallback": "引导降级率",
+    "health_latency": "生成延迟 中位/95%",
+    "health_none": "暂无事件"
   },
   "analysis": {
     "title": "📊 数据分析(点按钮即可,无需命令行)",

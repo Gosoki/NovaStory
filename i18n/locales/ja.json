@@ -275,7 +275,8 @@
     "col_cond": "条件",
     "col_date": "日付",
     "balance_title": "**条件 × お題 の件数**　(ラテン方格のバランス:各セルがほぼ均等・濃いほど多い)",
-    "seq_title": "**シーケンス seq 分布**　(均等が理想・各シーケンス ~N/9)",
+    "seq_title": "**seq(条件×お題)ごとの完了数**　—— 全 seq が均等になるまで採取(脱落は超過募集で吸収)",
+    "seq_target": "目標:各 seq {n} 名の完了者",
     "none": "（なし）",
     "no_seq": "（seq なし）",
     "daily_title": "**日別 完了数**",
@@ -283,7 +284,13 @@
     "ownership": "心理的所有感",
     "satisfaction": "満足度",
     "imagine": "イメージ一致",
-    "descriptive_title": "**条件別 主観指標の平均(1-7・記述的)**　—— 厳密な統計(LMM/対比/TOST)は下の「📊 データ分析」へ"
+    "descriptive_title": "**条件別 主観指標の平均(1-7・記述的)**　—— 厳密な統計(LMM/対比/TOST)は下の「📊 データ分析」へ",
+    "health_title": "データ健全性(採数中の異常監視)",
+    "health_parse": "解析失敗率",
+    "health_llm_err": "LLM エラー率",
+    "health_fallback": "引導フォールバック率",
+    "health_latency": "生成レイテンシ 中央/95%",
+    "health_none": "まだイベントがありません"
   },
   "analysis": {
     "title": "📊 データ分析(ボタンを押すだけ・コマンド不要)",

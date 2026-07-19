@@ -51,6 +51,16 @@ def build_composites(df: pd.DataFrame) -> pd.DataFrame:
         df["fidelity_composite"] = pd.concat(parts, axis=1).mean(axis=1)
     if "own_mean" in df:
         df["ownership_composite"] = df["own_mean"]
+    # H3a 努力再分配(事后返工复合):n_ai_rounds + 手改字符 + t_postgen。计数/时长右偏,
+    # 先 log1p 再 z,复合近似对称、可进高斯 LMM(paper/10 §7.1:计数→负二项、时长→log;
+    # 复合走 log)。单终点 n_ai_rounds 的确证检验仍应负二项——预注册 SAP 锁定。
+    # (深度评审 2026-07-19 #10:此前从未构建,招牌图 H3a 的推断缺一半。)
+    eff = []
+    for col in ("n_ai_rounds", "hand_edit_chars", "post_investment"):
+        if col in df:
+            eff.append(_z(np.log1p(pd.to_numeric(df[col], errors="coerce").clip(lower=0))))
+    if eff:
+        df["effort_composite"] = pd.concat(eff, axis=1).mean(axis=1)
     return df
 
 
@@ -218,7 +228,7 @@ def main() -> None:
 
     df = build_composites(pd.read_csv(args.csv))
     for dv in ("ownership_composite", "fidelity_composite", "satisfaction",
-               "post_investment", "total_investment"):
+               "post_investment", "total_investment", "effort_composite"):
         analyze_endpoint(df, dv)
     print("\n剂量-反应(E 内 事前投入→保真):",
           dose_response(df, "fidelity_composite") if "fidelity_composite" in df else "无")

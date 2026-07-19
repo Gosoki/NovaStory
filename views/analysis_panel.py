@@ -69,7 +69,7 @@ def render() -> None:
             st.markdown(t("analysis.stats_title"))
             comp = A_stats.build_composites(pt)
             for dv in ("ownership_composite", "fidelity_composite", "satisfaction",
-                       "post_investment", "total_investment"):
+                       "post_investment", "total_investment", "effort_composite"):
                 if dv in comp and comp[dv].notna().sum() >= 6:
                     st.code(_capture(lambda dv=dv: A_stats.analyze_endpoint(comp, dv)),
                             language="text")

@@ -15,10 +15,21 @@ ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "data"
 TOPICS_FILE = DATA_DIR / "topics.json"
 
-# 3×3 Latin squares: seq (0-8) = cond_row * 3 + topic_row.
-# Condition order and topic→condition pairing are both balanced across 9 seqs.
-_COND_ORDERS = (("C", "D", "E"), ("D", "E", "C"), ("E", "C", "D"))
+# seq (0-17) = cond_row * 3 + topic_row.
+# _COND_ORDERS = all 6 permutations of C/D/E (a Williams design): each condition
+# is immediately preceded by each other condition equally often, so first-order
+# carryover is balanced and the E−D contrast is not confounded with order (the 3
+# cyclic orders CDE/DEC/ECD used before had D always after C, E always after D —
+# deep-review 2026-07-19 #1). Each condition also sits in each round-position
+# exactly twice. _TOPIC_ORDERS (3 rotations) balances condition×topic and
+# topic×position. 6 × 3 = 18 seqs; N=36 → 2 completers each.
+_COND_ORDERS = (
+    ("C", "D", "E"), ("C", "E", "D"),
+    ("D", "C", "E"), ("D", "E", "C"),
+    ("E", "C", "D"), ("E", "D", "C"),
+)
 _TOPIC_ORDERS = ((0, 1, 2), (1, 2, 0), (2, 0, 1))
+assert len(_COND_ORDERS) * len(_TOPIC_ORDERS) == config.LATIN_SQUARE_N
 
 # Seed topics written to data/topics.json on first launch when the file is
 # missing. Live session always reads from topics.json via load_topics().

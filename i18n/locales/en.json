@@ -275,7 +275,8 @@
     "col_cond": "Condition",
     "col_date": "Date",
     "balance_title": "**Condition × topic counts**　(Latin-square balance: cells should be roughly equal; greener = more)",
-    "seq_title": "**Sequence seq distribution**　(should be even, ~N/9 each)",
+    "seq_title": "**Completed count per seq (condition×topic)**　—— collect until all even (over-recruit absorbs dropouts)",
+    "seq_target": "Target: {n} completers per seq",
     "none": "(none yet)",
     "no_seq": "(no seq yet)",
     "daily_title": "**Daily completions**",
@@ -283,7 +284,13 @@
     "ownership": "Psychological ownership",
     "satisfaction": "Satisfaction",
     "imagine": "Imagination match",
-    "descriptive_title": "**Per-condition subjective means (1-7, descriptive)**　—— rigorous stats (LMM/contrasts/TOST) in 📊 Data analysis below"
+    "descriptive_title": "**Per-condition subjective means (1-7, descriptive)**　—— rigorous stats (LMM/contrasts/TOST) in 📊 Data analysis below",
+    "health_title": "Data health (anomaly watch during collection)",
+    "health_parse": "Parse-fail rate",
+    "health_llm_err": "LLM error rate",
+    "health_fallback": "Guidance fallback rate",
+    "health_latency": "Gen latency med/p95",
+    "health_none": "No events yet"
   },
   "analysis": {
     "title": "📊 Data analysis (just click — no command line needed)",

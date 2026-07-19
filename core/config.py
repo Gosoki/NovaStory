@@ -11,6 +11,12 @@ TEMPERATURE = 0.8
 N_ROUNDS = 3
 MIN_INTENT_CHARS = 10
 
+# Number of Latin-square sequences = len(state._COND_ORDERS) × len(state._TOPIC_ORDERS).
+# 6 condition orders (all permutations of C/D/E → first-order carryover balanced,
+# a Williams design) × 3 topic rotations = 18. N=36 → 2 completers per seq.
+# state.py asserts this stays in sync. (deep-review 2026-07-19 #1)
+LATIN_SQUARE_N = 18
+
 # ---- guided elicitation (condition E) ----
 # Round 1 = 3 fixed expert dimensions + 2-4 AI-chosen supplements (5-7 total);
 # follow-up rounds 1-3 questions each. Both enforced in the prompts

@@ -7,7 +7,7 @@ import json
 import pandas as pd
 import streamlit as st
 
-from core import db
+from core import config, db
 from i18n import t
 
 _TARGET_N = 36
@@ -52,6 +52,7 @@ def render() -> None:
         return
 
     _overview(parts)
+    _data_health(trials)
     _balance(trials)
     _progress(parts)
     _descriptive(trials)
@@ -70,6 +71,37 @@ def _overview(parts: pd.DataFrame) -> None:
         st.progress(min(done / _TARGET_N, 1.0),
                     text=t("monitor.progress", n=_TARGET_N, done=done,
                            remain=max(_TARGET_N - done, 0)))
+
+
+def _data_health(trials: pd.DataFrame) -> None:
+    """Live data-quality signals so a silent corruption (parse failures, LLM
+    errors, guidance fallbacks, slow gens) is visible between sessions instead of
+    a green progress bar hiding a broken primary DV (deep-review 2026-07-19, #30)."""
+    ev = db.load_table("events")
+    st.markdown(f"**{t('monitor.health_title')}**")
+    if ev.empty and trials.empty:
+        st.caption(t("monitor.health_none"))
+        return
+    typ = ev["type"] if "type" in ev else pd.Series(dtype=str)
+    pj = ev["payload_json"] if "payload_json" in ev else pd.Series(dtype=str)
+
+    parse_fail = float((trials["parse_ok"] == 0).mean()) if "parse_ok" in trials and len(trials) else float("nan")
+    n_start = int((typ == "llm_start").sum())
+    err_rate = (int((typ == "llm_error").sum()) / n_start) if n_start else float("nan")
+    gs = pj[typ == "guidance_shown"]
+    fb_rate = gs.map(lambda x: bool(_loads(x).get("fallback"))).mean() if len(gs) else float("nan")
+    el = pj[typ == "llm_done"].map(lambda x: _loads(x).get("elapsed"))
+    el = pd.to_numeric(el, errors="coerce").dropna()
+    med, p95 = (el.median(), el.quantile(0.95)) if len(el) else (float("nan"), float("nan"))
+
+    def _pct(x):
+        return "—" if x != x else f"{x:.0%}"
+    c = st.columns(4)
+    c[0].metric(t("monitor.health_parse"), _pct(parse_fail))
+    c[1].metric(t("monitor.health_llm_err"), _pct(err_rate))
+    c[2].metric(t("monitor.health_fallback"), _pct(fb_rate))
+    c[3].metric(t("monitor.health_latency"),
+                "—" if med != med else f"{med:.0f}/{p95:.0f}s")
 
 
 def _balance(trials: pd.DataFrame) -> None:
@@ -92,11 +124,16 @@ def _progress(parts: pd.DataFrame) -> None:
     c1, c2 = st.columns(2)
     with c1:
         st.markdown(t("monitor.seq_title"))
-        if "seq" in parts:
-            real = parts[parts.get("status") != "screened_out"] if "status" in parts else parts
-            seqc = real["seq"].dropna().astype(int).value_counts().sort_index()
+        if "seq" in parts and "status" in parts:
+            # Balance the DATA THAT COUNTS: completed (status=='done') per seq.
+            # Show all 18 cells (missing → 0) so laggards are visible; keep
+            # recruiting until each hits target (over-recruit absorbs dropouts, #21).
+            done = parts[parts["status"] == "done"]
+            seqc = done["seq"].dropna().astype(int).value_counts()
+            seqc = seqc.reindex(range(config.LATIN_SQUARE_N), fill_value=0)
             seqc.index = seqc.index.map(lambda i: f"seq{i}")
-            st.bar_chart(seqc, height=220) if len(seqc) else st.caption(t("monitor.none"))
+            st.bar_chart(seqc, height=220)
+            st.caption(t("monitor.seq_target", n=_TARGET_N // config.LATIN_SQUARE_N))
         else:
             st.caption(t("monitor.no_seq"))
     with c2:
