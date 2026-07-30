@@ -108,7 +108,7 @@ DEFAULTS: dict[str, Any] = {
     "researcher_ok": False,
     "participant_id": None,
     "seq": None,
-    "stage": "consent",        # consent → screening → rounds → final_survey → done
+    "stage": "consent",        # consent → intro → screening → rounds → final_survey → done
     "round_idx": 1,
     "round_plan": [],          # [{"condition": str, "topic": dict}] × 3
     "attention_value": None,

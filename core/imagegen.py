@@ -67,23 +67,32 @@ def ensure_started(pid: int, ridx: int, shots: list[dict],
             def one(item: tuple[int, str]) -> None:
                 i, scene = item
                 out = d / f"shot{i + 1}.jpg"
-                if out.exists() or not scene:
+                done = d / f"shot{i + 1}.done"  # attempt-finished marker (see all_done)
+                if out.exists() or done.exists():
                     return
                 try:
-                    r = client.images.generate(
-                        model=_IMG_MODEL, prompt=_STYLE + scene, n=1,
-                        size="1024x1024", quality="low",
-                    )
-                    png = base64.b64decode(r.data[0].b64_json)
-                    im = Image.open(io.BytesIO(png)).convert("RGB")
-                    # keep the FULL 1:1 image (just shrink) — the 16:9 frame shows
-                    # it whole via object-fit:contain (white side-bars blend into
-                    # the white frame), so heads/feet aren't cropped.
-                    im = im.resize((512, 512))
-                    tmp = out.with_suffix(".tmp")
-                    im.save(tmp, "JPEG", quality=82, optimize=True)
-                    tmp.replace(out)  # atomic: reader never sees a half-written file
+                    if scene:
+                        r = client.images.generate(
+                            model=_IMG_MODEL, prompt=_STYLE + scene, n=1,
+                            size="1024x1024", quality="low",
+                        )
+                        png = base64.b64decode(r.data[0].b64_json)
+                        im = Image.open(io.BytesIO(png)).convert("RGB")
+                        # keep the FULL 1:1 image (just shrink) — the 16:9 frame shows
+                        # it whole via object-fit:contain (white side-bars blend into
+                        # the white frame), so heads/feet aren't cropped.
+                        im = im.resize((512, 512))
+                        tmp = out.with_suffix(".tmp")
+                        im.save(tmp, "JPEG", quality=82, optimize=True)
+                        tmp.replace(out)  # atomic: reader never sees a half-written file
                 except Exception:  # noqa: BLE001 — one image failing must never break the study
+                    pass
+                # Mark the attempt finished (success wrote out; empty scene / failure
+                # writes only this marker) so all_done() can settle and the 2s poll
+                # stops instead of spinning forever on a failed shot.
+                try:
+                    done.write_bytes(b"")
+                except OSError:
                     pass
 
             with cf.ThreadPoolExecutor(max_workers=3) as ex:
@@ -103,11 +112,16 @@ def frame_htmls(pid: int, ridx: int, n: int, generating_label: str) -> list[str]
         if f.exists():
             b64 = base64.b64encode(f.read_bytes()).decode()
             out.append(f'<img src="data:image/jpeg;base64,{b64}" alt=""/>')
+        elif (d / f"shot{i}.done").exists():
+            out.append("")  # attempted but no image → fall back to the frame placeholder
         else:
             out.append(f'<span class="lbl">{html.escape(generating_label)}</span>')
     return out
 
 
 def all_done(pid: int, ridx: int, n: int) -> bool:
+    """True once every shot has either an image or a .done marker (failed/empty),
+    so the questionnaire's 2s poll settles instead of spinning on a failed shot."""
     d = _dir(pid, ridx)
-    return all((d / f"shot{i}.jpg").exists() for i in range(1, n + 1))
+    return all((d / f"shot{i}.jpg").exists() or (d / f"shot{i}.done").exists()
+               for i in range(1, n + 1))

@@ -62,6 +62,30 @@
 - **own3 facet / ai_q_quality 定位**:所有权复合分 possession+self-investment 报;ai_q_quality 标 E-only 操纵检查、不进跨条件复合。
 - **artifact 包**:发布匿名数据 + analysis/* + prompt 全文 + 日语量表最终版 + codebook(边际成本低,提 rigor 评分)。
 
+## 🔬 第四轮对抗审计待判断项(2026-07-30,16 agent,SQL/DB+新代码+全流程;均 low,你来定)
+> 均经对抗验证确认属实但严重度低/涉设计取舍。明显该修的已修(见文末已结清「07-30」)。以下留你判断。
+**健壮性(防脏数据/边缘,属 CLAUDE.md §2「要不要为不可能场景加防护」的边界):**
+- `core/db.py:181` CG1 计数用 `json_extract`:若任一 passed 行的 `screening_json` 是非法 JSON(手改库/导入脏数据/写入中断)→ 整条 COUNT 崩 → **阻断所有新被试入库**。一行可修:`AND (json_valid(screening_json)=0 OR COALESCE(json_extract(...),0)!=1)`。正常流程 screening_json 恒 `json.dumps`,不会触发。→ 要不要防?
+- `core/db.py:141` 唯一索引建失败静默 `pass`(为遗留 dev 库容忍):若库在建索引前已含重复 (pid,round) 行 → 索引永不建 → `INSERT OR REPLACE` 退化为普通 INSERT 静默产生重复行。**真实新库不可达**(init 先于任何 insert、索引必建成),仅遗留/污染库触发。→ 建议至少在 `monitor_panel` 暴露「唯一索引缺失」告警,要不要加?
+- `core/db.py:136` 迁移循环吞所有 `OperationalError`(可能掩盖非「列已存在」的真错)→ 可只吞 `'duplicate column'`。
+**线程/进度条(`_run_with_progress`,已实测当前 Streamlit 版本能用):**
+- worker 线程与主线程共享同一 `ScriptRunContext`(官方不支持,但已小心设计成无重叠写)→ 求稳妥可重构:worker 只做纯网络 I/O,api_key/secrets 值进线程前读出以参数传入、usage 经 result 返回,彻底解耦。
+- 忙等循环遇 rerun(StopException)会跳过 `join()/bar.empty()` → 留最长 120s 的孤儿 daemon 线程 → `try/finally` 兜底。
+- `dev_smoke_e2e` 打桩替换了 LLM,跨线程 session_state 路径未被覆盖 → 可加一个定向单测锁契约(仅测试,无生产风险)。
+**数据口径(涉分析定义,建议你确认):**
+- `views/guidance.py` 的 `guidance_answer_saved` 在 E-final 生成失败重试/回看时对同一问重复落库 → 逐题耗时探索分析取 (attempt,q) 末条即可,或加幂等。paper/12 已注「回看会重记」,失败重试是新增来源。
+- `core/llm.py:296` generate_json 中途 API 报错时,前序 attempt 已耗的 token 从日志丢失(成本口径是否要精确到失败调用)。
+**设计取舍:**
+- `views/_postgen.py:56` 删空编辑框后提交:静默回退到上一 AI 版(不落 user_edit、不计手改,违反快照硬规则的精神)→ 要么**禁止空提交**(提交处报错拦),要么**当一次 user_edit 计入**。二选一。
+- `core/shots.py:100` 守卫1:shot_type 恢复进 `_FIELD_RE` 后,「无编号 + 景别在时长前」的分镜现在整体解析失败(诚实 parse_ok=0)。是刻意「诚实失败胜过静默错切」;若实测 LLM 输出漂移多可放宽(守卫1 只认 visual/audio/duration 类字段)。
+- `core/state.py:165` `_attempt_resume` 在 topics<N_ROUNDS 时不恢复身份即返回 → 极低概率让被试重过筛占第二个 seq → 可改为仍恢复身份+置等待/错误态。
+**命名/可读性/效率(涉多文件或口味,记录待判):**
+- `r_llm_wait_pre`/`r_llm_wait_post` 命名暗示互补,实为非对称语义 → 建议 `r_llm_wait_e_pregen`/`r_llm_wait_postscript`,或在 DEFAULTS 注一句「三者非划分」。
+- `views/_streaming.py` `call_llm_json` 用字符串 `"RETRY"` 当哨兵,与 `Optional[dict]` 注解矛盾 → 改 Enum/`object()` 哨兵 + 更新注解。
+- `core/db.py:247` `insert_event` 每次新建连接+PRAGMA(高频事件)→ 事件量大时改持久连接。
+- `views/questionnaire.py` `render()` 内对同一终稿多次 `parse_shots` → parse 一次传入复用。
+- i18n 4 个死键 `researcher.n_{participants,passed,done,trials}` → 确认不复用则三语同删。
+
 ## 🟡 可延后(不影响被试跑通,数据洁净/边角)
 
 - **AUD9 引导步模型没落库**——**已基本消解**(引导步与主模型同为 OpenAI);真想留审计痕迹可低优先补记。
@@ -122,6 +146,13 @@
 ---
 
 ## ✅ 已结清(留痕)
+
+### 2026-07-30 · 第四轮全项目对抗审计(16 agent,SQL/DB+新代码+全流程;21 确认/0 驳回)+ 修复
+> 重点审 07-19 后新代码(imagegen 配图、_run_with_progress 线程进度条、分镜表、LOG 批次)+ SQL/DB + 全流程。**结论:主干健壮**——CG1 事务原子性(实测 20 线程)、无 SQL 注入(列名全代码常量+白名单)、跨线程 session_state(实测当前 Streamlit 版本 OK)、HTML 全 escape、计时/LOG4 回填/快照硬规则均正确。真问题 2 medium 已修,余 low 见上「🔬 待判断项」。
+- **已修 ①**(med):`core/llm.py` generate_json 读 `resp.choices[0].message.content` 在 try 外,空 choices/None content(免费网关繁忙)抛 IndexError 逃逸 LLM 异常分类 → E 引导**崩溃而非降级**。修:choices/content 判空当解析失败,重试后 `LLMJsonError` → 降级 fallback 开放题。实测空 choices 与 None content 都正确降级。
+- **已修 ②**(med):`core/imagegen.py` 配图失败/空场景镜头 → `all_done` 永不为真 → 问卷页分镜表每 2s **无限轮询**(反复 read+base64 已完成图,纯浪费)。修:每镜尝试结束写 `shot{i}.done` 标记;`all_done` 认 jpg 或 .done;`frame_htmls` 失败镜回退占位。实测轮询能停。
+- **已修 ③**(low):`db.py` insert_participant docstring「seq 0-8」→「0-17(18 Williams)」;`state.py` DEFAULTS stage 注释补 `intro`。
+- 验证:e2e(含 resume/redo)全绿 + 两处 medium 定向单测通过;清理审计测试残留 mig.db*。
 
 ### 2026-07-02(深夜③)· 问卷前分镜预览表
 - 每轮问卷**开头**把终稿渲染成分镜表(No. / 景别·カメラ / 画面 / 情节 / 台词;前 3 镜连续编号 1.2.3 + 第 4 行整行留空),替代原来的纯文本回顾;被试答题前先视觉化确认自己的成品。解析失败(散文稿)时退回纯文本,不出破表。

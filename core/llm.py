@@ -304,9 +304,16 @@ def generate_json(
                 if v is not None:
                     spent[k] = spent.get(k, 0) + v
             st.session_state["_last_llm_usage"] = dict(spent)
-        raw = clean_output(resp.choices[0].message.content or "")
-        raw = _FENCE_RE.sub("", raw).strip()
+        # A congested free gateway can return empty choices / null content. Treat
+        # it as a failed attempt (retry → LLMJsonError → caller degrades to the
+        # open fallback), not an IndexError that escapes the LLM-error taxonomy and
+        # crashes the guidance step.
+        choices = getattr(resp, "choices", None) or []
+        msg = choices[0].message if choices else None
+        raw = _FENCE_RE.sub("", clean_output(getattr(msg, "content", None) or "")).strip()
         try:
+            if not raw:
+                raise json.JSONDecodeError("empty response from model", "", 0)
             data = json.loads(raw)
             _log(group, user_id,
                  f"json_done elapsed={time.time()-t0:.2f}s attempt={attempt + 1}")

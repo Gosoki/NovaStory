@@ -163,8 +163,9 @@ def insert_participant(
 ) -> tuple[int, Optional[int], str]:
     """Insert a participant; returns (id, seq, token).
 
-    seq (0-8, Latin-square sequence) is assigned at insert time as
-    (count of previously passed participants) % LATIN_SQUARE_N (18), None when screened out.
+    seq (0..LATIN_SQUARE_N-1, i.e. 0-17, a Williams-design sequence) is assigned at
+    insert time as (count of previously passed non-dev participants) % LATIN_SQUARE_N (18),
+    None when screened out.
     token is an opaque resume handle put in the URL (?t=) so a refresh/reconnect
     restores the session instead of re-screening (which would consume a 2nd seq).
     """
