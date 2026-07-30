@@ -42,6 +42,44 @@ td.sb-pic{vertical-align:middle;padding:7px}
 table.sb-tbl .cell{white-space:pre-wrap;word-break:break-word;line-height:1.42}
 tr.sb-blank td{height:74px}
 tr.sb-blank .sb-frame .lbl{display:none}
+/* Scroll-triggered corner mode (questionnaire page).
+   `position:sticky` was tried first but Streamlit's ancestor containers have
+   overflow constraints that neutralise it — sheet just scrolls out with the
+   page. So the sheet is `position:fixed` always; a sibling `.sb-slot`
+   placeholder stays in flow to reserve the natural layout height, and
+   questionnaire.py's JS observer sets `transform: translate(x, y) scale(s)`
+   on the sheet every scroll tick so it visually TRACKS the slot (fake-inflow).
+   Once the slot's top scrolls above the viewport top, the transform target
+   swaps to the corner (top-right, 32% scale) and `.is-animating` briefly
+   enables a CSS transition so the change plays smoothly; the class is
+   removed after the transition so in-flow-tracking updates on scroll do
+   NOT interpolate (else the sheet would lag behind the scroll). */
+.sb-slot{position:relative}
+.sb-sheet{position:fixed;top:0;left:0;margin:0!important;z-index:100;
+  transform-origin:top right;will-change:transform;
+  opacity:0;pointer-events:none}
+.sb-sheet.is-positioned{opacity:1;transition:opacity .2s ease-out}
+/* Transition is active only during the corner-pin animation OR when the
+   sheet is settled at corner (so CSS :hover scale-up animates smoothly).
+   In pure flow-tracking state (no is-animating, no is-corner) transition is
+   off so scroll updates don't rubber-band. */
+.sb-sheet.is-animating,
+.sb-sheet.is-corner{
+  transition:transform .45s cubic-bezier(.22,.7,.2,1),opacity .2s}
+.sb-sheet.is-corner{
+  transform:translate(var(--sb-tx,0px),var(--sb-ty,64px)) scale(.32);
+  cursor:zoom-in;filter:drop-shadow(0 8px 28px rgba(0,0,0,.35));box-shadow:none}
+/* Rule: mouse can interact ONLY when the sheet is SETTLED at the corner
+   (`.is-corner` present, `.is-animating` absent). Every other state
+   (in-flow, mid-shrink, mid-expand back) is transparent to the mouse, so
+   no stray mouseenter can hijack an in-progress transform animation. */
+.sb-sheet.is-corner:not(.is-animating){pointer-events:auto}
+.sb-sheet.is-corner:not(.is-animating):hover{
+  transform:translate(var(--sb-tx,0px),var(--sb-ty,64px)) scale(.95);
+  cursor:zoom-out}
+@media (max-width:900px){.sb-slot{display:contents}
+  .sb-sheet{position:static;transform:none!important;opacity:1;
+    pointer-events:auto;filter:none;margin:.2rem 0 .9rem!important}}
 </style>
 """
 
@@ -58,7 +96,14 @@ def render(script: str, subtitle: str, sketches: list[str] | None = None) -> Non
     """Render a finished script as a 絵コンテ sheet with the given subtitle.
     `sketches` (optional) is a per-shot list of trusted SVG strings drawn into
     the picture frames; without it the frames show the "coming soon" placeholder.
-    Falls back to plain text (bordered box) when the script doesn't parse."""
+    Falls back to plain text (bordered box) when the script doesn't parse.
+
+    The sheet is emitted inside a `.sb-corner-wrap` with a hidden
+    `.sb-placeholder` sibling. The questionnaire page's scroll observer (see
+    _install_sb_scroll_observer in questionnaire.py) toggles `.is-corner` on
+    the sheet once the user scrolls past it — pinning it to the top-right as
+    a hover-to-expand thumbnail — and sizes the placeholder to keep the
+    questionnaire body from jumping upward when the sheet leaves the flow."""
     parsed = shots.parse_shots(script)
     if not parsed:
         st.caption(t("q.script_review"))
@@ -87,11 +132,13 @@ def render(script: str, subtitle: str, sketches: list[str] | None = None) -> Non
         for h in (t("storyboard.col_no"), t("storyboard.col_shot"), t("storyboard.col_frame"),
                   t("storyboard.col_plot"), t("storyboard.col_line"))
     )
-    st.markdown(
-        f'{_SB_CSS}<div class="sb-sheet">'
+    sheet = (
+        f'<div class="sb-slot">'
+        f'<div class="sb-sheet">'
         f'<div class="sb-hd"><span class="sb-ttl">{html.escape(t("storyboard.title"))}</span>'
         f'<span class="sb-sub">{html.escape(subtitle)}</span></div>'
         f'<table class="sb-tbl"><thead><tr>{header}</tr></thead><tbody>{body}</tbody></table>'
-        f"</div>",
-        unsafe_allow_html=True,
+        f"</div>"
+        f"</div>"
     )
+    st.markdown(f"{_SB_CSS}{sheet}", unsafe_allow_html=True)
