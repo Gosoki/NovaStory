@@ -27,6 +27,7 @@ from core.shots import parse_shots, strip_format  # noqa: E402
 BASELINE = ROOT / "data" / "baseline"
 TOPICS = json.loads((ROOT / "data" / "topics.json").read_text(encoding="utf-8"))
 _FIELDS = ("shot_type", "visual", "audio", "duration")
+_MIN_BASELINE = 5  # 每题机器稿下限:更少则 CR/distinct 的题间比较没有意义
 
 
 def _load_texts(i: int) -> list[str]:
@@ -54,13 +55,15 @@ def _compliance(texts: list[str]) -> dict:
 
 
 def main() -> None:
+    if not BASELINE.exists():
+        raise SystemExit(f"缺少机器基线目录 {BASELINE}(norming 的唯一输入)—— 先跑: make baseline")
     rows = []
     for i, topic in enumerate(TOPICS[:3]):
         texts = _load_texts(i)
         title = topic.get("title", {}).get("ja", f"topic{i}")
-        if not texts:
-            print(f"[topic{i}] {title}: 无基线数据(先跑 scripts/baseline_gen.py)")
-            continue
+        if len(texts) < _MIN_BASELINE:
+            raise SystemExit(f"[topic{i}] {title}: 只有 {len(texts)} 份基线"
+                             f"(<{_MIN_BASELINE}),三题不可比 —— 先跑: make baseline")
         stripped = [strip_format(t) for t in texts]
         row = {"topic": f"{i}:{title}", "n": len(texts),
                "gzip_cr": textstats.gzip_cr(stripped),
@@ -69,10 +72,6 @@ def main() -> None:
                "mean_len": float(np.mean([len(t) for t in texts]))}
         row.update(_compliance(texts))
         rows.append(row)
-
-    if not rows:
-        print("没有任何基线数据。先运行: .venv/bin/python scripts/baseline_gen.py --n 12 --lang ja")
-        return
 
     print(f"{'指标':<16}", *[f"{r['topic'][:18]:>20}" for r in rows], sep="")
     keys = ["n", "gzip_cr", "distinct2", "self_rep4", "mean_len",

@@ -2,13 +2,14 @@
 """A6: 论文图表(paper/10 §7.2)。无显示环境用 Agg 后端;标签用 ASCII 避开日文字体。
 
   fig_effort        招牌图:各条件 事前投入 vs 事后返工 堆叠条(努力再分配)
-  fig_dv            主 DV 分条件:箱线 + 被试内散点连线
+  fig_dv            主 DV 分条件:箱线 + 被试内散点连线(两个主复合各一张)
   fig_diversity     条件×题目 多样性(gzip CR,越高越同质)
 
-输入: analysis/v3.py 的 v3_per_trial.csv;无则 --demo 用合成数据渲染验证。
-产出: data/analysis/figures/*.png
+输入: analysis/v3.py 的 v3_per_trial.csv(复合终点在此现算,CSV 里没有)+ 实验库
+      (多样性/fig4 原料);无 CSV 则 --demo 用合成数据渲染验证。
+产出: data/analysis/figures/*.png + data/analysis/fig4_coding_material.csv
 
-用法: .venv/bin/python analysis/figures.py [--demo]
+用法: .venv/bin/python analysis/figures.py [--demo] [--db data/novastory.db]
 """
 from __future__ import annotations
 
@@ -25,6 +26,10 @@ import pandas as pd  # noqa: E402
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from analysis import v3  # noqa: E402
+from analysis.stats import build_composites  # noqa: E402
+
+DEFAULT_DB = ROOT / "data" / "novastory.db"
 CSV = ROOT / "data" / "analysis" / "v3_per_trial.csv"
 FIGDIR = ROOT / "data" / "analysis" / "figures"
 ORDER = ["C", "D", "E"]
@@ -89,6 +94,25 @@ def fig_diversity(div: pd.DataFrame, out: Path) -> None:
     plt.close(fig)
 
 
+def dump_fig4_material(raw: pd.DataFrame, out: Path) -> None:
+    """fig4(D 的修改请求 ↔ E 的引导维度)的编码原料。码本尚未定义(paper/8 待办),
+    这里只把待编码的原文导出成 CSV 供人工/LLM 编码,不臆造类别。"""
+    dims = {}
+    for _, r in raw[raw["condition"] == "E"].iterrows():
+        rounds = v3._loads(r.get("guidance_json"), {}).get("rounds") or []
+        dims[r["participant_id"]] = "|".join(
+            str(it.get("dimension", "")) for rd in rounds for it in (rd.get("items") or []))
+    rows = []
+    for _, r in raw[raw["condition"] == "D"].iterrows():
+        for req in v3._loads(r.get("revision_requests"), []):
+            rows.append({"participant_id": r["participant_id"], "round_idx": r["round_idx"],
+                         "topic": v3._topic_title(r.get("topic_json")),
+                         "revision_request": req.get("text", ""),
+                         "e_guidance_dimensions": dims.get(r["participant_id"], "")})
+    pd.DataFrame(rows).to_csv(out, index=False)
+    print(f"fig4 编码原料(D 修改请求 × E 引导维度){len(rows)} 条 → {out}")
+
+
 def _demo_df() -> pd.DataFrame:
     """合成 per-trial:E 事前投入高、事后返工少;所有权 E>D>C(仅供渲染验证)。"""
     rng = np.random.default_rng(3)
@@ -112,6 +136,7 @@ def _demo_df() -> pd.DataFrame:
 def main() -> None:
     ap = argparse.ArgumentParser(description="A6 图表")
     ap.add_argument("--demo", action="store_true")
+    ap.add_argument("--db", type=Path, default=DEFAULT_DB)
     args = ap.parse_args()
     FIGDIR.mkdir(parents=True, exist_ok=True)
 
@@ -120,11 +145,25 @@ def main() -> None:
             print(f"(未找到 {CSV},用合成数据渲染验证)")
         pt = _demo_df()
     else:
-        pt = pd.read_csv(CSV)
+        # 复合终点只在 stats.py 内存里构建、从不写回 CSV,故这里自己算(否则主 DV 图永远出不来)
+        pt = build_composites(pd.read_csv(CSV))
 
     fig_effort(pt, FIGDIR / "fig_effort.png")
-    if "ownership_composite" in pt:
-        fig_dv(pt, "ownership_composite", FIGDIR / "fig_ownership.png")
+    for dv, name in (("ownership_composite", "fig_ownership.png"),
+                     ("fidelity_composite", "fig_fidelity.png")):
+        if dv in pt and pt[dv].notna().any():
+            fig_dv(pt, dv, FIGDIR / name)
+        else:
+            print(f"(缺 {dv},跳过该图)")
+
+    if not args.demo and args.db.exists():  # 多样性/fig4 原料要回到库里取成稿原文
+        raw = v3.load(args.db)
+        div = v3.diversity_by_group(raw)
+        if len(div):
+            fig_diversity(div, FIGDIR / "fig_diversity.png")
+        else:
+            print("(每组 <2 稿,跳过多样性图)")
+        dump_fig4_material(raw, CSV.parent / "fig4_coding_material.csv")
     print("图已写入", FIGDIR, "→", ", ".join(p.name for p in sorted(FIGDIR.glob("*.png"))))
 
 

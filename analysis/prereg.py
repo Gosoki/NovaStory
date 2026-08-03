@@ -20,6 +20,8 @@ NOVICE_DEF = ("published_idx==0 AND background=='no' AND written=='no' "
               "AND self_rating<=2 AND quiz_correct<=1")
 
 # ---- SESOI(H4 TOST / 功效)—— TODO:预注册前用原始单位 a priori 设定(#12/#14, paper/8 A4) ----
+# H4 的 DV = 结构完整度(field_completeness / shots_ok,0-1 比例),故 SESOI 的单位是该比例的
+# 绝对差(如 0.05 = 5 个百分点)。为 None 时 stats.tost 拒绝执行,不退回任何默认界。
 SESOI: float | None = None
 
 # ---- 终点层级(#13 族错误控制)——两个主复合上做 FWER,次要/探索门控其后;正式族在预注册 SAP 锁 ----
@@ -32,6 +34,7 @@ COMPOSITES = {
     "fidelity_composite": "mean z(imagine, -violation, mine_ratio, embed_fidelity[若有])",
     "ownership_composite": "own_mean(own1-3);own3=self-investment facet 另行分报",
     "effort_composite": "mean z(log1p(n_ai_rounds, hand_edit_chars, t_postgen))  # H3a 事后返工",
+    "dose_composite": "mean z(pre_investment, g_custom_rate, 1-g_ai_decided_rate)  # H5 E 内剂量",
 }
 
 

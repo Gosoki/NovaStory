@@ -26,8 +26,14 @@ from scipy import stats
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from analysis import prereg  # noqa: E402  (预注册常量单一真源:终点层级 / SESOI)
+
 CSV = ROOT / "data" / "analysis" / "v3_per_trial.csv"
 _PAIRS = [("E", "D"), ("E", "C"), ("D", "C")]  # E−D 为主
+_FIDELITY_LEGS = ("imagine", "violation", "mine_ratio", "embed_fidelity")
+_EFFORT_LEGS = ("n_ai_rounds", "hand_edit_chars", "post_investment")
+_DOSE_LEGS = ("pre_investment", "g_custom_rate", "g_ai_decided_rate")
+_H4_QUALITY_DVS = ("field_completeness", "shots_ok")  # H4 结构完整度(客观下界)
 
 
 # ---------------- 复合终点 ----------------
@@ -42,12 +48,13 @@ def build_composites(df: pd.DataFrame) -> pd.DataFrame:
     所有权复合 = own_mean(paper/14 §2、A4)。缺哪项跳哪项。"""
     df = df.copy()
     parts, names = [], []
-    for col, sign in (("imagine", 1), ("violation", -1), ("mine_ratio", 1), ("embed_fidelity", 1)):
-        if col in df:
+    for col, sign in zip(_FIDELITY_LEGS, (1, -1, 1, 1)):
+        if col in df and df[col].notna().any():  # 整列全 NaN 等同缺失(否则悄悄少一条腿)
             parts.append(sign * _z(df[col]))
             names.append(col)
     if parts:
         _warn_uneven_coverage(df, names)
+        _warn_missing_legs("fidelity_composite", _FIDELITY_LEGS, names)
         df["fidelity_composite"] = pd.concat(parts, axis=1).mean(axis=1)
     if "own_mean" in df:
         df["ownership_composite"] = df["own_mean"]
@@ -55,13 +62,41 @@ def build_composites(df: pd.DataFrame) -> pd.DataFrame:
     # 先 log1p 再 z,复合近似对称、可进高斯 LMM(paper/10 §7.1:计数→负二项、时长→log;
     # 复合走 log)。单终点 n_ai_rounds 的确证检验仍应负二项——预注册 SAP 锁定。
     # (深度评审 2026-07-19 #10:此前从未构建,招牌图 H3a 的推断缺一半。)
-    eff = []
-    for col in ("n_ai_rounds", "hand_edit_chars", "post_investment"):
-        if col in df:
+    eff, eff_names = [], []
+    for col in _EFFORT_LEGS:
+        if col in df and df[col].notna().any():
             eff.append(_z(np.log1p(pd.to_numeric(df[col], errors="coerce").clip(lower=0))))
+            eff_names.append(col)
     if eff:
+        _warn_missing_legs("effort_composite", _EFFORT_LEGS, eff_names)
         df["effort_composite"] = pd.concat(eff, axis=1).mean(axis=1)
     return df
+
+
+def build_dose(df: pd.DataFrame) -> pd.DataFrame:
+    """H5 剂量复合(paper/10 §7.1:自填率 + 答题净时 + 1−AI代答率)= 三者 z 的均值。
+    仅 E 有引导数据,故在 E 子集内 z;z(1−x) ≡ −z(x),故 ai_decided 取负号。缺哪项跳哪项
+    (g_* 列由 v3.py 产出,若尚未落盘则退化为在场成分)。"""
+    df = df.copy()
+    e = df["condition"] == "E"
+    parts, names = [], []
+    for col, sign in zip(_DOSE_LEGS, (1, 1, -1)):
+        if col in df and df.loc[e, col].notna().any():
+            parts.append(sign * _z(df.loc[e, col]))
+            names.append(col)
+    if parts:
+        _warn_missing_legs("dose_composite", _DOSE_LEGS, names)
+        df.loc[e, "dose_composite"] = pd.concat(parts, axis=1).mean(axis=1)
+    return df
+
+
+def _warn_missing_legs(name: str, full: tuple, present: list[str]) -> None:
+    """复合按不足额的成分集构建时告警(全 NaN 的腿覆盖率均匀为 0,_warn_uneven_coverage 抓不到,
+    复合会静默降为少数腿——深度评审 A5)。"""
+    miss = [c for c in full if c not in present]
+    if miss:
+        warnings.warn(f"{name} 仅由 {len(present)}/{len(full)} 个成分构建,缺 {miss};"
+                      "与预注册复合定义不一致,结果须按实际成分集报告。")
 
 
 def _warn_uneven_coverage(df: pd.DataFrame, cols: list[str]) -> None:
@@ -78,18 +113,31 @@ def _warn_uneven_coverage(df: pd.DataFrame, cols: list[str]) -> None:
 
 # ---------------- LMM + 计划对比 ----------------
 
+_OPTIMIZERS = ("lbfgs", "powell", "bfgs", "nm", "cg")
+
+
 def fit_lmm(df: pd.DataFrame, dv: str):
+    """依次试 _OPTIMIZERS,返回第一个拟合成功的。lbfgs 在本设计上常抛 Singular matrix
+    而 powell/bfgs/nm 拟合同一模型无碍(N=36 合成数据 6 个终点里 5 个如此),写死单一
+    优化器会让预注册的确证分析静默消失。全失败则抛,绝不返回 None。"""
     import statsmodels.formula.api as smf
     d = df.dropna(subset=[dv, "condition"]).copy()
     d["order"] = d["round_idx"].astype(float)
     formula = f"Q('{dv}') ~ C(condition) + C(topic) + order"
+    errs = []
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        return smf.mixedlm(formula, d, groups=d["participant_id"]).fit(method="lbfgs")
+        for opt in _OPTIMIZERS:
+            try:
+                return smf.mixedlm(formula, d, groups=d["participant_id"]).fit(method=opt)
+            except Exception as e:  # noqa: BLE001
+                errs.append(f"{opt}={type(e).__name__}: {e}")
+    raise RuntimeError(f"{dv}: 全部优化器均失败(" + "; ".join(errs) + ")")
 
 
 def _holm(pvals: list[float]) -> list[float]:
     m = len(pvals)
+    pvals = [p if np.isfinite(p) else 1.0 for p in pvals]  # 退化拟合的 NaN p 不得被排成 0(假显著)
     order = np.argsort(pvals)
     adj, run = [1.0] * m, 0.0
     for rank, idx in enumerate(order):
@@ -141,13 +189,27 @@ def wilcoxon_pairs(df: pd.DataFrame, dv: str) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def tost(df: pd.DataFrame, dv: str, pair=("E", "D"), bound: float = 0.5) -> dict:
+def tost(df: pd.DataFrame, dv: str, pair=("E", "D"), bound: float | None = None) -> dict:
     """等价/非劣检验:E 与 D 在 dv 上是否等价(|差| < bound)。
-    **bound 必须是预注册的 a priori SESOI**(dv 原始/z 单位的绝对值),与观测数据无关。
-    切勿用样本自身配对差 SD 现算 bound——那会让等价界随抽样噪声漂移、Type I 失控
-    (代码审查 + 统计专家一致指正)。每个终点在预注册里按源量表/文献设定各自 bound。"""
+    **bound 必须是预注册的 a priori SESOI**(dv 原始/z 单位的绝对值),与观测数据无关;
+    默认取 prereg.SESOI(单一真源)。切勿用样本自身配对差 SD 现算 bound——那会让等价界
+    随抽样噪声漂移、Type I 失控(代码审查 + 统计专家一致指正)。
+    SESOI 未锁定时**拒绝执行**,不退回任何默认值。"""
+    if bound is None:
+        bound = prereg.SESOI
+    if bound is None:
+        print("!" * 78)
+        print(f"⛔ TOST 拒绝执行(H4 非劣,dv={dv},{pair[0]}−{pair[1]}):prereg.SESOI 仍为 None。")
+        print(f"   预注册前研究员必须拍板:{dv} 上多大的 {pair[0]}−{pair[1]} 差异才算「实质劣于」")
+        print("   (即等价界 SESOI,用 DV 原始单位:结构完整度是 0-1 比例,如 0.05 = 5 个百分点),")
+        print("   并把该数值写入 analysis/prereg.py 的 SESOI。在此之前 H4 无结论,不得用默认界代替。")
+        print("!" * 78)
+        return {"pair": f"{pair[0]}-{pair[1]}", "dv": dv, "equivalent": None,
+                "note": "prereg.SESOI 未锁定,拒绝执行"}
     wide = _paired(df, dv)
     a, b = pair
+    if a not in wide or b not in wide:  # 该条件整列缺/全 NaN(试测期 E 未跑、解析全失败)
+        return {"pair": f"{a}-{b}", "dv": dv, "equivalent": None, "note": f"缺条件 {a}/{b} 的配对数据"}
     d = (wide[a] - wide[b]).dropna()
     n = len(d)
     if n < 5:
@@ -164,9 +226,12 @@ def tost(df: pd.DataFrame, dv: str, pair=("E", "D"), bound: float = 0.5) -> dict
             "equivalent": bool(p_lower < .05 and p_upper < .05)}
 
 
-def dose_response(df: pd.DataFrame, dv: str, dose: str = "pre_investment") -> dict:
-    """E 内:事前投入 → 保真(被试间 OLS;每被试仅 1 个 E,无法被试内中心化——附注局限)。"""
+def dose_response(df: pd.DataFrame, dv: str, dose: str = "dose_composite") -> dict:
+    """E 内:事前投入 → 保真(被试间 OLS;每被试仅 1 个 E,无法被试内中心化——附注局限)。
+    默认剂量为 build_dose 的三成分复合;dose='pre_investment' 可得只看时间的可比版本。"""
     import statsmodels.formula.api as smf
+    if dose not in df:
+        return {"note": f"缺剂量列 {dose}"}
     e = df[(df["condition"] == "E")].dropna(subset=[dv, dose])
     if len(e) < 8 or e[dose].std() == 0:
         return {"n": len(e), "note": "样本不足/无方差"}
@@ -177,22 +242,35 @@ def dose_response(df: pd.DataFrame, dv: str, dose: str = "pre_investment") -> di
 
 # ---------------- 端点分析 + CLI ----------------
 
-def analyze_endpoint(df: pd.DataFrame, dv: str) -> None:
+def analyze_endpoint(df: pd.DataFrame, dv: str) -> str | None:
+    """跑完一个终点;返回 None 表示确证分析(LMM+计划对比+Holm)已产出,否则返回失败原因。
+    LMM 失败不中断整轮,但必须在输出里大声报错并被 main 汇总——否则确证分析悄悄消失。"""
     print(f"\n########## 端点: {dv} ##########")
     if dv not in df or df[dv].notna().sum() < 6:
         print("  (数据不足,跳过)")
-        return
+        return "数据不足(该列缺失或非空 < 6)"
     means = df.groupby("condition")[dv].agg(["mean", "std", "count"])
     print("按条件:\n", means.round(3).to_string())
+    err = None
     try:
         fit = fit_lmm(df, dv)
+        con = contrasts(fit)
+        if not np.isfinite(con[["se", "p_raw"]].to_numpy()).all():
+            # 零方差/共线 DV 上 LMM 会「成功」但 se/p 全 NaN,照样打印就成了假的确证结论
+            raise RuntimeError(f"{dv}: LMM 退化,计划对比 se/p 非有限值(DV 无方差或与设计共线)")
         print("\nLMM 计划对比(Holm;E−D 为主):")
-        print(contrasts(fit).round(4).to_string(index=False))
+        print(con.round(4).to_string(index=False))
     except Exception as e:  # noqa: BLE001
-        print("  LMM 失败:", e)
+        err = f"{type(e).__name__}: {e}"
+        print("!" * 78)
+        print(f"⛔ LMM 失败 → 预注册确证分析(计划对比 + Holm)缺失!终点 = {dv}")
+        print(f"   {err}")
+        print("   以下 Wilcoxon 只是稳健性回退,不能当作该终点的确证结论。")
+        print("!" * 78)
     wp = wilcoxon_pairs(df, dv)
     if len(wp):
         print("\nWilcoxon 配对(稳健):\n", wp.round(4).to_string(index=False))
+    return err
 
 
 def _demo() -> None:
@@ -201,7 +279,8 @@ def _demo() -> None:
     print("=== ① 单个 N=36 数据集(真实规模,有噪声):注入 E−D=+0.5 ===")
     df = power_sim.simulate(n_subj=36, cond_delta=delta, seed=1)
     analyze_endpoint(df, "dv")
-    print("\nTOST 等价示例(E vs C, bound=0.5 绝对/预注册 SESOI):", tost(df, "dv", ("E", "C")))
+    print("\nTOST 机制自测(E vs C;合成数据上显式给 bound=0.5,不是预注册 SESOI):",
+          tost(df, "dv", ("E", "C"), bound=0.5))
 
     print("\n=== ② 大 N=400 验证管线正确性(应紧密复原注入值)===")
     big = power_sim.simulate(n_subj=400, cond_delta=delta, seed=1)
@@ -226,12 +305,31 @@ def main() -> None:
         _demo()
         return
 
-    df = build_composites(pd.read_csv(args.csv))
-    for dv in ("ownership_composite", "fidelity_composite", "satisfaction",
-               "post_investment", "total_investment", "effort_composite"):
-        analyze_endpoint(df, dv)
-    print("\n剂量-反应(E 内 事前投入→保真):",
-          dose_response(df, "fidelity_composite") if "fidelity_composite" in df else "无")
+    df = build_dose(build_composites(pd.read_csv(args.csv)))
+    failed = {}
+    for dv in prereg.PRIMARY_ENDPOINTS + prereg.SECONDARY_ENDPOINTS:  # 终点层级单一真源
+        err = analyze_endpoint(df, dv)
+        if err:
+            failed[dv] = err
+
+    print("\n########## H4 质量非劣(TOST,E vs D,结构完整度=客观下界)##########")
+    for dv in _H4_QUALITY_DVS:
+        if dv in df:
+            print(f"  {dv}: {tost(df, dv, ('E', 'D'))}")
+
+    if "fidelity_composite" in df:
+        print("\n########## H5 剂量-反应(E 内,被试间 OLS,探索)##########")
+        print("  复合剂量(自填率+答题净时+1−AI代答率):", dose_response(df, "fidelity_composite"))
+        print("  仅时间(pre_investment,可比参照):",
+              dose_response(df, "fidelity_composite", dose="pre_investment"))
+
+    if failed:
+        print("\n" + "!" * 78)
+        print(f"⛔ 最终警告:{len(failed)} 个预注册终点没有确证结果(LMM+计划对比+Holm 缺失):")
+        for dv, err in failed.items():
+            print(f"   - {dv}  ←  {err}")
+        print("   这些终点当前只有描述性/稳健性输出,不可写进确证性结论。")
+        print("!" * 78)
     print("\n注:embedding 相对基线保真 Δ 由 embed.py 合入后进保真复合;质量走 TOST 非劣。")
 
 

@@ -12,14 +12,15 @@ storyboard creators (intent fidelity, psychological ownership, revision effort).
   questions (3 fixed expert dimensions + 2-4 AI-chosen), then generates; the
   user can keep requesting guided follow-up rounds or edit directly
 
-Each participant: consent (language picked once, ja/zh) → background
-questionnaire (novice status recorded, nobody screened out) → 3 rounds (3×3
-Latin square over conditions × topics) with an in-app questionnaire (incl.
-per-round satisfaction) + per-shot intent annotation after each round →
-whole-study final survey → completion code. A resume token in the URL (`?t=`)
-survives refresh/reconnect without duplicating data. Interaction spec:
-`paper/7`; engineering: `paper/5`; runtime flow: `paper/6`; claim
-verification: `paper/9`.
+Each participant: consent (language picked once, ja/zh/en) → "before you
+start" intro page → background questionnaire (novice status recorded, nobody
+screened out) → 3 rounds (**Williams design**: all 6 orderings of C/D/E × 3
+topic rotations = 18 sequences) with an in-app questionnaire (incl. per-round
+satisfaction) + per-shot intent annotation after each round → whole-study final
+survey → completion code. A resume token in the URL (`?t=`) survives
+refresh/reconnect without duplicating data.
+**All research documentation lives in [`docs/paper/`](docs/paper/README.md)**
+(design: `02`; measures: `03`; analysis plan: `04`; open decisions: `06`).
 
 > v1 (A/B/C/D wizard) retired 2026-06-12 (`3a7737b`); v2 (ModeMirror E,
 > outline-editing D) retired 2026-06-13 — both live in git history.
@@ -49,19 +50,22 @@ Everything is written to SQLite (`data/novastory.db`, WAL mode, gitignored):
 | `events` | millisecond-timestamped interaction log (round_start … trial_submit, session_resumed) with per-round ordering (`seq_in_round`), session-segment `attempt` ids and post-submit `trial_id` backfill; `llm_done` carries per-call token usage |
 | `questionnaires` | ownership / agency / TLX items, intent-violation, imagine-match, satisfaction, per-shot annotations; unique on (participant_id, round_idx) |
 
-Language: participants run in **Japanese** (`ja`, default); the researcher can
-switch to `zh` for testing (topics carry `{ja, zh}`, LLM output follows the
+Language: participants run in **Japanese** (`ja`, default); **ja/zh/en are all
+end-to-end** (UI + prompts + topic scenarios + shot parsing), and the researcher
+can switch for testing (topics carry `{ja, zh, en}`, LLM output follows the
 participant's language). Researcher mode (sidebar, password-locked): table
 browser + CSV export + session reset for local testing.
 
 ## Offline pipeline (analysis)
 
-`scripts/` and `analysis/` hold the non-Streamlit pipeline (machine baselines,
-stats, power simulation, LLM-judge). Note: `analysis/{metrics,stats,power_sim}.py`
-are still **v2-era (HLZ) scripts** and must be rewritten against the v3 schema
-before data analysis (see paper/8, analysis layer); ghost-run was deprecated and
-removed 2026-07-02. Current primary measures are intent-fidelity / ownership /
-revision-effort. See the Makefile and `analysis/requirements-analysis.txt`.
+`scripts/` and `analysis/` hold the non-Streamlit pipeline. The **v3 pipeline is
+complete and self-tested**: `analysis/{textstats,v3,stats,power_sim,embed,
+figures,norming,pilot_check}.py` — `make analysis` runs the whole chain, `make
+pilot` prints the four go/no-go readings, `make help` lists everything. Frozen
+pre-registration constants live in `analysis/prereg.py` (single source of truth).
+Legacy `analysis/metrics.py` (v2 HLZ era) is superseded by `v3.py` and gets
+deleted after data collection; ghost-run was removed 2026-07-02. The same
+functions are also exposed in the researcher web panel (no CLI needed).
 
 ## Tests
 
@@ -72,6 +76,5 @@ revision-effort. See the Makefile and `analysis/requirements-analysis.txt`.
 ## i18n
 
 `i18n/locales/{ja,zh,en}.json` mirror the same key tree (missing keys fall back
-to `ja`, the study language). Participants pick ja/zh once on the consent page
-(en is admin-only — LLM prompts support ja/zh); topics live in
-`data/topics.json` (first 3 entries are used).
+to `ja`, the study language). Participants pick ja/zh/en once on the consent
+page; topics live in `data/topics.json` (first 3 entries are used).

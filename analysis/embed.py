@@ -34,6 +34,7 @@ BASELINE = DATA / "baseline"
 CSV = DATA / "analysis" / "v3_per_trial.csv"
 CACHE = DATA / "analysis" / "emb_cache.json"
 SECRETS = ROOT / ".streamlit" / "secrets.toml"
+_MIN_BASELINE = 5  # 质心的机器稿下限:更少则「纯 AI 本来有多贴」这个零点全是抽样噪声
 
 
 # ---------------- pure math(可单测)----------------
@@ -84,44 +85,67 @@ class Embedder:
         CACHE.write_text(json.dumps(self.cache))
 
 
-def _baseline_vecs(emb: Embedder, topic_idx: int) -> np.ndarray | None:
+def _baseline_texts(topic_idx: int, topics: list) -> list[str]:
+    """读一题的机器基线,并校验这份基线确实属于这道题。
+
+    topic{i}.jsonl 只按 topics.json 的顺序命名:题目一旦重排/改写,序号就会把基线
+    安到别的题上(错配是静默的)。baseline_gen 每行记了 topic_idx,缺省又把该题
+    scenario 当 seed,故用 seed 反查题目身份;基线缺失/太少一律硬失败,不返回 NaN。"""
     p = BASELINE / f"topic{topic_idx}.jsonl"
     if not p.exists():
-        return None
-    texts = [json.loads(l)["text"] for l in p.read_text(encoding="utf-8").splitlines() if l.strip()]
-    return np.array([emb.embed(t) for t in texts]) if texts else None
+        raise SystemExit(f"缺少机器基线 {p} —— 先跑: make baseline")
+    recs = [json.loads(l) for l in p.read_text(encoding="utf-8").splitlines() if l.strip()]
+    if len(recs) < _MIN_BASELINE:
+        raise SystemExit(f"{p} 只有 {len(recs)} 份基线(<{_MIN_BASELINE}),质心不可靠 —— "
+                         "重跑: make baseline")
+    bad = {r.get("topic_idx") for r in recs} - {topic_idx}
+    if bad:
+        raise SystemExit(f"{p} 内记录的 topic_idx={bad} 与文件名不符 —— 基线与题目错配,"
+                         "删掉 data/baseline/ 重跑 make baseline")
+    scen = [(t.get("scenario") or {}).get("ja", "") for t in topics]
+    seed = (recs[0].get("seed") or "").strip()
+    if seed and seed != scen[topic_idx]:
+        if seed in scen:
+            raise SystemExit(f"{p} 是用第 {scen.index(seed)} 题的情境生成的 —— topics.json 已被"
+                             "重排/改写,基线与题目错配,删掉 data/baseline/ 重跑 make baseline")
+        print(f"⚠️ {p.name} 的 seed 不是任何题的情境(可能用了 --seeds-file):题目身份只能按"
+              "文件序号信任,请确认 topics.json 自生成基线以来未改动。")
+    return [r["text"] for r in recs]
 
 
 def compute() -> None:
     import pandas as pd
     if not CSV.exists():
         raise SystemExit("先跑 analysis/v3.py 生成 v3_per_trial.csv。")
-    emb = Embedder()
+    if not BASELINE.exists():
+        raise SystemExit(f"缺少机器基线目录 {BASELINE} —— Δ 的零点就是它,先跑: make baseline")
     con = sqlite3.connect(f"file:{DATA/'novastory.db'}?mode=ro", uri=True)
     trials = pd.read_sql("SELECT participant_id, round_idx, intent_statement, final_output, "
                          "topic_json FROM trials", con)
     con.close()
 
-    # topic title → baseline index(按 topics.json 顺序)
+    # topic title → baseline index(按 topics.json 顺序,由 _baseline_texts 复核身份)
     topics = json.loads((DATA / "topics.json").read_text(encoding="utf-8"))
     title2idx = {t["title"]["ja"]: i for i, t in enumerate(topics)}
-    base_cache: dict[int, np.ndarray] = {}
+    trials["topic_idx"] = [
+        title2idx.get(((json.loads(tj) if tj else {}).get("title") or {}).get("ja"))
+        for tj in trials["topic_json"]]
+    used = sorted({int(i) for i in trials["topic_idx"].dropna().unique()})
+    if not used:
+        raise SystemExit("没有一条 trial 的题目能对上 topics.json(题面被改过?)——无法配基线。")
+    # 先纯文件校验+读齐所有用到的基线,再花任何 API 调用
+    base_texts = {i: _baseline_texts(i, topics) for i in used}
 
+    emb = Embedder()
+    base_vecs = {i: np.array([emb.embed(t) for t in ts]) for i, ts in base_texts.items()}
     deltas = []
     for _, r in trials.iterrows():
-        tj = json.loads(r["topic_json"]) if r["topic_json"] else {}
-        ti = title2idx.get((tj.get("title") or {}).get("ja"))
-        if ti is None or ti not in base_cache:
-            if ti is not None:
-                bv = _baseline_vecs(emb, ti)
-                if bv is not None:
-                    base_cache[ti] = bv
-        bv = base_cache.get(ti)
-        if bv is None or not r["intent_statement"] or not r["final_output"]:
+        ti = r["topic_idx"]
+        if pd.isna(ti) or not r["intent_statement"] or not r["final_output"]:
             d = np.nan
         else:
             d = fidelity_delta(emb.embed(r["intent_statement"]),
-                               emb.embed(r["final_output"]), bv)
+                               emb.embed(r["final_output"]), base_vecs[int(ti)])
         deltas.append({"participant_id": r["participant_id"], "round_idx": r["round_idx"],
                        "embed_fidelity": d})
     emb.flush()
@@ -129,8 +153,12 @@ def compute() -> None:
     pt = pd.read_csv(CSV)
     pt = pt.drop(columns=["embed_fidelity"], errors="ignore").merge(
         pd.DataFrame(deltas), on=["participant_id", "round_idx"], how="left")
+    n_ok = int(pt["embed_fidelity"].notna().sum())
+    if not n_ok:  # 全 NaN 的列写进去=保真复合悄悄少一条腿,而输出看着还成功
+        raise SystemExit("embed_fidelity 全为 NaN,拒绝写入空列 —— 检查 trials 的 "
+                         "intent_statement/final_output 是否为空、题面是否与 topics.json 一致。")
     pt.to_csv(CSV, index=False)
-    print(f"embed_fidelity 已合入 {CSV}(非空 {pt['embed_fidelity'].notna().sum()}/{len(pt)})")
+    print(f"embed_fidelity 已合入 {CSV}(非空 {n_ok}/{len(pt)})")
 
 
 def _selftest() -> None:

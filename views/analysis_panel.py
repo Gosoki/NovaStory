@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import io
 import sys
+import warnings
 from pathlib import Path
 
 import streamlit as st
@@ -26,6 +27,30 @@ def _capture(fn) -> str:
     except Exception as e:  # noqa: BLE001
         buf.write("\n" + t("analysis.captured_err", err=f"{type(e).__name__}: {e}"))
     return buf.getvalue() or t("analysis.no_output")
+
+
+def _warned(fn):
+    """跑一个可能 warnings.warn 的函数,返回 (结果, 警告文本表)。
+    面板必须把警告显示到页面上:_capture 只收 stdout,而「保真复合缺 embedding 腿」
+    这类致命提示是 warning,过去全被吞掉(研究员只用网页,看不到 stderr)。"""
+    with warnings.catch_warnings(record=True) as ws:
+        warnings.simplefilter("always")
+        out = fn()
+    return out, [str(w.message) for w in ws]
+
+
+def preserve_embed(pt, csv_path: Path):
+    """重算 per-trial 覆盖 CSV 前,把 embed.py 之前合入的 embed_fidelity 按
+    (participant_id, round_idx) 接回来 —— 否则点一次「出分析结果」就抹掉保真复合的
+    客观腿,且毫无提示(embed.py 只把结果存在这个 CSV 里)。"""
+    if not csv_path.exists() or "embed_fidelity" in pt.columns:
+        return pt
+    import pandas as pd
+    old = pd.read_csv(csv_path)
+    keys = ["participant_id", "round_idx"]
+    if "embed_fidelity" not in old.columns or not set(keys) <= set(old.columns):
+        return pt
+    return pt.merge(old[keys + ["embed_fidelity"]], on=keys, how="left")
 
 
 def render() -> None:
@@ -58,8 +83,9 @@ def render() -> None:
     if st.button(t("analysis.btn_results"), type="primary", width="stretch"):
         try:
             df = v3.load(dbp)
-            pt = v3.per_trial(df)
-            pt.to_csv(ANALYSIS_DIR / "v3_per_trial.csv", index=False)
+            csv_path = ANALYSIS_DIR / "v3_per_trial.csv"
+            pt = preserve_embed(v3.per_trial(df), csv_path)
+            pt.to_csv(csv_path, index=False)
             have = [x for x in v3._SUMMARY_COLS if x in pt.columns]
             st.markdown(t("analysis.means_title"))
             st.dataframe(pt.groupby("condition")[have].mean(numeric_only=True).T)
@@ -67,7 +93,9 @@ def render() -> None:
             div = v3.diversity_by_group(df)
             st.dataframe(div if len(div) else None)
             st.markdown(t("analysis.stats_title"))
-            comp = A_stats.build_composites(pt)
+            comp, warns = _warned(lambda: A_stats.build_composites(pt))
+            for w in warns:  # 例:保真复合缺 embed_fidelity 这条腿
+                st.warning(f"⚠️ {w}")
             for dv in ("ownership_composite", "fidelity_composite", "satisfaction",
                        "post_investment", "total_investment", "effort_composite"):
                 if dv in comp and comp[dv].notna().sum() >= 6:

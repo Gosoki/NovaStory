@@ -1,3 +1,7 @@
+> ⛔ **【已归档 · 2026-08-03】文献库已迁移到 [`docs/paper/reference/`](../../docs/paper/reference/README.md)（交叉引用已更新）。本副本不再维护，新文献请加到 docs 侧。**
+
+---
+
 # 文献库索引
 
 > 建立 2026-06-13。收纳本研究全部已核实/待复核的参考文献,供撰写 paper/4、Related Work 与投稿时查阅。

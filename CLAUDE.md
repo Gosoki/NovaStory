@@ -5,24 +5,26 @@ Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-s
 
 **Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
 
-## 0.时不时要更新项目对应的说明（paper）
+## 0.时不时要更新项目对应的说明（docs/paper）
  - 你可以适时增加新的md
  - 适时更新md
  - 适标记过时或废弃的文档md
- - 一些可能用得上的文献放到 paper/reference 里面
+ - 一些可能用得上的文献放到 `docs/paper/reference/` 里面
+ - ⚠️ **旧 `paper/` 目录已于 2026-08-03 整体归档**（每个文件顶部有归档横幅，迁移对照见 `paper/README.md`）。**只读、勿引用为当前状态、勿再往里写。**
 
-### 0.1 维护项目时间轴 `paper/11、项目时间轴.md`
- - 每当发生这四类事件之一，就在 paper/11 最上方追加一条（日期 + 类别标签 + 一句话 + 受影响文档/代码）：
+### 0.1 维护决策留痕 `docs/paper/10_核心决策留痕.md`
+ - 每当发生这四类事件之一，就在该文件最上方追加一条（日期 + 类别标签 + 一句话 + 受影响文档/代码）：
    ① 研究方向/主线变更　② 实验设计重大调整　③ 应用版本性重构　④ 关键决策拍板
  - 日常小改不记。类别标签：`方向` / `设计` / `代码` / `决策` / `文档`。
- - 同时：方向/设计变更后，检查 paper/ 里被取代的文档是否需要加过时横幅（保留历史决策与原因，但不要让旧文档被误读为当前状态）。
+ - 同时：方向/设计变更后，检查 `docs/paper/` 里被取代的段落是否需要改写，**并检查 `docs/index.html`（对外发表用幻灯片）与 `docs/paper/09_日本語資料.md` 的発表原稿是否需要同步**。
 
 ### 0.2 当前权威文档（避免引用过时内容）
- - 研究方向/论文骨架+假设表：`paper/10`　实验交互规格：`paper/7 v4.1`　工程：`paper/5 v2.0`（留档性质，细节以代码为准）　运行流程：`paper/6`　主张/文献核查：`paper/9`　文献库：`paper/reference/`　待办/下一步：`paper/8`　数据字典/可计算指标：`paper/12`　数据管理与合规：`paper/13`　案头研究(维度/量表/主题/预注册/客观评价)：`paper/14`　日语研究背景与目的(草案)：`paper/15`　**试测决策树与后手**：`paper/16`
- - 分析管线：`analysis/{v3,stats,power_sim,embed,figures,norming,textstats}.py`（A6 v3，`make analysis` 串全链）；**试测健康检查 `analysis/pilot_check.py`（`make pilot`；4 生死问题→🟢🟡🔴 + 后手分支）**；旧 `analysis/metrics.py` 为 v2(HLZ) 遗留，收数验收后删。
- - 多专家充分性评估（2026-07-18）：裁决=**勉强够**（纸面超标、押在未采数据）；答辩火力点与「答辩前必修」清单见 `paper/8 §🎓`。
- - **全项目深度对抗评审（2026-07-19，34 确认/17 驳回）**：每条处置见 `paper/17`；首批已修（加载器排 dev/H3a effort 复合/监控数据健康/直线作答/prereg 单一真源/多处文档错），**待拍板**：拉丁方→Williams、seq gating、novice gating、反向所有权项。预注册冻结常量在 `analysis/prereg.py`（pilot 阈值/SESOI/终点层级单一真源）。
- - 已过时（仅留档，勿引用为当前状态）：`paper/1`（v1 四组/同质化×介入点）、`paper/2`/`paper/3`（v2 ModeMirror）、`paper/4`（v2 方案书，待重写）
+ - **索引：`docs/paper/README.md`**。权威顺位：**代码 > `docs/index.html`（发表用幻灯片，对外口径）> `docs/paper/`**。
+ - 研究定位/贡献措辞/禁用措辞/文献切割：`docs/paper/01`　实验设计+交互规格+运行流程：`docs/paper/02`　测量/量表/数据字典：`docs/paper/03`　假设表+分析计划：`docs/paper/04`　预注册+试测决策树：`docs/paper/05`　**待拍板事项：`docs/paper/06`**　采数前执行清单(部署/合规)：`docs/paper/07`　论文写作与投稿：`docs/paper/08`　日语资料(タイトル/背景目的/発表原稿/用語ルール)：`docs/paper/09`　决策留痕：`docs/paper/10`　文献库：`docs/paper/reference/`
+ - 分析管线：`analysis/{v3,stats,power_sim,embed,figures,norming,textstats}.py`（A6 v3，`make analysis` 串全链）；**试测健康检查 `analysis/pilot_check.py`（`make pilot`；4 生死问题→🟢🟡🔴 + 后手分支）**；旧 `analysis/metrics.py` 为 v2(HLZ) 遗留，收数验收后删；`analysis/judge.py` 挂过时横幅，去留待拍板。
+ - **预注册冻结常量的单一真源：`analysis/prereg.py`**（pilot 阈值 / novice 定义 / SESOI / 终点层级 / 复合公式）——阈值只改这里，`pilot_check`/`stats` 从它 import。
+ - 关键设计常量：`core/config.py: LATIN_SQUARE_N=18`（**Williams 6 排列 × 3 题目**，不是 3×3 拉丁方）、`N_ROUNDS=3`、`MIN_INTENT_CHARS=10`。
+ - 现状裁决：修士充分性=**勉强够**（纸面超标、押在未采数据 N=0）；答辩火力点与答法见 `docs/paper/08 §11`。卡点全在 `docs/paper/06`（待拍板）与 `07`（部署/合规），**不再是代码**。
 
 ### 0.3 语言（实验对象是日本人）
  - 被试默认日语（`ja`），研究员测试用 `zh`。**ja/zh/en 三语现在都是全链路可用**（UI + `prompts.build_*` 输出 + `data/topics.json` 的 `{ja,zh,en}` 情境 + `core/shots.py` 分镜解析），被试同意页三语可选（默认 ja）；研究员后台随语言选择器切换。

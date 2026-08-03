@@ -2,7 +2,7 @@
 """A6 分析管线 v3(基础层)—— 从 SQLite 计算客观评价栈里【确定性、无需 API】的指标。
 
 覆盖 paper/14 §5 的可立即计算部分:
-  结构完整度 / 逐镜头保真 / 版本演化 / 努力再分配 / 主观复合 / 条件×题目多样性。
+  结构完整度 / 逐镜头保真 / 版本演化 / 努力再分配 / 主观复合 / 条件×题目多样性 / E 引导剂量。
 待补(需真数据或 API,后续增量):
   embedding 相对基线保真 Δ(需 embedding + baseline_gen)、LMM/TOST 统计检验、图表。
 
@@ -91,12 +91,45 @@ def structural(final_output: str) -> dict:
 
 
 def shot_fidelity(shot_annotations_json) -> dict:
-    """逐镜头保真:mine / ai_ok / ai_against 占比(自评但离散、逐镜头)。"""
+    """逐镜头保真:mine / ai_ok / ai_against 占比(自评但离散、逐镜头)。
+
+    ⚠️ 粒度分层:终稿 parse_shots 失败时 views/questionnaire.py 退化为「整稿一个
+    标签」并存 [{"shot": 0, tag}],此时 mine_ratio 只能取 0/1,与 3 镜头行的
+    0/.33/.67/1 不同量纲(混入主终点=测量粒度混淆)。不丢行、不改问卷,只导出
+    n_shots_tagged / whole_script_fallback,供下游分层与敏感性分析(剔除
+    whole_script_fallback==1 后主终点是否稳)。
+    """
     ann = _loads(shot_annotations_json, [])
     tags = [a.get("tag") for a in ann if isinstance(a, dict) and a.get("tag") in _TAGS]
+    gran = {
+        "n_shots_tagged": len(tags),
+        "whole_script_fallback": int(len(ann) == 1 and isinstance(ann[0], dict)
+                                     and ann[0].get("shot") == 0),
+    }
     if not tags:
-        return {f"{t}_ratio": np.nan for t in _TAGS}
-    return {f"{t}_ratio": tags.count(t) / len(tags) for t in _TAGS}
+        return {**gran, **{f"{t}_ratio": np.nan for t in _TAGS}}
+    return {**gran, **{f"{t}_ratio": tags.count(t) / len(tags) for t in _TAGS}}
+
+
+def guidance_dose(guidance_json) -> dict:
+    """E 引导剂量(paper/12 §2「E 引导剂量」)→ H5 剂量-反应的自变量。
+
+    guidance_json = {"rounds":[{round, source, items:[{dimension, question,
+    options, chosen, is_custom, ai_decided, fallback}], draft_snapshot_ref?}]}。
+    落库的 item 必然已作答(views/guidance.py `_answered` 门禁),故自填率/AI 代答率
+    以 item 数为分母。C/D 无 guidance_json → 全 NaN。
+    """
+    rounds = [r for r in (_loads(guidance_json, {}).get("rounds") or []) if isinstance(r, dict)]
+    items = [it for r in rounds for it in (r.get("items") or []) if isinstance(it, dict)]
+    if not items:
+        return {"g_custom_rate": np.nan, "g_ai_decided_rate": np.nan,
+                "g_n_questions": np.nan, "g_n_rounds": np.nan}
+    return {
+        "g_custom_rate": sum(bool(it.get("is_custom")) for it in items) / len(items),
+        "g_ai_decided_rate": sum(bool(it.get("ai_decided")) for it in items) / len(items),
+        "g_n_questions": len(items),
+        "g_n_rounds": len(rounds),
+    }
 
 
 def version_evo(script_versions, final_output: str) -> dict:
@@ -165,6 +198,7 @@ def per_trial(df: pd.DataFrame) -> pd.DataFrame:
         }
         m.update(structural(r.get("final_output")))
         m.update(shot_fidelity(r.get("shot_annotations_json")))
+        m.update(guidance_dose(r.get("guidance_json")))
         m.update(version_evo(r.get("script_versions"), r.get("final_output")))
         m.update(subjective(r))
         m.update(behavioral(r))
@@ -208,6 +242,8 @@ _SUMMARY_COLS = [
     "parse_ok", "field_completeness", "shots_ok",
     "own_mean", "soa_mean", "satisfaction", "imagine", "violation", "ai_q_quality",
     "mine_ratio", "ai_against_ratio", "final_vs_firstai_sim",
+    "n_shots_tagged", "whole_script_fallback",
+    "g_custom_rate", "g_ai_decided_rate", "g_n_questions", "g_n_rounds",
     "pre_investment", "post_investment", "total_investment",
     "n_ai_rounds", "hand_edit_chars", "straightline",
 ]
@@ -221,6 +257,9 @@ def main() -> None:
 
     raw = load(args.db)
     pt = per_trial(raw)
+    if pt.empty:  # 试测第一位被试提交前:空库/只有 dev 行 → 干净退出,别抛栈
+        print(f"{args.db} 里还没有 trials(N=0),无可算指标。")
+        return
     args.out.parent.mkdir(parents=True, exist_ok=True)
     pt.to_csv(args.out, index=False)
 
