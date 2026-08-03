@@ -1,80 +1,206 @@
-# NovaStory v3 · Guided Co-Creation Experiment
+# NovaStory — 「生成前に問う」と「生成後に直す」を比べる被験者内対照実験プラットフォーム
 
-Streamlit platform for a **within-subjects online experiment** comparing
-*ask-before-generate* and *fix-after-generate* AI workflows for novice
-storyboard creators (intent fidelity, psychological ownership, revision effort).
+**日本語** ・ 中文（`README.zh.md` 準備中） ・ English（`README.en.md` 準備中）
 
-- **Condition C** — one-shot: intent → full script → submit (no loop)
-- **Condition D** — generate-then-repair: AI generates first; the script is an
-  always-editable textarea plus a free-form "tell the AI what to change" box;
-  unlimited revision loop (proxy for the default chatbot workflow)
-- **Condition E** — guide-then-generate: the AI first asks 5-7 option-style
-  questions (3 fixed expert dimensions + 2-4 AI-chosen), then generates; the
-  user can keep requesting guided follow-up rounds or edit directly
+> **現況（2026-08-03）**：実装・自己テストは完了。**データ未収集（N = 0、4 テーブルとも空）** — 本 README に結果・効果量は一切ない。
+> 作業コピーは開発用設定のまま（研究者パスワード・API プリセット・HTTPS／バックアップ）＝**公開可能な状態ではない**。`scripts/deploy_check.py` が全緑になるまで公開しない。
 
-Each participant: consent (language picked once, ja/zh/en) → "before you
-start" intro page → background questionnaire (novice status recorded, nobody
-screened out) → 3 rounds (**Williams design**: all 6 orderings of C/D/E × 3
-topic rotations = 18 sequences) with an in-app questionnaire (incl. per-round
-satisfaction) + per-shot intent annotation after each round → whole-study final
-survey → completion code. A resume token in the URL (`?t=`) survives
-refresh/reconnect without duplicating data.
-**All research documentation lives in [`docs/paper/`](docs/paper/README.md)**
-(design: `02`; measures: `03`; analysis plan: `04`; open decisions: `06`).
+## 研究要旨
 
-> v1 (A/B/C/D wizard) retired 2026-06-12 (`3a7737b`); v2 (ModeMirror E,
-> outline-editing D) retired 2026-06-13 — both live in git history.
+> **問い**：よい AI 共創は、生成した **後** に手直しを繰り返すのではなく、生成する **前** に問題を回避すべきではないか。
 
-## Setup
+- これを規範的主張ではなく **検証可能な仮説** として扱い、3 条件の無作為対照で経験的に検討する。
+- **操作するのは「人間の意図が AI 生成パイプラインへ入るタイミング」だけ**。お題・成果物・所要時間の目安は全条件で同一。
+- **目的**：そのタイミングが **意図忠実度・心理的所有感・努力の再配分** に与える影響を検証する。
+
+### 3 条件（被験者内。1 人が C/D/E を別々のお題で 1 回ずつ）
+
+| 条件 | 生成の前 | 生成の後 |
+|---|---|---|
+| **C**（一発生成） | アイデア 1〜2 文のみ | なし（提出のみ。脚本は読み取り専用） |
+| **D**（生成後修正） | アイデア 1〜2 文のみ | **自由記述で AI に直させる** ＋ 直接手入力。回数上限なし（＝既定のチャット型ワークフローの代理） |
+| **E**（生成前の意図の引き出し） | AI が**選択肢式**に問う（固定 3 観点＝**欲求・転換・見せ場** ＋ AI が補う 2〜4 観点、計 5〜7 問）→ 回答を踏まえて生成 | **追加の問いかけ**（現在の稿から 1〜3 問）＋ 直接手入力。回数上限なし |
+
+- **D と E の経路は非対称**：E は「自由記述で AI に直させる」経路を**持たない**（それが D の定義的機構）。この非対称を消す書き方をしない。
+- E は各問に「自分で書く」「AI に任せる」を併置。カット尺・秒数を尋ねることはプロンプトで禁止。
+
+### 測定の三本柱
+
+| 柱 | 測り方 | 複合変数 |
+|---|---|---|
+| **意図忠実度** | イメージ一致（自己申告）＋ 本意違背〔反転〕＋ カット単位の帰属タグ（mine 比率）＋ アイデア↔終稿の embedding **機械基線相対 Δ** | `fidelity_composite`（実装は各成分を z 標準化して**単純平均**＝`analysis/stats.build_composites`。「主観 3 指標を先に平均 → embed と各半」の重み付けは事前登録時に決める未確定案。成分が欠けると自動で外れ、警告が出る） |
+| **心理的所有感** | own1-3（Van Dyne & Pierce 改編。possession と self-investment は分けて報告）／主体感 soa1-2（J-SoAS SoPA を文脈化）。7 件法 | `ownership_composite`（own1-3 平均。soa は次要だが全て保持・報告） |
+| **努力の再配分** | 事前投入（`t_pregen`）と事後修正（`t_postgen` / `n_ai_rounds` / `hand_edit_chars`）を **事前・事後・総計の 3 口径で並報** | `effort_composite` / `post_investment` / `total_investment` |
+
+- **意図の基準は生成前にロック**（1〜2 文のアイデア）。E の問答記録は「意図の具体化の軌跡」として**別途**分析し、基準には混ぜない（循環測定の回避）。
+- 三角が**収束して初めて**強く主張する。⚠️ 事後修正量だけを単独で報じない（「作業を前に移しただけ」批判への備え）。
+
+### 設計
+
+- **被験者内 3 条件 × 3 お題**、1 人 1 セッション 3 ラウンド。**Williams 型 6 順序 × 3 お題ローテーション ＝ 18 系列**。
+- 効果：各条件が各巡目に均等に出るうえ、**どの条件も他条件の直後に等しく来る** → 一次のキャリーオーバーまで相殺 → 主対比 **E−D が順序と交絡しない**。
+- **N ≥ 36**（「ちょうど 36」ではない。18 系列それぞれで完了者 2 名が揃うまで追加募集）。
+- **対象**：映像制作の経験がない初心者（日本の大学生・無償ボランティア）。**応募時の選抜はしない** — novice 該当は背景質問紙の 5 項目（短動画投稿数 = 0／映像系専攻でない／絵コンテ・脚本の執筆歴なし／熟練度自評 ≤2／用語小テスト ≤1 正解）の厳格 AND で**測定・記録**する（`analysis/prereg.py: NOVICE_DEF`）。
+- **成果物**：1 ラウンドにつき **15 秒・3 カットの絵コンテ**（カメラ／画面／内容／セリフ）。目安 10〜15 分。
+- **本番のお題 3 つ**（`data/topics.json`、機械ベースラインで開放度を norming 済み・凍結）：**拾った切符（誰かの落とし物）** / **最後のひと口（分け合う・独り占め）** / **はじめての街の、最初の一歩**。
+
+### 主張すること／しないこと
+
+- ✅ 貢献は次の重なりにある：**初心者**を対象に、**完結した物語作品（絵コンテ）**の領域で、「生成前の選択肢式・専門的観点による意図の引き出し → 生成」と「生成 → 自由な反応で反復修正」を端から端まで無作為対照し、**忠実度・所有感・努力の再配分を同時測定**して、E が初心者の所有感をより保てるかを検証する。
+- ❌ **「初」とは主張しない。狙いは仕組み。** 近接研究（APE / Maier ら / IntentFlow ほか）が各成分を先行して示している。
+- ❌ 因果は **ワークフロー全体（package）** の水準に留める。D と E は複数の軸で異なるため、単一変数が原因とは述べない。
+- ❌ 品質の**優越**は主張しない。**非劣（TOST）**のみ、しかも客観の下限として。LLM-judge は構造化 rubric に限定し、創造性は評価しない。
+- ❌ 同質化は前提でも動機でも結論でもない（探索指標 H6 に留める）。
+- ⚠️ **外部の人手評価アンカーを用いない**（意図忠実度の正しい評価者は被験者本人であるため）。これは**限界として明記する**。
+- 発表タイトル（ODAF2026・表示用。意図的に E のみを述べ、D との対比は含めない）：「**意図を引き出してから生成する：非専門家の物語創作を支える意図引き出し型の創作支援システム**」。論文タイトルは事前登録時に確定。
+
+## 仮説と分析計画
+
+| # | 内容 | 位置づけ・DV |
+|---|---|---|
+| **H1** | 意図忠実度 E > D > C | 確証・`fidelity_composite` |
+| **H2** | 心理的所有感 E ≥ D > C | 確証・`ownership_composite` |
+| **H3a** | 事後の手直し量 E < D | 確証・`effort_composite` |
+| **H3b** | 投入が事前へ前倒しされ、総投入は劣らない | 確証・`t_pregen` ＋ 3 口径（**H3a と統合しない**） |
+| **H4** | 品質の非劣性 \|E−D\| < SESOI | 確証・**TOST**・DV は構造完整度 |
+| **H5** | 用量反応：E 内で事前投入↑ → 忠実度↑ | 事前登録の確証的**副次**（機構の手がかりであり因果ではない） |
+| **H6** | 同質化：条件が産出の類似度に影響するか | **探索のみ** |
+| **H7** | 満足度と所有感の乖離（初心者はむしろ D を好むかも） | 反証／分岐 |
+
+- **確証的主要終点は 2 つだけ**：`ownership_composite`, `fidelity_composite`（`analysis/prereg.py: PRIMARY_ENDPOINTS`、本収集前に凍結）。次要は `satisfaction` / `effort_composite` / `post_investment` / `total_investment`。
+- **主分析**：線形混合モデル `DV ~ 条件 + お題 + 順序位置 + (1 | 被験者)`。計画対比は **主対比 E−D**（副：E−C, D−C）、族内 **Holm** 補正。FWER は 2 つの主複合に対して制御し、次要・探索はその後にゲート。
+- **TOST は H4 の非劣性のみ**。等価界は事前登録の**絶対 SESOI**（現在 `SESOI = None`、本収集前に実単位で確定。データ依存の界は使用禁止）。
+- 頑健性：Wilcoxon 符号順位／単項目 Likert は CLMM／計数は負二項混合／時間は log 変換。検定力は主分析と同構の LMM＋Holm でシミュレート（`analysis/power_sim.py`、ρ ごとの曲線を事前登録前に報告）。
+- 「なぜ E が効くのか」は H5 と **D のフィードバック内容コーディング**（事後に直したもの＝事前に問われなかったもの）の 2 本が担う。
+- 上表の日本語は README 用の要約であり、事前登録の確定文言ではない（原表は [`04`](docs/paper/04_假设与分析计划.md)）。
+
+## 起動（uv）
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cp .streamlit/secrets.toml.example .streamlit/secrets.toml  # fill api_configs
-streamlit run app.py
+uv venv --python 3.12                                       # 環境は ./.venv 固定
+uv pip install -r requirements.txt                          # 実行時依存
+uv pip install -r analysis/requirements-analysis.txt        # 解析パネル・make 連鎖に必須
+cp .streamlit/secrets.toml.example .streamlit/secrets.toml  # api_key と researcher_password を記入
+uv run streamlit run app.py
 ```
 
-`secrets.toml` keys: `[[api_configs]]` blocks (first one is auto-applied for
-participants) and optional `researcher_password` (fallback: env
-`NOVASTORY_RESEARCHER_PW`, then dev default `nova`).
+- `pyproject.toml` は無いため **`uv sync` / `uv add` は使えない**。`uv venv` → `uv pip install` の順が必須。
+- **環境名は `./.venv` 固定**。`Makefile` が `.venv/bin/python` を直指定しているため、別名にすると全 make ターゲットが黙って壊れる。
+- **他の venv を有効にしたまま実行しない**（`VIRTUAL_ENV` があれば `uv run` / `uv pip` はそちらを使う）。確実にするなら `--python .venv/bin/python` を付ける。
+- 既存の `.venv` がある状態で `uv venv` を叩いてもエラーで止まるだけで、環境は壊れない。
+- 解析依存を入れ忘れると、研究者パネルの解析タブが最初のクリックで `ImportError` になる。
+- ⚠️ リポジトリ内に残る `.venv/bin/pip install …` の案内は**動かない**（uv の venv に pip は入らない）。上の `uv pip install` を使う。
+- 本番起動に uv は不要（systemd は `.venv/bin/streamlit` を直接起動 → [`DEPLOY.md`](DEPLOY.md)）。
+- `secrets.toml`：`[[api_configs]]`（`name` / `base_url` / `model` / `api_key`。先頭が参加者に自動適用）と `researcher_password`（→ 環境変数 `NOVASTORY_RESEARCHER_PW` → 開発用既定値）。**本収集では `model` を日付付きスナップショットに固定**（浮動エイリアスは採数途中でモデルが差し替わる）。
 
-## Data
+### 確認コマンド
 
-Everything is written to SQLite (`data/novastory.db`, WAL mode, gitignored):
+```bash
+uv run python scripts/dev_smoke_e2e.py    # 参加者フロー E2E（LLM スタブ・一時 DB）
+uv run python scripts/analysis_smoke.py   # = make smoke。解析連鎖の回帰（合成 N=36・一時 DB）
+uv run python scripts/deploy_check.py     # 公開前ゲート。赤が 1 つでもあれば exit 1
+```
 
-| table | contents |
+### make（uv 接頭辞なしでそのまま動く）
+
+| target | 内容 |
 |---|---|
-| `participants` | demographics, screening battery (incl. baseline covariates), latin-square seq, attention check, resume `token`, `final_survey_json`, completion code, status |
-| `trials` | per round: condition, intent, `guidance_json` (E Q&A), `revision_requests` (D), `script_versions` (ai/user_edit), `n_ai_rounds`/`n_hand_edits`/`hand_edit_chars`, `t_pregen`/`t_postgen`, generation params (model/temperature/base_url); unique on (participant_id, round_idx) + INSERT OR REPLACE so resumes/double-clicks never duplicate a round |
-| `events` | millisecond-timestamped interaction log (round_start … trial_submit, session_resumed) with per-round ordering (`seq_in_round`), session-segment `attempt` ids and post-submit `trial_id` backfill; `llm_done` carries per-call token usage |
-| `questionnaires` | ownership / agency / TLX items, intent-violation, imagine-match, satisfaction, per-shot annotations; unique on (participant_id, round_idx) |
+| `help` | 既定ゴール。全 target 一覧 |
+| `baseline` → `norming` | 機械基線ドラフト生成 → `data/baseline/`（**OpenAI 必要**）／お題の開放度 norming |
+| `v3` → `events` | 決定的指標 → `v3_per_trial.csv`／イベント層の指標を CSV へ結合（**この順序**） |
+| `embed` | 基線比の embedding 忠実度 Δ（**OpenAI ＋ `data/baseline/` が無いと exit 1**） |
+| `stats` / `power` / `figures` | LMM・E−D 対比（Holm）・TOST・用量反応／検定力と MDES／主要図 |
+| `pilot` | パイロットの 4 判定（🟢🟡🔴） |
+| `smoke` | 解析連鎖の回帰自己テスト |
+| `analysis` | 連鎖：`v3 → events → embed → stats → figures` |
 
-Language: participants run in **Japanese** (`ja`, default); **ja/zh/en are all
-end-to-end** (UI + prompts + topic scenarios + shot parsing), and the researcher
-can switch for testing (topics carry `{ja, zh, en}`, LLM output follows the
-participant's language). Researcher mode (sidebar, password-locked): table
-browser + CSV export + session reset for local testing.
+- **`make analysis` は今そのままでは通らない**：`embed` が OpenAI 認証と `data/baseline/` を要求するため、先に `make baseline`。
+- 閾値・終点・定義の**単一の真実源は `analysis/prereg.py`**（凍結定数）。同じ処理は研究者パネルからも実行できる。
 
-## Offline pipeline (analysis)
+## 実装（参加者が見るもの）
 
-`scripts/` and `analysis/` hold the non-Streamlit pipeline. The **v3 pipeline is
-complete and self-tested**: `analysis/{textstats,v3,stats,power_sim,embed,
-figures,norming,pilot_check}.py` — `make analysis` runs the whole chain, `make
-pilot` prints the four go/no-go readings, `make help` lists everything. Frozen
-pre-registration constants live in `analysis/prereg.py` (single source of truth).
-Legacy `analysis/metrics.py` (v2 HLZ era) is superseded by `v3.py` and gets
-deleted after data collection; ghost-run was removed 2026-07-02. The same
-functions are also exposed in the researcher web panel (no CLI needed).
+- 段階：`consent → intro → screening → rounds ×3 → final_survey → done`。ラウンド内は `アイデア → 条件パイプライン → 質問紙`（ステップ表示 C=3 / D=4 / E=5）。
+- **言語は同意画面で 1 回だけ選択**（ja/zh/en、既定 ja）。以後、参加者側に切替 UI は出ない。
+- アイデアは 8 文字以上（`MIN_INTENT_CHARS`）、`temperature = 0.8`、生成はストリーミング表示。注意チェックは**第 2 ラウンド**の質問紙に埋め込み。完了時に 8 文字の完了コードを発行。
+- カット単位の帰属タグは `mine / ai_ok / ai_against`。脚本の解析に失敗したときは脚本全体で 1 行にフォールバック。
+- E の**「5〜7 問」はプロンプト上の要求で、コードは検証していない**（非空リストを受理し、各問の選択肢を 4 件に切り詰めるだけ）。JSON 取得が 2 回失敗すると**自由記述 1 問**へフォールバックし、その事実が記録される。
+- **復帰トークン `?t=`** は screening 送信時に URL へ入る。それ以前（同意・説明・背景）で更新すると最初からやり直しになる。復帰時は未完了ラウンドをアイデアからやり直し、`INSERT OR REPLACE` と新しい `attempt` により重複しない。
+- 系列は screening 挿入時に確定するため**途中離脱も系列を消費する**。均衡は監視パネルの `status='done'` 集計で見ること。
+- **絵コンテのイラスト生成**（`core/imagegen.py`, `gpt-image-1`）は `base_url` に `openai.com` を含むとき有効＝**本番プリセットでは ON**。`trial_submit` の**後**（質問紙ページ）に開始するため `t_pregen` / `t_postgen` を汚さない。
+- ⚠️ **妥当性メモ**：質問紙の回答中にイラストが見えるため、忠実度・所有感の DV には視覚成分が含まれる。被験者内なので E−D 主対比は偏らないが構成概念の解釈は変わる → 論文に明記すること。DV を「テキストのみ」と説明しない。
 
-## Tests
+## データ
 
-```bash
-.venv/bin/python scripts/dev_smoke_e2e.py   # full participant flow, stubbed LLM, temp DB
-```
+SQLite（`data/novastory.db`、WAL、gitignore 済み）。ほかに `data/llm.log` / `data/storyboard_images/` / `data/analysis/` へ書き出す。
 
-## i18n
+| テーブル | 1 行の単位 | 主な中身 |
+|---|---|---|
+| `participants` | 被験者 | `lang`, `seq`(0-17), 背景・属性 JSON, `passed`, 注意チェック, 復帰 `token`, `final_survey_json`, `completion_code`, `status` |
+| `trials` | 被験者 × ラウンド | `condition`, お題, `intent_statement`, `final_output`, `parse_ok`, `script_versions`, `guidance_json`(E), `revision_requests`(D), `n_ai_rounds`/`n_hand_edits`/`hand_edit_chars`, モデル/温度/base_url, 各種所要時間 |
+| `events` | 操作 1 件（追記のみ） | ms 精度の `ts`/`type`/`payload_json`, `seq_in_round`, `attempt`, `trial_id`（提出後に backfill）。`llm_done` にトークン使用量と seed / `system_fingerprint` |
+| `questionnaires` | 被験者 × ラウンド | own1-3 / soa1-2 / 負荷 / 意図違背 / イメージ一致 / 満足度 / E 専用 3 項目 / カット単位の帰属タグ |
 
-`i18n/locales/{ja,zh,en}.json` mirror the same key tree (missing keys fall back
-to `ja`, the study language). Participants pick ja/zh/en once on the consent
-page; topics live in `data/topics.json` (first 3 entries are used).
+- 一意制約は `trials` と `questionnaires` の `(participant_id, round_idx)` の **2 つだけ**（＋`INSERT OR REPLACE`）。`events` と `participants.token` には無い。
+- **再現性の口径**：モデルは日付付きスナップショットに固定し、試行ごとの seed と `system_fingerprint` を記録する。主張してよいのは「**設定再現可能・ドリフト検知可能**」まで — **出力の逐語再現はしない**（`gpt-image-1` には固定できるスナップショットが無い）。
+
+## 研究者モード
+
+サイドバーでパスワード解錠（`secrets.toml` → 環境変数 → 開発用既定値。**本番では必ず設定する**）。参加者フローを置き換えるのは、解錠と `researcher_mode` トグルの**両方**が真のときだけ。
+
+- **監視**：完了/進行中、目標 N への進捗、novice 比率、データ健全性（解析失敗率・LLM エラー率・フォールバック率・生成レイテンシ）、条件×お題の均衡、系列別の完了数（目標 各 2）、DV の記述統計。
+- **解析**：パイロット 4 判定 → per-trial 指標＋複合 → 終点検定 → 図 → 検定力シミュレーション（`data/analysis/` へ出力）。
+- **データ**：4 テーブルのブラウザ、UTF-8 BOM 付き CSV、被験者リセット。
+- **開発**：モデル ping、intake スキップ（`dev` 印の被験者は系列の回転をずらさない）、現ステップの自動入力、ラウンド中の条件切替。
+
+## 多言語
+
+- 参加者は日本語が既定。**ja / zh / en は UI・プロンプト・お題・カット解析まで端から端まで通っている**（`i18n/locales/*.json` はキー木が同一。欠けたキーは ja にフォールバック）。
+- LLM の出力言語は**プロンプト指示のみ**で技術的な強制はない（`dimension` スラグは全言語で英語のまま＝設計上の仕様）。
+- カット項目の見出し（【時長】/【Duration】…）を変えるときは `core/prompts.py` と `core/shots.py` の解析器を必ず同時に直す。
+
+## ドキュメント
+
+**権威の順序：コード ＞ [`docs/index.html`](docs/index.html)（対外スライド） ＞ `docs/paper/`。**
+索引と一句状態は [`docs/paper/README.md`](docs/paper/README.md) から。
+
+| 文書 | 内容 |
+|---|---|
+| [`01`](docs/paper/01_研究定位与主张.md) | 研究の立ち位置と貢献の言い方（禁止表現・先行研究との切り分け） |
+| [`02`](docs/paper/02_实验设计.md) | 実験デザイン（C/D/E 仕様・Williams 18 系列・被験者・実行フロー） |
+| [`03`](docs/paper/03_测量与数据字典.md) | 測定尺度とデータ辞書（算出できる指標／できない穴） |
+| [`04`](docs/paper/04_假设与分析计划.md) | 仮説 H1–H7 と統計解析計画 |
+| [`05`](docs/paper/05_预注册与试测决策树.md) | 事前登録の進め方とパイロット判定木（4 つの生死問題と代替案） |
+| [`06`](docs/paper/06_待拍板事项.md) | **本収集前に決めきる未決事項（＝現在のボトルネック）** |
+| [`07`](docs/paper/07_采数前执行清单.md) | 本収集前チェックリスト（デプロイ・法令順守・監視） |
+| [`08`](docs/paper/08_论文写作与投稿.md) | 論文執筆と投稿（IMRaD・Limitations・投稿先・口頭試問対策） |
+| [`09`](docs/paper/09_日本語資料.md) | 日本語資料（タイトル方針・背景と目的・発表原稿・**用語ルール**） |
+| [`10`](docs/paper/10_核心决策留痕.md) | 主要な意思決定と方向転換の履歴 |
+| [`reference/`](docs/paper/reference/) | 文献ライブラリ（テーマ別） |
+
+⚠️ リポジトリ直下の `paper/` は 2026-08-03 に一括アーカイブ済み。**読み取り専用・現状として引用しない・二度と書き込まない**（新旧対応表は `paper/README.md`）。
+
+## ⛔ 用語ルール（対外文書すべてに適用）
+
+| ❌ 使わない | ✅ 使う | 理由 |
+|---|---|---|
+| **引導** | **意図の引き出し** / 意図抽出 | 「引導」は仏教語。「引導を渡す」＝見放す・とどめを刺す の含意があり不適切 |
+| 「世界初」「初めて比較した」 | 「初とは主張しない」「機構を確かめる」 | 禁用措辞リスト（[`01`](docs/paper/01_研究定位与主张.md) §3.2） |
+| 「引き出しが原因で」（単変量因果） | 「ワークフロー全体（package）として」 | 命名紀律（[`01`](docs/paper/01_研究定位与主张.md) §3.3） |
+| 「3×3 ラテン方格」 | **Williams 型 6 順序 × 3 お題 = 18 系列** | 2026-07-19 の設計修正 |
+
+- コード定数名 `LATIN_SQUARE_N = 18` は旧称の名残。文章では使わない。
+- 「最適な人的介入プロセス」「表現の均一化」「生成AIエージェント」も使わない（3 条件比較では言えない／探索指標に降格済み／実装と不一致）。
+
+## 次の一手
+
+**残っているのはコードではなく本収集。**
+
+1. [`06`](docs/paper/06_待拍板事项.md) の未決事項を確定（SESOI の数値／事前登録の可否と時期／LLM-judge の去就）
+2. `deploy_check` 全緑 ＋ HTTPS ＋ バックアップ常設（[`07`](docs/paper/07_采数前执行清单.md)）
+3. 小規模パイロット → `make pilot` の 4 判定（D の床／C の天井／novice 比率／尺度信頼性）
+4. [`05`](docs/paper/05_预注册与试测决策树.md) の判定木で分岐（🔴 のときの代替案は 4 つとも事前宣言済み）
+5. 事前登録を凍結（実施可否は未決）→ 本収集 **N ≥ 36** → `make analysis` → 執筆
+
+- 4 象限の解釈行列により、どの結果でも書ける筋がある。唯一の失敗は「悪い結果 ＋ 事前宣言の代替筋なし」。
+- 運用上の禁則：**本収集中に `data/topics.json` を編集しない**（復帰処理がこのファイルからラウンド計画を作り直すため、進行中の被験者のお題が静かに入れ替わる）。同意文の「外部 AI サービスの利用」条項は、公開直前に提供元の最新データポリシーと突き合わせること。
+- 主な履歴と決定ログ → [`10`](docs/paper/10_核心决策留痕.md)。
