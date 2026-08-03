@@ -1,8 +1,13 @@
-"""冻结的预注册常量 —— pilot go/no-go 阈值、复合定义、终点层级、novice 定义、SESOI 的
-**单一真源**。`pilot_check` / `stats` 从这里 import,避免 prose / code / prereg 三处静默分叉
-(深度评审 2026-07-19 #33)。采数前把本模块 dump 成带 hash 的预注册产物(paper/8 §🎓 artifact 包)。
+"""冻结的分析计划常量 —— 试测 go/no-go 阈值、复合定义、终点层级、novice 定义、SESOI 的
+**单一真源**。`pilot_check` / `stats` 从这里 import,避免 prose / code 两处静默分叉。
 
-⚠️ 阈值为经验参考;正式 go/no-go 与 SESOI 在预注册前**在此文件锁定**,锁定后不再改。
+⚠️ **本研究不做第三方预注册(OSF/AsPredicted)** —— 2026-08-03 拍板 B3。
+替代做法 = **内部冻结**:正式采数前把本模块 `as_dict()` dump 成带 hash 的文件、连同 git
+commit 一起留档,作为「分析计划在见到数据之前就已确定」的时间戳证据。强度弱于第三方预
+注册(自己的仓库自己能改历史),写作时按实情表述为「分析计划在采数前确定并纳入版本管理」,
+**不得写 "preregistered"**。见 docs/paper/05_分析计划冻结与试测决策树.md。
+
+⚠️ 所有阈值在采数开始前锁定,锁定后不再改。
 """
 from __future__ import annotations
 
@@ -15,16 +20,32 @@ NOVICE_SHARE_GREEN, NOVICE_SHARE_YELLOW = 0.60, 0.40
 RELIABILITY_GREEN, RELIABILITY_YELLOW = 0.70, 0.60
 OWN_ALPHA_FLOOR = 0.60                                   # own1-3 α 低于此 → 后手D 切 SoPA
 
-# ---- novice 定义(5 项严格 AND,paper/16 §1③;录而不 gate,是预注册主分析人群) ----
+# ---- novice 定义(5 项严格 AND;录而不 gate)----
+# B1 拍板(2026-08-03):招募端**不设门槛**(随机找人),但 novice 子集 = **预注册的主分析
+# 人群**;全样本为稳健性分析,经验者另作「経験あり vs なし」对比/调节分析。
+# → 功效必须按 novice 子集(更小 N)算,并超招募到子集也达标。
 NOVICE_DEF = ("published_idx==0 AND background=='no' AND written=='no' "
               "AND self_rating<=2 AND quiz_correct<=1")
 
-# ---- SESOI(H4 TOST / 功效)—— TODO:预注册前用原始单位 a priori 设定(#12/#14, paper/8 A4) ----
-# H4 的 DV = 结构完整度(field_completeness / shots_ok,0-1 比例),故 SESOI 的单位是该比例的
-# 绝对差(如 0.05 = 5 个百分点)。为 None 时 stats.tost 拒绝执行,不退回任何默认界。
-SESOI: float | None = None
+# ---- SESOI(H4 TOST 的等价界 / 功效)——【已锁定 2026-08-03,B2】----
+# 单位 = **DV 原始单位**。H4 的主质量 DV = 结构完整度(field_completeness / shots_ok,
+# 0-1 比例),故 0.10 = **10 个百分点**。
+#
+# 读法:「E 的结构完整度比 D 低 10 个百分点以内 → 判定为『质量无实质损失』」。
+# 为什么是 0.10 而不是 0.05 / 0.15:
+#   0.05 在 N≈36 下几乎不可能通过 → 等价界过窄 = 永远测不出等价,等于自断非劣性主张;
+#   0.15 太宽,审稿人会问「差 15 个点也算不劣?」;
+#   0.10 = 每 10 份稿子里多 1 份结构不全 —— 对「客观下界」型指标是可辩护的实质阈值。
+# 这是 a priori 设定(设定时 N=0,未见任何真实数据),与观测数据无关。
+# 仍为 None 时 stats.tost 拒绝执行,不退回任何默认界。
+SESOI: float | None = 0.10
 
-# ---- 终点层级(#13 族错误控制)——两个主复合上做 FWER,次要/探索门控其后;正式族在预注册 SAP 锁 ----
+# 功效换算注记:power_sim 以配对 dz 工作,而 SESOI 是原始单位 → dz ≈ SESOI / SD(配对差)。
+# SD 未知(无功效 pilot),故 power_sim 报**功效曲线**(dz 0.3-0.7)而非单点;真数据到手后用
+# 实测 SD 回算本 SESOI 对应的 dz,写进结果节。
+# ⚠️ 主分析人群 = novice 子集(B1) → 功效须按子集 N 另算一条曲线。
+
+# ---- 终点层级(#13 族错误控制)——两个主复合上做 FWER,次要/探索门控其后;正式族在 SAP 锁 ----
 PRIMARY_ENDPOINTS = ("ownership_composite", "fidelity_composite")
 SECONDARY_ENDPOINTS = ("satisfaction", "effort_composite",
                        "post_investment", "total_investment")

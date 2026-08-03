@@ -119,6 +119,24 @@ def _model() -> str:
     return (st.session_state.get("model") or "").strip() or "gpt-4o-mini"
 
 
+def _seed() -> int:
+    """Per-trial deterministic seed, sent on every call (B7, 2026-08-03).
+
+    OpenAI's `seed` is best-effort only — measured on gpt-4o-mini, 5/5 runs
+    differ even at temperature=0 with a fixed seed (batched inference is not
+    bit-reproducible). We still pin it so the request is fully specified and a
+    re-run is as close as the API allows; the logged seed + system_fingerprint
+    are what make drift detectable after the fact.
+
+    Derived from (participant, round) rather than a single global constant so
+    participants stay independent — one shared seed would nudge everyone toward
+    the same sample and shrink the between-participant variance H6 measures.
+    """
+    pid = st.session_state.get("participant_id") or 0
+    rnd = st.session_state.get("round_idx") or 0
+    return (int(pid) * 100 + int(rnd)) % (2**31)
+
+
 def current_meta(temperature: float | None = None) -> dict:
     """Generation parameters as actually used — logged into every trial row."""
     return {
@@ -139,6 +157,22 @@ def _stash_usage(usage) -> None:
         "completion": getattr(usage, "completion_tokens", None),
         "total_tokens": getattr(usage, "total_tokens", None),
     }
+
+
+def _stash_repro(seed: int | None, fingerprint=None) -> None:
+    """Reproducibility trace for the llm_done event (B7): the seed we sent and
+    the backend build OpenAI served it from. A fingerprint change mid-collection
+    means the serving stack moved under us — that is what we need to be able to
+    report, since the outputs themselves are not bit-reproducible."""
+    if seed is None and fingerprint is None:
+        st.session_state["_last_llm_repro"] = None
+        return
+    cur = st.session_state.get("_last_llm_repro") or {}
+    if seed is not None:
+        cur["seed"] = seed
+    if fingerprint is not None:
+        cur["system_fingerprint"] = fingerprint
+    st.session_state["_last_llm_repro"] = cur
 
 
 # --------- streaming ---------
@@ -190,23 +224,28 @@ def generate_stream(
         temperature = config.TEMPERATURE
     model = _model()
     base_url = st.session_state.get("base_url", "")
+    seed = _seed()
     client = _client()
     messages = [
         {"role": "system", "content": system},
         {"role": "user", "content": user},
     ]
-    _log(group, user_id, f"start model={model} base={base_url}")
+    _log(group, user_id, f"start model={model} base={base_url} seed={seed}")
     t0 = time.time()
     _stash_usage(None)
+    _stash_repro(None)
+    _stash_repro(seed)
     for attempt in range(retries + 1):
         total_len = 0
         first = True
         try:
             stream = client.chat.completions.create(
                 model=model, messages=messages, temperature=temperature, stream=True,
-                stream_options={"include_usage": True},
+                seed=seed, stream_options={"include_usage": True},
             )
             for chunk in stream:
+                if getattr(chunk, "system_fingerprint", None):
+                    _stash_repro(None, chunk.system_fingerprint)
                 # The usage chunk arrives last with choices=[] — read it before
                 # the empty-choices skip below.
                 if getattr(chunk, "usage", None):
@@ -277,9 +316,12 @@ def generate_json(
     if temperature is None:
         temperature = config.TEMPERATURE
     client, model = _guidance_client_and_model()
-    _log(group, user_id, f"json_start model={model}")
+    seed = _seed()
+    _log(group, user_id, f"json_start model={model} seed={seed}")
     t0 = time.time()
     _stash_usage(None)
+    _stash_repro(None)
+    _stash_repro(seed)
     spent: dict = {}
     last_err = ""
     msg_user = user
@@ -292,10 +334,12 @@ def generate_json(
                     {"role": "user", "content": msg_user},
                 ],
                 temperature=temperature,
+                seed=seed,
             )
         except Exception as e:  # noqa: BLE001
             _log(group, user_id, f"json_error elapsed={time.time()-t0:.2f}s err={e!r}")
             raise LLMCallError(str(e)) from e
+        _stash_repro(None, getattr(resp, "system_fingerprint", None))
         usage = getattr(resp, "usage", None)
         if usage:  # accumulate across JSON-retry attempts — cost is what we track
             for k, attr in (("prompt", "prompt_tokens"), ("completion", "completion_tokens"),

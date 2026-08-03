@@ -442,7 +442,7 @@
           <li>実験参加者：<br>── <b>3条件 × 3題</b>（1人が C・D・E をすべて体験）</li>
           <li><b>N ≥ 36</b>、日本の大学生 <br>── <b>18系列 × 各2人</b></li>
           <li>条件順は<b>全6並べ替え（Williams）<span class="nw">× 3題ローテーション</span></b></li>
-          <li>初心者（経験は共変量／誰でも参加できる）・所要 10–15分</li>
+          <li>募集は<b>誰でも可</b>／主分析は<b>初心者</b>（5項目で操作化・事前確定）<br>── 経験者は<b>対比</b>として別途分析・所要 10–15分</li>
         </ul>
       </div>
       <div style="justify-self:center">
@@ -489,14 +489,14 @@
   <!-- 12 · ANALYSIS PLAN -->
   <section class="slide">
     <div class="kicker">09 ── 分析計画</div>
-    <h2>分析：<span class="gold">実験参加者 LMM</span> ＋<br>事前登録した対比</h2>
+    <h2>分析：<span class="gold">実験参加者 LMM</span> ＋<br>事前に確定した対比</h2>
     <div class="cols" style="grid-template-columns:1fr 1.05fr; align-items:start">
       <div>
         <div class="formula">DV ~ 条件 + 題材 + 順序 + (1 | 実験参加者)</div>
         <ul style="margin-top:.4em">
           <li>計画対比：<b>E−D（主）</b> · E−C · D−C ／ 各複合内で <b>Holm</b> 補正</li>
-          <li>主要終点は<b>2つだけ</b>（本収集前に事前登録）：忠実性複合・所有感複合</li>
-          <li>品質<b>非劣性</b>は <b>TOST</b>（H4・事前登録 SESOI）／ 頑健性に Wilcoxon</li>
+          <li>主要終点は<b>2つだけ</b>（本収集前に確定・凍結）：忠実性複合・所有感複合</li>
+          <li>品質<b>非劣性</b>は <b>TOST</b>（H4・事前に定めた SESOI）／ 頑健性に Wilcoxon</li>
           <li>品質＝構造的完全性（客観的な下限）。<span class="muted">LLM-judge は収束の傍証のみ・人手評価なし</span></li>
         </ul>
       </div>
@@ -550,7 +550,7 @@
       創作ツールは、<br><span class="hl">「生成する前に問う」</span>を<br>組み込むべきだ。
     </div>
     <div class="title-meta" style="margin-top:clamp(30px,5vh,60px)">
-      <span>実装済み</span><span>プロンプト動作確認済み</span><span>→ pilot</span><span>→ 事前登録</span><span>→ 本収集 N ≥ 36</span>
+      <span>実装済み</span><span>プロンプト動作確認済み</span><span>→ 試行</span><span>→ 解析計画を凍結</span><span>→ 本収集 N ≥ 36</span>
     </div>
     <div class="credit" style="margin-top:clamp(24px,4vh,44px)">
       ご清聴ありがとうございました ・ <span class="muted">［g2550005@stu.musashino-u.ac.jp］</span>

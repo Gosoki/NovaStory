@@ -1,9 +1,9 @@
 # NovaStory 离线分析管线(A6 v3)。安装依赖: pip install -r analysis/requirements-analysis.txt
-# 全流程(真数据到手后): make baseline → make analysis(= v3 → embed → stats → figures)
+# 全流程(真数据到手后): make baseline → make analysis(= v3 → events → embed → stats → figures)
 PY := .venv/bin/python
 .DEFAULT_GOAL := help
 
-.PHONY: help baseline norming v3 pilot embed stats power figures analysis
+.PHONY: help baseline norming v3 events pilot embed stats power figures analysis smoke
 
 help:       ## 列出所有命令(直接敲 `make` 就看这个)
 	@grep -hE '^[a-z][a-zA-Z0-9_-]*:.*##' $(MAKEFILE_LIST) | sed -E 's/:.*## / — /' | sort
@@ -16,6 +16,9 @@ norming:    ## 主题开放度 norming(先 make baseline)→ 三题是否可比
 
 v3:         ## 确定性指标(结构/多样性/逐镜头保真/版本演化/努力再分配/主观复合)→ v3_per_trial.csv
 	$(PY) analysis/v3.py
+
+events:     ## 事件流指标(问卷时长/LLM 次数/token/最长等待/续接)合入 CSV(须先 make v3)
+	$(PY) analysis/events.py
 
 pilot:      ## 试测健康检查(4 生死问题:D地板/C天花板/novice占比/量表信度)→ 🟢🟡🔴 + 后手(paper/16)
 	$(PY) analysis/pilot_check.py
@@ -32,7 +35,12 @@ power:      ## 模拟功效 + MDES(SESOI 先验,无 pilot;paper/14 §4)
 figures:    ## 招牌图(努力再分配)+ 主 DV 分条件 → data/analysis/figures/
 	$(PY) analysis/figures.py
 
-# 真数据到手后的完整链路
-analysis: v3 embed stats figures  ## 【真数据后一条龙】v3 → embed → stats → figures
+smoke:      ## 分析链路回归自测(合成 N=36 跑完整条链并断言;临时库,不碰 data/novastory.db)
+	$(PY) scripts/analysis_smoke.py
+
+# 真数据到手后的完整链路。events 必须排在 v3 之后(它把事件层列合入 v3 写的 CSV);
+# events 与 embed 互不依赖(两者都是「先删自己的列再 merge」,顺序无关)。
+# ⚠️ 没有 data/baseline/ 时 embed 会 exit 1,整条链就停在那里 —— 先 make baseline。
+analysis: v3 events embed stats figures  ## 【真数据后一条龙】v3 → events → embed → stats → figures
 
 # 注:v2(HLZ)的 analysis/metrics.py 已被 v3.py 取代,收数验收后删除。

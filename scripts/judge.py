@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""T7.7 LLM-judge —— 盲评保真(paper/10 §6.3、paper/8 A1;7-02 拍板④⑥)。
+"""LLM-judge —— 盲评保真(docs/paper/03 §4;2026-07-02 拍板④⑥)。
 
 评审只看(被试自己写的 1-2 句创意 + 终稿),按"该脚本多大程度实现了这个创意"打 1-7;
 不给条件信息、不评创意质量(TTCW:LLM 评创意与专家不相关)。judge 全用 OpenAI 同一型号
@@ -7,8 +7,12 @@
 作可靠性代理。**定位:次要终点/收敛证据,不进主复合**(A4)。被试是日本人、脚本是
 日语,故提示为日语(JP3)。
 
-⏳ 专业质量四维 rubric(A1)的每维锚点仍未拍板,故本脚本**只做盲评保真**,不含质量评分
-模式;A1 终稿后再加(见 paper/8 A1)。
+❌ **专业质量四维 rubric(A1)已弃**(2026-08-03,B5):四维全是审美判断,正落在 TTCW 证明
+LLM 与专家相关≈0 的地方;质量改由「结构完整度(客观下界)+ TOST 非劣」承担。本脚本
+**只做盲评保真**,不含也不会再加质量评分模式。
+
+定位:**次要 / 收敛证据,不进主复合**。盲评保真判的是「脚本多大程度实现了这句创意」,属
+结构化比对(Zheng 2023 适用域),不是创意评分(TTCW 禁区)——这是它与 A1 的关键区别。
 
 输出 data/analysis/judge.jsonl,按 (participant_id, round_idx, rep) 断点续跑
 (PARSE_FAIL 不算完成,重跑会重试);键可与 v3_per_trial.csv join。
@@ -47,7 +51,7 @@ JUDGE_SYSTEM = (
     '出力は JSON オブジェクト 1 個のみ。例: {"fidelity": 5}  他の文字は一切出力しないでください。'
 )
 
-_SCORE_RE = re.compile(r'"?fidelity"?\s*[:：]\s*([1-7])')
+_SCORE_RE = re.compile(r'"?fidelity"?\s*[:：]\s*([1-7])(?![0-9])')
 
 
 def build_user(intent: str, script: str) -> str:
@@ -170,6 +174,8 @@ def openai_rater(temperature: float):
 def selftest(db_path: Path, reps: int) -> None:
     """桩自测:提示生成 / 解析 / 续跑去重 / 聚合 / 自一致性,全程不联网。"""
     trials = load_trials(db_path)[:6]
+    if not trials:
+        sys.exit(f"{db_path} 里没有可评的终稿 — 自测请指定合成库(--db)")
     print("—— 日语提示(第 1 轮,只打印不发送)——\n" + JUDGE_SYSTEM)
     print("---- user ----\n" + build_user(trials[0][2], trials[0][3]))
     print("\n—— 解析自测 ——")

@@ -85,7 +85,8 @@ def stream_llm(system: str, user: str, *, group: str) -> Optional[str]:
     elapsed = round(time.time() - t0, 2)
     state.add_llm_wait(elapsed)
     state.log_event("llm_done", {"group": group, "elapsed": elapsed,
-                                 "usage": st.session_state.get("_last_llm_usage")})
+                                 "usage": st.session_state.get("_last_llm_usage"),
+                                 "repro": st.session_state.get("_last_llm_repro")})
     status.update(label=t("llm.completed"), state="complete")
     text = out if isinstance(out, str) else "".join(out)
     return llm.clean_output(text)
@@ -127,5 +128,6 @@ def call_llm_json(system: str, user: str, *, group: str) -> Optional[dict]:
     elapsed = round(time.time() - t0, 2)
     state.add_llm_wait(elapsed)
     state.log_event("llm_done", {"group": group, "elapsed": elapsed,
-                                 "usage": st.session_state.get("_last_llm_usage")})
+                                 "usage": st.session_state.get("_last_llm_usage"),
+                                 "repro": st.session_state.get("_last_llm_repro")})
     return data

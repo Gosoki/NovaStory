@@ -8,11 +8,13 @@
   ④ config.toml runOnSave 关闭(dev 设置)
   ⑤ .gitignore 覆盖被试数据
   ⑥ 备份脚本就位
+  ⑦ 分析依赖已装(研究员后台「数据分析」面板非惰性 import,缺一个就当场崩)
 
 用法: .venv/bin/python scripts/deploy_check.py
 """
 from __future__ import annotations
 
+import importlib.util
 import re
 import sqlite3
 import sys
@@ -90,6 +92,19 @@ def check_gitignore() -> None:
         add(R, "数据 gitignore", ".gitignore 未覆盖 data/*.db → 被试数据可能被提交进仓库。")
 
 
+def check_analysis_deps() -> None:
+    """views/analysis_panel.py 的 `from analysis import ...` 在任何 try 之外,figures 又在
+    模块级 import matplotlib、stats 模块级 import scipy —— 缺一个,研究员一点开「数据分析」
+    就是 ImportError 崩页(且此前 .venv 里从未装过这批依赖)。让闸门先说,而不是现场炸。"""
+    missing = [m for m in ("numpy", "scipy", "pandas", "statsmodels", "matplotlib")
+               if importlib.util.find_spec(m) is None]
+    if missing:
+        add(R, "分析依赖", f"缺 {', '.join(missing)} → 研究员后台「数据分析」面板一点即崩"
+                          "(ImportError)。装:.venv/bin/pip install -r analysis/requirements-analysis.txt")
+    else:
+        add(G, "分析依赖", "numpy/scipy/pandas/statsmodels/matplotlib 齐备,分析面板可用。")
+
+
 def check_backup() -> None:
     if (ROOT / "scripts" / "backup_db.sh").exists():
         add(G, "备份脚本", "scripts/backup_db.sh 就位;确认已进 cron(每日 + 每场后)、异地一份。")
@@ -109,6 +124,7 @@ def main() -> None:
     check_config()
     check_gitignore()
     check_backup()
+    check_analysis_deps()
 
     print("=" * 60)
     print("部署就绪闸门(公开采数前)")

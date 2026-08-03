@@ -61,8 +61,12 @@ def fig_effort(pt: pd.DataFrame, out: Path) -> None:
 
 def fig_dv(pt: pd.DataFrame, dv: str, out: Path) -> None:
     """主 DV 分条件:箱线 + 被试内连线(配对设计标准画法)。"""
-    conds = _cond_order(pt)
     wide = pt.pivot_table(index="participant_id", columns="condition", values=dv)
+    # 某条件整列全 NaN(试测期常见:E 轮提交后弃答问卷)时 pivot 会丢掉该列,
+    # 再按 pt 的条件取列就 KeyError,整个 make figures 崩在这里 → 只取实际有的列并明说
+    conds = [c for c in _cond_order(pt) if c in wide]
+    if miss := [c for c in _cond_order(pt) if c not in wide]:
+        print(f"({dv}: 条件 {miss} 该列全为 NaN,图中省略)")
     fig, ax = plt.subplots(figsize=(5.2, 4))
     data = [wide[c].dropna().values for c in conds]
     ax.boxplot(data, tick_labels=conds, widths=0.5, showfliers=False)

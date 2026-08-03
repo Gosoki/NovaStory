@@ -9,7 +9,12 @@ import streamlit as st
 TEMPERATURE = 0.8
 
 N_ROUNDS = 3
-MIN_INTENT_CHARS = 10
+# Floor on the intent statement. 8 rather than 10 so that a bare tone-only idea
+# ("明るい話にしたい") clears it — the intro page tells participants any length is
+# fine, and a floor that contradicts that copy would block the very inputs we
+# invite (B6, 2026-08-03). Still non-zero: an empty/one-word intent gives the
+# fidelity baseline nothing to anchor on.
+MIN_INTENT_CHARS = 8
 
 # Number of Latin-square sequences = len(state._COND_ORDERS) × len(state._TOPIC_ORDERS).
 # 6 condition orders (all permutations of C/D/E → first-order carryover balanced,
