@@ -1,12 +1,12 @@
 #!/usr/bin/env python
-"""A6: 试测健康检查 —— 把「4 个生死问题」变成自动 🟢🟡🔴 读数(paper/16 后手手册的触发器)。
+"""A6: 试测健康检查 —— 把「4 个生死问题」变成自动 🟢🟡🔴 读数(docs/paper/05 §2 后手手册的触发器)。
 
 试测(几个人)数据一进 DB,跑 `make pilot` 立刻回答:
   ① D 地板效应   D 条件返工有没有空间(若≈0 → 招牌图「返工↓」落空)
   ② C 天花板     一发生成是否已贴合(若 C 已顶且 E≈C → 保真差检不出)
   ③ novice 占比  真新手比例(唯一区隔 APE 的人群卖点)
   ④ 量表信度     own α / soa 相关 / 中点应答方差压缩
-每项给读数 + 旗标 + 触发的「后手」分支(详见 paper/16)。阈值为经验参考,正式阈值预注册。
+每项给读数 + 旗标 + 触发的「后手」分支(详见 docs/paper/05 §2)。阈值为经验参考,正式阈值预注册。
 
 用法: .venv/bin/python analysis/pilot_check.py [--db data/novastory.db]
 """
@@ -68,7 +68,7 @@ def check_d_floor(df: pd.DataFrame) -> None:
     fl = _flag(zero, prereg.D_FLOOR_ZERO_GREEN, prereg.D_FLOOR_ZERO_YELLOW, higher_better=False)
     print(f"   {fl}  {'返工充足' if fl==G else '返工偏少' if fl==Y else '地板!返工≈0'}")
     if fl == R:
-        print("   → 后手A(paper/16):招牌叙事从「返工↓」移到「保真/所有权↑ + 努力再分配」"
+        print("   → 后手A(docs/paper/05):招牌叙事从「返工↓」移到「保真/所有权↑ + 努力再分配」"
               "(E 事前投入不依赖 D 返工空间);「新手被动接受」本身作发现,报 acceptance 率。")
 
 
@@ -91,7 +91,7 @@ def check_c_ceiling(df: pd.DataFrame) -> None:
         print(f"   {fl}  C 均值={cim.mean():.2f} SD={cim.std():.2f}  E−C 差={gap:.2f}"
               if not np.isnan(gap) else f"   {fl}  C 均值={cim.mean():.2f} SD={cim.std():.2f}")
         if fl == R:
-            print("   → 后手B(paper/16):embedding 保真降次要,逐镜头标注 + imagine_match 升主;"
+            print("   → 后手B(docs/paper/05):embedding 保真降次要,逐镜头标注 + imagine_match 升主;"
                   "主张改「E 在保真不劣于 C、但所有权/努力再分配更优」(与灵魂句一致)。")
 
 
@@ -108,7 +108,7 @@ def check_novice(con: sqlite3.Connection) -> None:
     fl = _flag(share, prereg.NOVICE_SHARE_GREEN, prereg.NOVICE_SHARE_YELLOW)
     print(f"   达标 novice = {isnov.sum()}/{len(p)} = {share:.0%}   {fl}")
     if fl != G:
-        print("   → 后手C(paper/16):预注册把「仅 novice 子集」前置为主分析群体(非事后稳健性);"
+        print("   → 后手C(docs/paper/05):预注册把「仅 novice 子集」前置为主分析群体(非事后稳健性);"
               "占比不足则措辞从「novice-专属」弱化为「以 novice 为主体」+ 经验作调节。招募端加门槛。")
 
 
@@ -129,7 +129,7 @@ def check_reliability(df: pd.DataFrame) -> None:
                prereg.RELIABILITY_GREEN, prereg.RELIABILITY_YELLOW)
     print(f"   {fl}  {'信度良好' if fl==G else '信度勉强' if fl==Y else '信度崩!'}")
     if fl == R or (not np.isnan(a_own) and a_own < prereg.OWN_ALPHA_FLOOR):
-        print("   → 后手D(paper/16):所有权主终点改用已验证的 J-SoAS SoPA(soa),own 降次要并报;"
+        print("   → 后手D(docs/paper/05):所有权主终点改用已验证的 J-SoAS SoPA(soa),own 降次要并报;"
               "所有分析用被试内差分(消中点应答偏差);own 若 α 崩考虑补第 4 题。")
 
 
@@ -149,7 +149,7 @@ def run(db_path: Path = DEFAULT_DB) -> None:
     finally:
         con.close()
     print("\n" + "=" * 56)
-    print("旗标:🟢 放行 / 🟡 留意 / 🔴 触发后手(见 paper/16 试测决策树)。"
+    print("旗标:🟢 放行 / 🟡 留意 / 🔴 触发后手(见 docs/paper/05 试测决策树)。"
           "\n阈值为经验参考;正式 go/no-go 阈值预注册前锁定。")
 
 

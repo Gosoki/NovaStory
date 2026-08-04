@@ -39,18 +39,34 @@ def _warned(fn):
     return out, [str(w.message) for w in ws]
 
 
-def preserve_embed(pt, csv_path: Path):
-    """重算 per-trial 覆盖 CSV 前,把 embed.py 之前合入的 embed_fidelity 按
-    (participant_id, round_idx) 接回来 —— 否则点一次「出分析结果」就抹掉保真复合的
-    客观腿,且毫无提示(embed.py 只把结果存在这个 CSV 里)。"""
-    if not csv_path.exists() or "embed_fidelity" in pt.columns:
-        return pt
+# 由**别的**步骤合进 v3_per_trial.csv 的列(v3.per_trial 自己算不出来):
+# embed.py 的 embedding 保真Δ、events.py 的事件层、judge.py 的盲评保真。
+# 面板每次点「出分析结果」都重算 per_trial 并覆盖同一个 CSV,不接回来就会**静默抹掉**它们。
+_MERGED_ELSEWHERE = ("embed_fidelity", "judge_fidelity",
+                     "t_questionnaire", "n_llm_calls", "n_llm_errors",
+                     "llm_total_tokens", "llm_wait_max", "n_resumes")
+
+
+def preserve_merged(pt, csv_path: Path):
+    """重算 per-trial 覆盖 CSV 前,把别的步骤合入的列按 (participant_id, round_idx) 接回来。
+    返回 (新表, 接回来的列名);接不回来就等于点一次按钮抹掉一次,且毫无提示
+    —— embed/events/judge 只把结果存在这个 CSV 里。"""
+    if not csv_path.exists():
+        return pt, []
     import pandas as pd
     old = pd.read_csv(csv_path)
     keys = ["participant_id", "round_idx"]
-    if "embed_fidelity" not in old.columns or not set(keys) <= set(old.columns):
-        return pt
-    return pt.merge(old[keys + ["embed_fidelity"]], on=keys, how="left")
+    if not set(keys) <= set(old.columns):
+        return pt, []
+    cols = [c for c in _MERGED_ELSEWHERE if c in old.columns and c not in pt.columns]
+    if not cols:
+        return pt, []
+    return pt.merge(old[keys + cols], on=keys, how="left"), cols
+
+
+def preserve_embed(pt, csv_path: Path):
+    """向后兼容的窄版(只接 embed_fidelity);新代码用 preserve_merged。"""
+    return preserve_merged(pt, csv_path)[0]
 
 
 def render() -> None:
@@ -84,8 +100,10 @@ def render() -> None:
         try:
             df = v3.load(dbp)
             csv_path = ANALYSIS_DIR / "v3_per_trial.csv"
-            pt = preserve_embed(v3.per_trial(df), csv_path)
+            pt, kept = preserve_merged(v3.per_trial(df), csv_path)
             pt.to_csv(csv_path, index=False)
+            if kept:
+                st.caption("· ".join(["接回既有列:"] + kept))
             have = [x for x in v3._SUMMARY_COLS if x in pt.columns]
             st.markdown(t("analysis.means_title"))
             st.dataframe(pt.groupby("condition")[have].mean(numeric_only=True).T)

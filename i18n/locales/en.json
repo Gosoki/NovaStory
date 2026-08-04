@@ -263,7 +263,7 @@
   },
   "monitor": {
     "title": "🗂 Experiment data management · Monitoring",
-    "empty": "No participant data yet. Once collection starts, completion progress, Latin-square balance, daily progress, and descriptive stats will appear here.",
+    "empty": "No participant data yet. Once collection starts, completion progress, Williams-sequence balance, daily progress, and descriptive stats will appear here.",
     "cond_C": "C one-shot",
     "cond_D": "D generate-then-revise",
     "cond_E": "E elicit-then-generate",
@@ -275,7 +275,7 @@
     "col_topic": "Topic",
     "col_cond": "Condition",
     "col_date": "Date",
-    "balance_title": "**Condition × topic counts**　(Latin-square balance: cells should be roughly equal; greener = more)",
+    "balance_title": "**Condition × topic counts**　(Williams-sequence balance: cells should be roughly equal; greener = more)",
     "seq_title": "**Completed count per seq (condition×topic)**　—— collect until all even (over-recruit absorbs dropouts)",
     "seq_target": "Target: {n} completers per seq",
     "none": "(none yet)",
@@ -291,13 +291,14 @@
     "health_llm_err": "LLM error rate",
     "health_fallback": "Guidance fallback rate",
     "health_latency": "Gen latency med/p95",
-    "health_none": "No events yet"
+    "health_none": "No events yet",
+    "lang_mix": "Language mix — {mix} (the formal study is ja; zh/en means a researcher test or an off-protocol session)"
   },
   "analysis": {
     "title": "📊 Data analysis (just click — no command line needed)",
     "caption": "Produce results and figures here during/after collection; data comes from the current experiment DB. The command-line version is still `make pilot / make analysis`.",
     "btn_pilot": "① Pilot health check (4 make-or-break questions)",
-    "btn_power": "④ Power analysis (for preregistration)",
+    "btn_power": "④ Power analysis (for the frozen analysis plan)",
     "power_spinner": "Simulating, about half a minute…",
     "btn_results": "② Produce results (metrics + stats)",
     "means_title": "**Means by condition (core comparison C / D / E):**",

@@ -1,7 +1,7 @@
 """按需给分镜配图(仅当正式模型 = OpenAI 时启用)。
 
 流程:被试提交这一版后进入本轮问卷 → 页面立刻显示、分镜「画面」列先显示"生成中" →
-后台线程用 gpt-image-1 并行生成 3 张手绘风插图、逐张写盘 → 问卷里的分镜表用 fragment
+后台线程用 gpt-image-1-mini 并行生成 3 张手绘风插图、逐张写盘 → 问卷里的分镜表用 fragment
 每 2 秒轮询磁盘、好一张显示一张。**全程非阻塞、失败即静默降级**(某镜失败就停在"生成中",
 绝不打断实验)。图落 `data/storyboard_images/{被试}_{轮次}/`(留档,已 gitignore)。
 
@@ -20,7 +20,16 @@ import streamlit as st
 
 _ROOT = Path(__file__).resolve().parent.parent
 _ARCHIVE = _ROOT / "data" / "storyboard_images"
-_IMG_MODEL = "gpt-image-1"
+# 2026-08-03 选型实测(4 候选 × 2 轮 × 3 镜,风格指标 + 延迟 + 成本):
+# gpt-image-1-mini 在**每一项**上都优于原来的 gpt-image-1 —— 快 30%(11.7s vs 16.6s)、
+# 便宜 5 倍($0.0022 vs $0.0109/张)、彩度 0.0(原 1.1,风格锁写明 "No color")、
+# 线条最干净(连通成分 5 / 微小碎片 0,原 10 / 4)。
+# gpt-image-1.5 与 gpt-image-2 的笔画严重碎裂(成分 86 / 264、碎片 80 / 238)并出现
+# 阴影块,违反 _STYLE 的 "clean thin uniform black outlines" + "NO shading"。
+# ⚠️ 图像模型**没有带日期的快照可钉**(唯一有的 gpt-image-2-2026-04-21 风格最差)——
+# 这是 B7 钉快照规则的一个已知例外。缓解:配图不是 DV;被试内在 C/D/E 均等,漂移不偏
+# E−D 主对比;每张图都归档在 data/storyboard_images/,事后可复算风格指标检测漂移。
+_IMG_MODEL = "gpt-image-1-mini"
 
 # 锁定的简笔清线风格(samples/imggen/README)
 _STYLE = (
@@ -33,7 +42,7 @@ _STYLE = (
 
 
 def enabled() -> bool:
-    """仅当当前配置的接口是 OpenAI(gpt-image-1 需要)时开启配图。"""
+    """仅当当前配置的接口是 OpenAI(图像模型只在 OpenAI 上有)时开启配图。"""
     return "openai.com" in (st.session_state.get("base_url") or "")
 
 
@@ -72,6 +81,11 @@ def ensure_started(pid: int, ridx: int, shots: list[dict],
                     return
                 try:
                     if scene:
+                        # size/quality 已是**最省的档**,别再"优化":
+                        #   · 256x256 / 512x512 → 400 Invalid size(不支持),1024x1024 是最小可选;
+                        #   · size="auto" 会选 1536x1024 = 400 tok(贵 47%),所以必须写死 1024x1024;
+                        #   · quality low=272 tok / medium=1056 / high=auto=4160 → low 便宜 3.9-15 倍。
+                        # 生成 1024 再缩到 512 存盘不是浪费——1024 就是最小生成尺寸。
                         r = client.images.generate(
                             model=_IMG_MODEL, prompt=_STYLE + scene, n=1,
                             size="1024x1024", quality="low",

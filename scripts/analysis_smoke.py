@@ -1,16 +1,17 @@
 #!/usr/bin/env python
 """分析链路回归自测 —— 合成 N=36 的实验库,把 v3 → events → stats → figures 整条链跑一遍
-并逐项断言。数据未采(N=0)时,这是唯一能证明"预注册终点真的算得出来"的东西。
+并逐项断言。数据未采(N=0)时,这是唯一能证明"冻结分析计划里的终点真的算得出来"的东西。
 
 盯死的是**静默失败**(算错不可怕,可怕的是看起来跑通了):
   · v3 少行 / 少列,或 dev 被试混进分析人群
-  · 任一预注册终点悄悄退回 Wilcoxon(LMM 或计划对比或 Holm 缺失)
+  · 任一冻结终点悄悄退回 Wilcoxon(LMM 或计划对比或 Holm 缺失)
   · LMM"成功"但 se/p 全 NaN(零方差 DV),Holm 把 NaN 排成 p=0 的假显著
   · TOST 在没有(或非法的)SESOI 下照样出结论 / 锁定了 SESOI 却出不来结论 / 缺条件时崩掉
   · E 的引导剂量列没落盘,或漏进了 C/D;剂量复合退化成 pre_investment 的线性缩放(H5 只测了时间)
   · 半截行(final_output / script_versions 为 NULL)让整条链抛栈
   · 试测规模(N=4、E 臂整条缺失)不是"大声降级"而是崩
-  · 面板重算 per-trial 时抹掉 embed.py 合入的 embed_fidelity(保真复合悄悄少一条腿)
+  · 面板重算 per-trial 时抹掉别的步骤合入的列(embed.py 的保真Δ / events.py 的事件层 /
+    judge.py 的盲评保真)—— 保真复合悄悄少一条腿
   · 说好产出的图少了几张
   · 空库直接抛栈(试测第一位被试提交前的常态)
 
@@ -136,9 +137,10 @@ def run(tmp: Path) -> None:
     assert got == n_won, f"重做轮 LLM 调用数 {got} ≠ 进论文那段的 {n_won}(作废段被算进来了)"
     ok(f"重做轮 (p{rpid} r{rridx}) 只算进了论文的那段:{n_won} 次调用(全轮 {n_all} 次)")
 
-    # ---------- ④ 预注册终点:LMM + 3 计划对比 + Holm ----------
-    print("[4/10] 预注册终点的确证分析(LMM + 计划对比 + Holm)")
-    df = A_stats.build_dose(A_stats.build_composites(merged))
+    # ---------- ④ 冻结分析计划的终点:LMM + 3 计划对比 + Holm ----------
+    print("[4/10] 冻结分析计划终点的确证分析(LMM + 计划对比 + Holm)")
+    # 三层必须与 stats.main 同构:少一层 build_quality,H4 的质量 DV 就根本不在 df 里
+    df = A_stats.build_quality(A_stats.build_dose(A_stats.build_composites(merged)))
     endpoints = prereg.PRIMARY_ENDPOINTS + prereg.SECONDARY_ENDPOINTS
     for dv in endpoints:
         assert dv in df.columns, f"终点 {dv} 根本没构建出来"
@@ -159,7 +161,11 @@ def run(tmp: Path) -> None:
     assert n_tab == len(endpoints), f"stats CLI 只打印了 {n_tab}/{len(endpoints)} 张计划对比表"
     assert "⛔ 最终警告" not in out, out[-800:]
     assert "H4 质量非劣" in out and "H5 剂量-反应" in out, "H4/H5 段落没跑"
-    ok(f"make stats 的 CLI 路径:{n_tab} 张计划对比表 + H4/H5 段落,无 ⛔ 终点缺失汇总")
+    # H4 的小标题是无条件打印的:质量 DV 建不出来时它照样在,底下换成一行 ⛔——
+    # 只查标题等于没查,非劣主张可以整个消失而门禁全绿
+    assert f"⛔ {A_stats._H4_QUALITY_DV} 未构建" not in out, \
+        f"H4 段落只剩「{A_stats._H4_QUALITY_DV} 未构建」,非劣主张无 DV 可测\n{out[-800:]}"
+    ok(f"make stats 的 CLI 路径:{n_tab} 张计划对比表 + H4(有 DV)/H5 段落,无 ⛔ 终点缺失汇总")
 
     # 零方差 DV 必须大声失败,不能"拟合成功"后打印 p=0(A1 的洞)
     df_flat = df.copy()
@@ -174,26 +180,30 @@ def run(tmp: Path) -> None:
     # SESOI 已于 2026-08-03 锁定(B2,单一真源 analysis/prereg.py)。门禁盯的是**拒绝行为**
     # 而不是字面值:没有界/界非法就不许出结论,有界就必须真出结论。prereg.py 只读,
     # 只在本进程内 monkeypatch 并原样还原。
+    # 检验对象必须是冻结的 H4 质量 DV(结构完整度复合);它的三个成分只作描述性输出
+    # (analysis/stats.py:397 明写"勿单独下非劣结论"),拿成分代打测不到 build_quality 的死活。
+    h4_dv = A_stats._H4_QUALITY_DV
+    assert h4_dv in df.columns, f"H4 的质量 DV {h4_dv} 没构建出来,非劣检验根本没有对象"
     locked = prereg.SESOI
     assert isinstance(locked, (int, float)) and locked > 0, \
         f"prereg.SESOI 应是采数前锁定的正数(DV 原始单位),现在是 {locked!r}"
-    r2, _log = quiet(lambda: A_stats.tost(df, "field_completeness"))
+    r2, _log = quiet(lambda: A_stats.tost(df, h4_dv))
     assert isinstance(r2.get("equivalent"), bool), f"SESOI 已锁定却没出结论: {r2}"
     assert r2["bound"] == locked and r2["n"] >= 5, r2
-    ok(f"锁定的 SESOI={locked} → 出结论 equivalent={r2['equivalent']}"
+    ok(f"锁定的 SESOI={locked} → {h4_dv} 出结论 equivalent={r2['equivalent']}"
        f"(mean_diff={r2['mean_diff']:.3f}、n={r2['n']})")
 
     try:
         for bad in (None, 0.0, -0.10):  # 未锁定 / 研究员手滑填 0 或负数
             prereg.SESOI = bad
-            rb, _log = quiet(lambda: A_stats.tost(df, "field_completeness"))
+            rb, _log = quiet(lambda: A_stats.tost(df, h4_dv))
             assert rb["equivalent"] is None and "SESOI" in rb.get("note", ""), (bad, rb)
         ok("SESOI = None / 0 / 负数 → TOST 一律拒绝执行,不退回任何默认界")
     finally:
         prereg.SESOI = locked
     assert prereg.SESOI == locked, "monkeypatch 之后没把 prereg.SESOI 还原"
 
-    r3, _log = quiet(lambda: A_stats.tost(df[df["condition"] != "E"], "field_completeness"))
+    r3, _log = quiet(lambda: A_stats.tost(df[df["condition"] != "E"], h4_dv))
     assert r3["equivalent"] is None and "缺条件" in r3["note"], r3
     ok("试测期缺 E 条件 → TOST 给出'缺配对数据',不抛 KeyError")
 
@@ -218,8 +228,17 @@ def run(tmp: Path) -> None:
     r_dose = float(e_rows["dose_composite"].corr(e_rows["pre_investment"]))
     assert abs(r_dose) < 0.99, \
         f"dose_composite 只是 pre_investment 的线性缩放(r={r_dose:.6f}),H5 剂量模型没被测到"
+    # 题数本身是随机的(n_items),所以上面两条挡不住 S2 那种退化:is_custom=(i==0) 时
+    # g_custom_rate 恒等于 轮数/题数,列上照样有方差(实测 r_legs=0.409、r_dose=0.592,全绿)。
+    # 真正要的是**答法本身**的被试间方差 —— 同题数同轮数的人之间也得不一样。
+    for c in ("g_custom_rate", "g_ai_decided_rate"):
+        cell = e_rows.groupby(["g_n_questions", "g_n_rounds"])[c]
+        within = cell.std()[cell.size() >= 2]
+        assert (within > 0).any(), \
+            f"{c} 在「同题数同轮数」的被试之间零方差,这条腿只是题数的换算,H5 剂量是假的"
     ok(f"剂量三条腿各自有方差(自填/AI代答 r={r_legs:.3f});"
-       f"dose_composite vs pre_investment r={r_dose:.3f},不是纯缩放")
+       f"dose_composite vs pre_investment r={r_dose:.3f},不是纯缩放;"
+       "同题数同轮数内答法仍有被试间方差")
 
     # ---------- ⑦ 面板重算不得抹掉 embed_fidelity ----------
     print("[7/10] 面板重算 per-trial 时 embed_fidelity 必须活着")
@@ -228,8 +247,9 @@ def run(tmp: Path) -> None:
     base = pd.read_csv(csv)
     base["embed_fidelity"] = np.linspace(-0.2, 0.2, len(base))
     base.to_csv(csv, index=False)
-    kept = analysis_panel.preserve_embed(v3.per_trial(v3.load(db_path)), csv)
+    kept, restored = analysis_panel.preserve_merged(v3.per_trial(v3.load(db_path)), csv)
     assert "embed_fidelity" in kept.columns, "点一次「出分析结果」就抹掉了 embed_fidelity"
+    assert "embed_fidelity" in restored, "接回来了但没报告接了哪些列"
     chk = kept.merge(base[["participant_id", "round_idx", "embed_fidelity"]],
                      on=["participant_id", "round_idx"], suffixes=("", "_old"))
     assert len(chk) == len(kept), "接回 embed_fidelity 时行数变了"
@@ -249,9 +269,10 @@ def run(tmp: Path) -> None:
         "少了 embed_fidelity 这条腿却不告警 —— 保真复合会静默降级"
     ok("缺 embedding 腿时 build_composites 告警,补齐后不告警")
 
+    # 事件层列同理:也是别的步骤(events.py)合进同一个 CSV 的,面板重算必须一并接回
     lost = [c for c in A_ev._COLS if c not in kept.columns]
-    if lost:  # 已知缺陷(见 views/analysis_panel.py:87),非本自测的门禁项
-        print(f"   注: 面板重算丢掉了事件层列 {lost} —— 面板路径未接回,须重跑 events")
+    assert not lost, f"面板重算丢掉了事件层列 {lost} —— 与 embed_fidelity 同一类静默抹除"
+    ok(f"事件层 {len(A_ev._COLS)} 列同样接回(共接回 {len(restored)} 列)")
     kept.to_csv(csv, index=False)
 
     # ---------- ⑧ 图 ----------

@@ -1,11 +1,11 @@
 #!/usr/bin/env python
-"""A6: events 事件流 → 逐 trial 指标(paper/12 §1②③④、§2 事件级的「可算」部分)。
+"""A6: events 事件流 → 逐 trial 指标(docs/paper/03 §6.1/§7 的事件级「可算」部分)。
 
 覆盖 trials 便捷列算不出的四件事:
   问卷时长(trial_submit→questionnaire_submit)、每轮 AI 调用次数/失败次数、
   token 成本(llm_done.usage.total_tokens)、最长单次等待、续接次数。
 
-重做轮切段(paper/12 §0):同 (participant, round) 下按 `attempt` 分组,进了论文的
+重做轮切段(docs/paper/03 §6.1):同 (participant, round) 下按 `attempt` 分组,进了论文的
 那段 = 含 trial_id 非空行的那段;取该段**全部**事件(不用 WHERE trial_id IS NOT NULL
 过滤,否则丢掉 questionnaire_submit 等提交后事件)。旧行(7-02 前)attempt 全 NULL、
 ts 只有秒级 → 退化为按 (participant, round) 整取,指标照算(精度降到秒)。

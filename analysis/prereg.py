@@ -11,7 +11,7 @@ commit 一起留档,作为「分析计划在见到数据之前就已确定」的
 """
 from __future__ import annotations
 
-# ---- pilot 生死问题 go/no-go(paper/16) ----
+# ---- pilot 生死问题 go/no-go(docs/paper/05 §2) ----
 D_FLOOR_ZERO_GREEN, D_FLOOR_ZERO_YELLOW = 0.30, 0.60   # D 零返工比例(越低越好)
 C_CEIL_MEAN, C_CEIL_SD = 6.0, 1.0                       # imagine_match 天花板判定
 C_CEIL_GAP = 0.30                                        # E−C 差低于此且 C 压顶 → 红
@@ -28,8 +28,9 @@ NOVICE_DEF = ("published_idx==0 AND background=='no' AND written=='no' "
               "AND self_rating<=2 AND quiz_correct<=1")
 
 # ---- SESOI(H4 TOST 的等价界 / 功效)——【已锁定 2026-08-03,B2】----
-# 单位 = **DV 原始单位**。H4 的主质量 DV = 结构完整度(field_completeness / shots_ok,
-# 0-1 比例),故 0.10 = **10 个百分点**。
+# 单位 = **DV 原始单位**。H4 的主质量 DV = 结构完整度 structural_completeness
+# = mean(parse_ok, field_completeness, spec_ok),0-1 比例,故 0.10 = **10 个百分点**。
+# (spec_ok = 「15s 且 3 镜」达标;旧写法 shots_ok 只判镜数,已不是 H4 的成分。)
 #
 # 读法:「E 的结构完整度比 D 低 10 个百分点以内 → 判定为『质量无实质损失』」。
 # 为什么是 0.10 而不是 0.05 / 0.15:
@@ -51,8 +52,14 @@ SECONDARY_ENDPOINTS = ("satisfaction", "effort_composite",
                        "post_investment", "total_investment")
 
 # ---- 复合公式(as-run,见 analysis/stats.build_composites) ----
+# z 一律按**全样本**算(跨全部 trial 的均值/标准差),被试间差异交给 LMM 的随机截距
+# (1|被试) 吸收——不用被试内 z:每被试每条件仅 1 轮,被试内 SD 由 3 个点估计、噪声过大,
+# 且与随机截距功能重叠(用户 2026-08-03 拍板)。⚠️ docs/paper/04 §2.1 仍写「被试内 z」,待回写。
 COMPOSITES = {
-    "fidelity_composite": "mean z(imagine, -violation, mine_ratio, embed_fidelity[若有])",
+    "fidelity_composite": ("0.5*mean z(imagine, -violation, mine_ratio) + 0.5*z(embed_fidelity)"
+                           ";embed 缺席则退回主观三腿等权并告警(2026-08-03 拍板:各半)"),
+    "structural_completeness": ("mean(parse_ok, field_completeness, spec_ok)  # H4 唯一 DV;"
+                                "spec_ok=15s且3镜达标;0-1 比例,与 SESOI 同单位 → 只做一次 TOST"),
     "ownership_composite": "own_mean(own1-3);own3=self-investment facet 另行分报",
     "effort_composite": "mean z(log1p(n_ai_rounds, hand_edit_chars, t_postgen))  # H3a 事后返工",
     "dose_composite": "mean z(pre_investment, g_custom_rate, 1-g_ai_decided_rate)  # H5 E 内剂量",

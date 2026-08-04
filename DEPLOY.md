@@ -1,7 +1,7 @@
 # 公开采数部署清单（自有服务器）
 
 > 目的：把「设计好的系统」安全地架起来跑试测/正式采数。评估点名的两个灾难项——**弱口令泄露** 和 **零备份丢数据**——在此清零。
-> 就绪自检：`.venv/bin/python scripts/deploy_check.py`（全绿再公开）。数据合规细节见 `paper/13`。
+> 就绪自检：`.venv/bin/python scripts/deploy_check.py`（全绿再公开）。数据合规细节见 `docs/paper/07_采数前执行清单.md` §2。
 
 ---
 
@@ -17,7 +17,7 @@
 - [ ] **`.gitignore` 覆盖 `data/*.db`**（已就位）。
 - [ ] **备份脚本进 cron**（见 §4）。
 - [ ] **HTTPS**：被试要填同意/人口学，明文 HTTP 不可（见 §5）。
-- [ ] **同意书含**：外部 AI(OpenAI)处理、勿填隐私、可随时退出、数据用途与匿名（APPI 越境条款，见 paper/13 §5）。
+- [ ] **同意书含**：外部 AI(OpenAI)处理、勿填隐私、可随时退出、数据用途与匿名（APPI 越境条款，见 `docs/paper/07` §2.3）。
 
 ## 2. 起服务（systemd 守护，别用 tmux）
 `/etc/systemd/system/novastory.service`（占位，按你的路径/用户改）：
@@ -70,7 +70,7 @@ your.domain.example {
 .venv/bin/python scripts/deploy_check.py   # 期望全绿
 .venv/bin/python scripts/dev_smoke_e2e.py  # E2E 冒烟(LLM 打桩)应通过
 ```
-全绿后发链接给试测被试；试测数据回来跑 `make pilot`（4 生死问题 → 后手见 paper/16）。
+全绿后发链接给试测被试；试测数据回来跑 `make pilot`（4 生死问题 → 后手见 `docs/paper/05` §2）。
 
 ---
 **你需要给我 3 个信息，我就把 §2/§5 的 systemd + Caddy 配置填成你能直接用的版本:** ① 服务器发行版(Ubuntu/Debian?)② 有没有域名 ③ 有没有 sudo。

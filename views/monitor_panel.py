@@ -71,6 +71,13 @@ def _overview(parts: pd.DataFrame) -> None:
         st.progress(min(done / _TARGET_N, 1.0),
                     text=t("monitor.progress", n=_TARGET_N, done=done,
                            remain=max(_TARGET_N - done, 0)))
+        # 语言构成:正式研究是 ja,出现 zh/en 说明是研究员测试或脱离协议的会话 —— 采数期
+        # 就要看见,不能等到分析时才发现(那时已无法补救)。
+        if "lang" in parts and len(parts):
+            mix = parts["lang"].fillna("ja").value_counts().to_dict()
+            line = " / ".join(f"{k}: {v}" for k, v in mix.items())
+            (st.caption if set(mix) <= {"ja"} else st.warning)(
+                t("monitor.lang_mix", mix=line))
 
 
 def _data_health(trials: pd.DataFrame) -> None:

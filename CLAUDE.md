@@ -20,10 +20,10 @@ Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-s
 
 ### 0.2 当前权威文档（避免引用过时内容）
  - **索引：`docs/paper/README.md`**。权威顺位：**代码 > `docs/index.html`（发表用幻灯片，对外口径）> `docs/paper/`**。
- - 研究定位/贡献措辞/禁用措辞/文献切割：`docs/paper/01`　实验设计+交互规格+运行流程：`docs/paper/02`　测量/量表/数据字典：`docs/paper/03`　假设表+分析计划：`docs/paper/04`　预注册+试测决策树：`docs/paper/05`　**待拍板事项：`docs/paper/06`**　采数前执行清单(部署/合规)：`docs/paper/07`　论文写作与投稿：`docs/paper/08`　日语资料(タイトル/背景目的/発表原稿/用語ルール)：`docs/paper/09`　决策留痕：`docs/paper/10`　文献库：`docs/paper/reference/`
- - 分析管线：`analysis/{v3,stats,power_sim,embed,figures,norming,textstats}.py`（A6 v3，`make analysis` 串全链）；**试测健康检查 `analysis/pilot_check.py`（`make pilot`；4 生死问题→🟢🟡🔴 + 后手分支）**；旧 `analysis/metrics.py` 为 v2(HLZ) 遗留，收数验收后删；`analysis/judge.py` 挂过时横幅，去留待拍板。
+ - 研究定位/贡献措辞/禁用措辞/文献切割：`docs/paper/01`　实验设计+交互规格+运行流程：`docs/paper/02`　测量/量表/数据字典：`docs/paper/03`　假设表+分析计划：`docs/paper/04`　分析计划冻结+试测决策树（**第三方预注册不做**）：`docs/paper/05`　**待拍板事项：`docs/paper/06`**　采数前执行清单(部署/合规)：`docs/paper/07`　论文写作与投稿：`docs/paper/08`　日语资料(タイトル/背景目的/発表原稿/用語ルール)：`docs/paper/09`　决策留痕：`docs/paper/10`　文献库：`docs/paper/reference/`
+ - 分析管线：`analysis/{v3,stats,power_sim,embed,figures,norming,textstats}.py`（A6 v3，`make analysis` 串全链）；**试测健康检查 `analysis/pilot_check.py`（`make pilot`；4 生死问题→🟢🟡🔴 + 后手分支）**；旧 `analysis/metrics.py` 为 v2(HLZ) 遗留，收数验收后删；`scripts/judge.py`（不在 `analysis/`）= LLM-judge **只做盲评保真**，四维审美 rubric 已弃（B5, 2026-08-03）。
  - **预注册冻结常量的单一真源：`analysis/prereg.py`**（pilot 阈值 / novice 定义 / SESOI / 终点层级 / 复合公式）——阈值只改这里，`pilot_check`/`stats` 从它 import。
- - 关键设计常量：`core/config.py: LATIN_SQUARE_N=18`（**Williams 6 排列 × 3 题目**，不是 3×3 拉丁方）、`N_ROUNDS=3`、`MIN_INTENT_CHARS=10`。
+ - 关键设计常量：`core/config.py: LATIN_SQUARE_N=18`（**Williams 6 排列 × 3 题目**，不是 3×3 拉丁方）、`N_ROUNDS=3`、`MIN_INTENT_CHARS=8`（B6, 2026-08-03 由 10 改为 8）。
  - 现状裁决：修士充分性=**勉强够**（纸面超标、押在未采数据 N=0）；答辩火力点与答法见 `docs/paper/08 §11`。卡点全在 `docs/paper/06`（待拍板）与 `07`（部署/合规），**不再是代码**。
 
 ### 0.3 语言（实验对象是日本人）

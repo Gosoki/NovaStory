@@ -30,10 +30,14 @@ from analysis import prereg  # noqa: E402  (冻结分析计划常量的单一真
 
 CSV = ROOT / "data" / "analysis" / "v3_per_trial.csv"
 _PAIRS = [("E", "D"), ("E", "C"), ("D", "C")]  # E−D 为主
-_FIDELITY_LEGS = ("imagine", "violation", "mine_ratio", "embed_fidelity")
+_FIDELITY_SUBJ_LEGS = ("imagine", "violation", "mine_ratio")   # 主观三腿,先内部平均
+_FIDELITY_OBJ_LEG = "embed_fidelity"                          # 唯一的客观腿,占一半
+_FIDELITY_LEGS = (*_FIDELITY_SUBJ_LEGS, _FIDELITY_OBJ_LEG)    # 仅用于「缺腿」告警的全集
 _EFFORT_LEGS = ("n_ai_rounds", "hand_edit_chars", "post_investment")
 _DOSE_LEGS = ("pre_investment", "g_custom_rate", "g_ai_decided_rate")
-_H4_LEGS = ("parse_ok", "field_completeness", "shots_ok")  # 三者**合成一个** DV,见 build_quality
+_H4_LEGS = ("parse_ok", "field_completeness", "spec_ok")   # 三者**合成一个** DV,见 build_quality
+# spec_ok = 「15s 且 3 镜」达标(v3.structural);此前用的 shots_ok 只判镜数、从不核验总时长,
+# 与 docs/paper/03 §4 写的「15s/3镜达标率」只对上一半(用户 2026-08-03 拍板补全)。
 _H4_QUALITY_DV = "structural_completeness"                 # H4 唯一的检验对象
 
 
@@ -48,15 +52,34 @@ def build_composites(df: pd.DataFrame) -> pd.DataFrame:
     """保真复合 = z(想象匹配)+z(违背取反)+z(逐镜头 mine 比)+z(embedding Δ,若有) 的均值;
     所有权复合 = own_mean(docs/paper/04 §2.2)。缺哪项跳哪项。"""
     df = df.copy()
-    parts, names = [], []
-    for col, sign in zip(_FIDELITY_LEGS, (1, -1, 1, 1)):
+    # 保真复合(主终点)=「**主观三腿先平均、再与 embedding Δ 各半**」
+    # (docs/paper/04 §2.1;用户 2026-08-03 拍板)。此前是四腿等权 → 唯一的客观腿被稀释到
+    # 25%、3 条自评腿合占 75%;答辩火力点正是「无外部真人保真锚」,客观腿不能只占四分之一。
+    # embedding 缺席(没跑 embed.py,或 pilot 收敛 r<.3 判为降次要)→ 退回主观三腿等权并告警。
+    subj, subj_names = [], []
+    for col, sign in zip(_FIDELITY_SUBJ_LEGS, (1, -1, 1)):
         if col in df and df[col].notna().any():  # 整列全 NaN 等同缺失(否则悄悄少一条腿)
-            parts.append(sign * _z(df[col]))
-            names.append(col)
-    if parts:
-        _warn_uneven_coverage(df, names)
-        _warn_missing_legs("fidelity_composite", _FIDELITY_LEGS, names)
-        df["fidelity_composite"] = _combine("fidelity_composite", parts, names)
+            subj.append(sign * _z(df[col]))
+            subj_names.append(col)
+    if subj:
+        _warn_uneven_coverage(df, subj_names)
+        _warn_missing_legs("fidelity_composite 的主观侧", _FIDELITY_SUBJ_LEGS, subj_names)
+        subj_mean = _combine("fidelity_composite 的主观侧", subj, subj_names)
+        if _FIDELITY_OBJ_LEG in df and df[_FIDELITY_OBJ_LEG].notna().any():
+            fid = 0.5 * subj_mean + 0.5 * _z(df[_FIDELITY_OBJ_LEG])
+            lost = int((fid.isna() & subj_mean.notna()).sum())
+            if lost:
+                # 逐行缺 embedding 的行会变 NaN。绝不用「这些行退回主观均值」补——那等于
+                # 让同一个终点里两种不同权重的数混在一起比,正是 _combine 警告的那种偏。
+                warnings.warn(f"fidelity_composite:{lost} 行有主观分但缺 {_FIDELITY_OBJ_LEG},"
+                              "按各半定义无法构建 → 记 NaN(不退回主观均值,否则同一终点内混两种权重)。"
+                              "请补跑 analysis/embed.py,或在冻结文件里改判 embedding 降次要。")
+            df["fidelity_composite"] = fid
+            print("  保真复合权重:主观三腿 50% + embedding Δ 50%(docs/paper/04 §2.1 各半)")
+        else:
+            _warn_missing_legs("fidelity_composite", _FIDELITY_LEGS, subj_names)
+            print("  保真复合权重:仅主观三腿等权(embedding Δ 缺席,非各半定义,结论须注明)")
+            df["fidelity_composite"] = subj_mean
     if "own_mean" in df:
         df["ownership_composite"] = df["own_mean"]
     # H3a 努力再分配(事后返工复合):n_ai_rounds + 手改字符 + t_postgen。计数/时长右偏,
@@ -76,7 +99,7 @@ def build_composites(df: pd.DataFrame) -> pd.DataFrame:
 
 def build_quality(df: pd.DataFrame) -> pd.DataFrame:
     """H4 的质量 DV = **结构完整度**(docs/paper/03 §4 客观评价栈):
-    parse_ok + 分镜四字段齐全率 + 15s/3镜达标率 —— 文档定义的是**一个复合**(三者均值,
+    parse_ok + 分镜四字段齐全率 + 15s且3镜达标 —— 文档定义的是**一个复合**(三者均值,
     0-1 比例),不是三个各测各的终点。合成后 SESOI 的单位无歧义(0.10 = 10 个百分点),
     H4 只做一次 TOST,不产生多重性;三个成分本身只作描述性输出。
     v3.structural() 仅在「一镜也没解析出来」时给 field_completeness=NaN,该行 parse_ok=
@@ -195,10 +218,12 @@ def _report_fit_health(dv: str, opt: str, fit) -> None:
     """非收敛 / 随机效应方差压在 0 边界时出声(warnings 被 simplefilter 吞了,不查就没人知道)。"""
     re_var = float(np.ravel(fit.cov_re)[0]) if np.size(fit.cov_re) else float("nan")
     converged = bool(getattr(fit, "converged", True))
-    if not converged or re_var < 1e-6:
+    boundary = re_var < 1e-6
+    if not converged or boundary:
+        why = ("(≈0 = 边界解,(1|被试) 实质没起作用,配对设计的 SE 可能偏乐观)" if boundary
+               else "(优化器未收敛,点估计与 SE 都不可信)")  # 别把未收敛也说成边界解
         print(f"  ⚠️ LMM 数值健康({dv},优化器 {opt}):converged={converged}、"
-              f"被试随机效应方差={re_var:.3g}"
-              "(≈0 = 边界解,(1|被试) 实质没起作用,配对设计的 SE 可能偏乐观);"
+              f"被试随机效应方差={re_var:.3g}{why};"
               "结论须附注,并用 Wilcoxon 配对/OLS 复核。")
 
 
@@ -261,7 +286,7 @@ def tost(df: pd.DataFrame, dv: str, pair=("E", "D"), bound: float | None = None)
     **bound 必须是采数前冻结的 a priori SESOI**(dv 原始/z 单位的绝对值),与观测数据无关;
     默认取 prereg.SESOI(单一真源)。切勿用样本自身配对差 SD 现算 bound——那会让等价界
     随抽样噪声漂移、Type I 失控(代码审查 + 统计专家一致指正)。
-    SESOI 无效(None / ≤0)时**拒绝执行**,不退回任何默认值。
+    SESOI 无效(None / 非正 / 非有限)时**拒绝执行**,不退回任何默认值。
 
     ⚠️ 已知局限(勿再删):方法学上**每个终点都该按其源量表/文献各设一个 bound**,
     而 prereg.SESOI 现在是**单一标量**,谁调用就套给谁。它是按 H4 的结构完整度
@@ -269,9 +294,11 @@ def tost(df: pd.DataFrame, dv: str, pair=("E", "D"), bound: float | None = None)
     这个界的实质含义就变了,必须在冻结文件里为该终点另设界并在报告里写明。"""
     if bound is None:
         bound = prereg.SESOI
-    if bound is None or bound <= 0:
+    # NaN/inf 也必须走这条:`nan <= 0` 是 False,漏进去会算出 p=nan、equivalent=False
+    # ——一个笔误的 SESOI 换来一个看着像结论的「不等价」。
+    if bound is None or not np.isfinite(bound) or bound <= 0:
         why = ("prereg.SESOI 仍为 None" if bound is None
-               else f"SESOI={bound} ≤ 0(等价界须为正的绝对值,疑似笔误/符号写反)")
+               else f"SESOI={bound} 不是正的有限数(等价界须为正的绝对值,疑似笔误/符号写反)")
         print("!" * 78)
         print(f"⛔ TOST 拒绝执行(H4 非劣,dv={dv},{pair[0]}−{pair[1]}):{why}。")
         print(f"   采数前研究员必须拍板:{dv} 上多大的 {pair[0]}−{pair[1]} 差异才算「实质劣于」")
@@ -302,7 +329,7 @@ def tost(df: pd.DataFrame, dv: str, pair=("E", "D"), bound: float | None = None)
 
 def dose_response(df: pd.DataFrame, dv: str, dose: str = "dose_composite") -> dict:
     """E 内:事前投入 → 保真 / 所有权(被试间 OLS;每被试仅 1 个 E,无法被试内中心化
-    ——附注局限)。docs/paper/04 §3.4 的 H5 因变量是**两个主复合**,不止保真。
+    ——附注局限)。docs/paper/04 §3.1-4 的 H5 因变量是**两个主复合**,不止保真。
     默认剂量为 build_dose 的三成分复合;dose='pre_investment' 可得只看时间的可比版本。"""
     import statsmodels.formula.api as smf
     if dv not in df or dose not in df:
@@ -388,7 +415,7 @@ def main() -> None:
             failed[dv] = err
 
     print("\n########## H4 质量非劣(TOST,E vs D)##########")
-    print(f"  DV = 结构完整度 {_H4_QUALITY_DV} = mean(parse_ok, 分镜四字段齐全率, 3镜达标率),")
+    print(f"  DV = 结构完整度 {_H4_QUALITY_DV} = mean(parse_ok, 分镜四字段齐全率, 15s且3镜达标),")
     print("       docs/paper/03 §4 定义的**单一**复合(0-1 比例,与 SESOI 同单位)→ 只做一次检验,无多重性。")
     if _H4_QUALITY_DV in df:
         print(f"  {tost(df, _H4_QUALITY_DV, ('E', 'D'))}")
@@ -398,7 +425,7 @@ def main() -> None:
     print(df.groupby("condition")[[c for c in _H4_LEGS if c in df]].mean().round(3).to_string())
 
     print("\n########## H5 剂量-反应(E 内,被试间 OLS;事前声明的确认性次分析)##########")
-    for dv in prereg.PRIMARY_ENDPOINTS:  # docs/paper/04 §3.4:因变量是保真**和**所有权
+    for dv in prereg.PRIMARY_ENDPOINTS:  # docs/paper/04 §3.1-4:因变量是保真**和**所有权
         print(f"  {dv} ~ 复合剂量(自填率+答题净时+1−AI代答率):", dose_response(df, dv))
         print(f"  {dv} ~ 仅时间(pre_investment,可比参照):",
               dose_response(df, dv, dose="pre_investment"))

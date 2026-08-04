@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """部署就绪闸门 —— 公开采数前跑一遍,把「部署硬门禁」变成 🟢🟡🔴(不打印任何密钥值)。
 
-检查(评估 §答辩火力点「部署硬门禁」+ paper/13):
+检查(评估 §答辩火力点「部署硬门禁」+ docs/paper/07 §2):
   ① 研究员强密码(≠ 弱口令 nova、长度足够)
   ② 正式模型 = OpenAI 置顶(api_configs[0])且带日期快照(可复现)
   ③ 空库起跑(data/novastory.db 无真实被试)
@@ -40,6 +40,11 @@ def check_password(sec: dict) -> None:
         add(G, "研究员密码", "已设置且非弱口令。")
 
 
+# 正式采数用的模型(2026-08-03 选型实测:引导问题最具体、规格违反 0/20、延迟 p95 10.5s)。
+# 开发/测试期用 gpt-4o-mini-2024-07-18 即可,公开前换成这个。
+FORMAL_MODEL = "gpt-5.4-mini-2026-03-17"
+
+
 def check_model(sec: dict) -> None:
     cfgs = sec.get("api_configs", [])
     if not cfgs:
@@ -54,8 +59,12 @@ def check_model(sec: dict) -> None:
     elif not pinned:
         add(Y, "模型快照钉死", f"OpenAI 已置顶但 model='{model}' 未钉日期快照 → 采数跨周可能撞模型漂移。"
                               "改用带日期的快照(如 gpt-4o-mini-YYYY-MM-DD)。")
+    elif model != FORMAL_MODEL:
+        add(Y, "正式模型选型", f"OpenAI 置顶且钉死快照 {model},但正式采数选定的是 "
+                              f"{FORMAL_MODEL}(选型实测见 docs/paper/02 §8)。开发期用当前模型没问题;"
+                              "公开采数前换过去,并复跑一次 B4 提示词校验。")
     else:
-        add(G, "正式模型置顶", f"OpenAI 置顶且钉死快照 {model}。")
+        add(G, "正式模型置顶", f"OpenAI 置顶且已是选定的正式模型快照 {model}。")
 
 
 def check_clean_db() -> None:
