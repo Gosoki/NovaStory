@@ -113,6 +113,30 @@ def _baseline_texts(topic_idx: int, topics: list) -> list[str]:
     return [r["text"] for r in recs]
 
 
+def _check_baseline_model(topic_idxs, trial_models: set[str]) -> None:
+    """基线的生成模型必须与被试实际用的生成模型一致。
+
+    Δ = sim(创意,终稿) − sim(创意,**基线**质心),零点就是「纯 AI 会写成什么样」。基线若
+    是另一个模型(或另一次快照)写的,这个零点量的就不是同一件事,Δ 失去意义——而且**事后
+    补不回来**:正式数据一旦采完,当时的模型可能已经下线。baseline_gen 每行记了 model,
+    trials 每行也记了 model,直接对上。不一致 → 硬失败,不产出看着能用的假 Δ。"""
+    base_models = set()
+    for i in topic_idxs:
+        pth = BASELINE / f"topic{i}.jsonl"
+        first = next((l for l in pth.read_text(encoding="utf-8").splitlines() if l.strip()), "")
+        if first:
+            base_models.add(json.loads(first).get("model") or "?")
+    if len(base_models) > 1:
+        raise SystemExit(f"data/baseline/ 里混了多个模型 {sorted(base_models)} —— "
+                         "同一批基线必须同模型,删掉 data/baseline/ 重跑 make baseline")
+    if base_models and trial_models and base_models != trial_models:
+        raise SystemExit(
+            f"基线模型 {sorted(base_models)} 与被试实际用的生成模型 {sorted(trial_models)} 不一致。\n"
+            "   Δ 的零点(「纯 AI 本来就有多贴」)必须由**同一个模型**产生,否则 Δ 量的不是同一件事。\n"
+            "   处置:用正式采数的那个模型快照重跑 `make baseline`(改 secrets 的 api_configs[0] "
+            "或 --config-index),再跑 make embed。")
+
+
 def compute() -> None:
     import pandas as pd
     if not CSV.exists():
@@ -121,7 +145,7 @@ def compute() -> None:
         raise SystemExit(f"缺少机器基线目录 {BASELINE} —— Δ 的零点就是它,先跑: make baseline")
     con = sqlite3.connect(f"file:{DATA/'novastory.db'}?mode=ro", uri=True)
     trials = pd.read_sql("SELECT participant_id, round_idx, intent_statement, final_output, "
-                         "topic_json FROM trials", con)
+                         "topic_json, model FROM trials", con)
     con.close()
 
     # topic title → baseline index(按 topics.json 顺序,由 _baseline_texts 复核身份)
@@ -134,6 +158,7 @@ def compute() -> None:
     if not used:
         raise SystemExit("没有一条 trial 的题目能对上 topics.json(题面被改过?)——无法配基线。")
     # 先纯文件校验+读齐所有用到的基线,再花任何 API 调用
+    _check_baseline_model(used, {m for m in trials["model"].dropna().unique() if str(m).strip()})
     base_texts = {i: _baseline_texts(i, topics) for i in used}
 
     emb = Embedder()

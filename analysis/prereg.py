@@ -21,8 +21,8 @@ RELIABILITY_GREEN, RELIABILITY_YELLOW = 0.70, 0.60
 OWN_ALPHA_FLOOR = 0.60                                   # own1-3 α 低于此 → 后手D 切 SoPA
 
 # ---- novice 定义(5 项严格 AND;录而不 gate)----
-# B1 拍板(2026-08-03):招募端**不设门槛**(随机找人),但 novice 子集 = **预注册的主分析
-# 人群**;全样本为稳健性分析,经验者另作「経験あり vs なし」对比/调节分析。
+# B1 拍板(2026-08-03):招募端**不设门槛**(随机找人),但 novice 子集 = **采数前冻结的主分析
+# 人群**(B3:本研究不做第三方预注册,措辞一律用「冻结/事前确定」);全样本为稳健性分析,经验者另作「経験あり vs なし」对比/调节分析。
 # → 功效必须按 novice 子集(更小 N)算,并超招募到子集也达标。
 NOVICE_DEF = ("published_idx==0 AND background=='no' AND written=='no' "
               "AND self_rating<=2 AND quiz_correct<=1")
@@ -67,7 +67,7 @@ COMPOSITES = {
 
 
 def as_dict() -> dict:
-    """机器可读的预注册快照(供 dump 成 hash 化产物)。"""
+    """机器可读的**冻结快照**(供 dump 成 hash 化产物;B3:不是第三方预注册)。"""
     return {
         "pilot_thresholds": {
             "d_floor_zero": [D_FLOOR_ZERO_GREEN, D_FLOOR_ZERO_YELLOW],

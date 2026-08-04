@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import re
 import sqlite3
 import sys
@@ -114,6 +115,34 @@ def check_analysis_deps() -> None:
         add(G, "分析依赖", "numpy/scipy/pandas/statsmodels/matplotlib 齐备,分析面板可用。")
 
 
+def check_baseline(sec: dict) -> None:
+    """机器基线(Δ 的零点)必须由**正式采数的那个模型快照**生成。
+
+    这是全流程里少数**事后补不回来**的一件:数据采完再想补基线,当时的模型可能已下线,
+    而 Δ = sim(创意,终稿) − sim(创意,基线质心) 的零点就废了。embed.py 现在会硬失败,
+    但那是分析阶段才发现——太晚。这里提前到部署闸门。"""
+    base = ROOT / "data" / "baseline"
+    files = sorted(base.glob("topic*.jsonl")) if base.exists() else []
+    if not files:
+        add(Y, "机器基线", "无 data/baseline/ → 保真复合的 embedding 腿(占一半权重)拿不到。"
+                          "正式模型快照定下来后跑 `make baseline`;基线**必须与采数同模型**,事后补不回来。")
+        return
+    models = set()
+    for f in files:
+        first = next((l for l in f.read_text(encoding="utf-8").splitlines() if l.strip()), "")
+        if first:
+            models.add(json.loads(first).get("model") or "?")
+    cfg0 = (sec.get("api_configs") or [{}])[0]
+    want = cfg0.get("model", "")
+    if len(models) > 1:
+        add(R, "机器基线", f"data/baseline/ 混了多个模型 {sorted(models)} —— 删掉重跑 make baseline。")
+    elif want and models != {want}:
+        add(R, "机器基线", f"基线用 {sorted(models)} 生成,但正式模型是 '{want}' → Δ 的零点与产出不同源,"
+                          "embed.py 会硬失败。用正式快照重跑 `make baseline`。")
+    else:
+        add(G, "机器基线", f"{len(files)} 题基线就位,模型 {sorted(models)} 与正式模型一致。")
+
+
 def check_backup() -> None:
     if (ROOT / "scripts" / "backup_db.sh").exists():
         add(G, "备份脚本", "scripts/backup_db.sh 就位;确认已进 cron(每日 + 每场后)、异地一份。")
@@ -132,6 +161,7 @@ def main() -> None:
     check_clean_db()
     check_config()
     check_gitignore()
+    check_baseline(sec)
     check_backup()
     check_analysis_deps()
 
