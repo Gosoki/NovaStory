@@ -1,4 +1,6 @@
-streamlit>=1.32
+# 1.57+: st.html(unsafe_allow_javascript=…) — the questionnaire's storyboard
+# pin observer passes it; on older Streamlit that argument is a TypeError.
+streamlit>=1.57
 openai>=1.40
 pandas>=2.0
 Pillow>=10.0

@@ -93,7 +93,8 @@ def _live_storyboard(script: str, subtitle: str, pid: int, ridx: int, n: int) ->
     """Poll the archive folder every 2s and show images as they finish; one full
     rerun once all are done so the outer render goes static and polling stops."""
     _storyboard.render(script, subtitle,
-                       sketches=imagegen.frame_htmls(pid, ridx, n, t("storyboard.generating")))
+                       sketches=imagegen.frame_htmls(pid, ridx, n, t("storyboard.generating")),
+                       pin=True)
     if imagegen.all_done(pid, ridx, n):
         st.rerun()  # full rerun → outer renders static, polling stops
 
@@ -112,29 +113,37 @@ def _render_storyboard_area(ridx: int) -> None:
             pid, n = st.session_state["participant_id"], len(parsed)
             if imagegen.all_done(pid, ridx, n):
                 _storyboard.render(script, subtitle,
-                                   sketches=imagegen.frame_htmls(pid, ridx, n, t("storyboard.generating")))
+                                   sketches=imagegen.frame_htmls(pid, ridx, n, t("storyboard.generating")),
+                                   pin=True)
             else:
                 imagegen.ensure_started(pid, ridx, parsed,
                                         st.session_state.get("api_key", ""),
                                         st.session_state.get("base_url", ""))
                 _live_storyboard(script, subtitle, pid, ridx, n)
             return
-    _storyboard.render(script, subtitle)
+    _storyboard.render(script, subtitle, pin=True)
 
 
 # Fake-inflow-tracking pin observer for the questionnaire storyboard.
 # The sheet is `position:fixed` (see _storyboard.py — this bypasses the
 # `position:sticky` failure caused by Streamlit ancestors having overflow
-# constraints). A sibling `.sb-slot` placeholder stays in flow at the sheet's
-# natural size, and every scroll tick we set the sheet's `transform` to
-# translate to the slot's viewport coords → the sheet visually TRACKS the slot,
-# looking exactly like an in-flow element.
+# constraints). Its `.sb-slot` PARENT (the sheet is nested inside it, not a
+# sibling) stays in flow, and every tick we size that slot to the sheet's own
+# height so the flow keeps reserving exactly the space the fixed sheet occupies,
+# then set the sheet's `transform` to translate to the slot's viewport coords →
+# the sheet visually TRACKS the slot, looking exactly like an in-flow element.
+# If the slot ever loses that height the questions slide up underneath the sheet
+# and it covers them — which is why measure() re-applies it on EVERY tick rather
+# than once (Streamlit replaces these nodes on every rerun).
 #
 # Once half the sheet (PIN_FRAC of its height) has scrolled above the viewport
 # top we swap to a corner target (`translate(cornerX, CORNER_Y) scale(.32)`)
-# and briefly add `.is-animating` so CSS transitions the transform over 0.45s
+# and briefly add `.is-animating` so CSS transitions the transform over ANIM_MS
 # — smooth in both directions. During plain in-flow tracking `is-animating` is
 # OFF so scroll updates don't interpolate (else the sheet would lag behind).
+# The flight always starts from the sheet's real current position and runs
+# faded (see the `.is-animating` opacity rule) so it never appears to cover a
+# question on its way to the corner.
 #
 # Scroll listener uses capture:true because Streamlit scrolls an inner
 # container (.stMain / .stMainBlockContainer); the guard flag on window makes
@@ -149,32 +158,71 @@ _SB_SCROLL_JS = f"""
 
   var CORNER_Y  = {_SB_STICKY_TOP}; // where the pinned corner sits (y from viewport top)
   var GAP       = 12;               // viewport-right gap for the thumbnail
+  var CORNER_SCALE = .32;           // must match .sb-sheet.sb-pin.is-corner in _storyboard.py
   var PIN_FRAC  = 0.5;              // pin the corner after the sheet is this fraction scrolled past
-  var ANIM_MS   = 450;              // must match .is-animating CSS transition
+  var UNPIN_FRAC= 0.2;              // ...and only release it once it scrolls back this far (hysteresis)
+  var ANIM_MS   = 320;              // must match .is-animating CSS transition
 
   var atCorner = false;
   var natW = 0;
   var natH = 0;
   var animTimer = null;
+  var lastSheet = null;   // node identity, to detect a freshly rendered sheet
 
   function measure(sheet, slot) {{
-    // Snapshot the slot's natural width/height once (used forever as the
-    // sheet's rendered dimensions in fake-inflow). Slot's height reserves
-    // layout space so removing the sheet from flow (fixed) doesn't collapse.
-    if (natW && natH) return;
-    var slotRect = slot.getBoundingClientRect();
-    if (slotRect.width < 20) return;   // not laid out yet
-    natW = slotRect.width;
-    sheet.style.width = natW + 'px';
-    natH = sheet.offsetHeight || 400;
-    slot.style.height = natH + 'px';
+    // Re-sync EVERY tick — never measure-once-and-cache. Streamlit hands us
+    // brand-new .sb-slot / .sb-sheet nodes on every rerun (next round, the
+    // devtools condition switch, the 2s _live_storyboard fragment), and a fresh
+    // slot carries no inline height. With the sheet `position:fixed` the slot
+    // then collapses to 0, the questionnaire items slide up UNDER the sheet and
+    // it covers them for the rest of the page. Re-measuring also keeps the
+    // placeholder honest when the sheet GROWS in place (generated images
+    // arriving) or when this round's script is longer than the last one's.
+    var w = slot.clientWidth;
+    if (w < 20) return false;                    // not laid out yet
+    natW = w;
+    if (sheet.style.width !== w + 'px') sheet.style.width = w + 'px';
+    // offsetHeight is the LAYOUT height: transforms (the corner scale) don't
+    // affect it, so this stays the sheet's natural height even while pinned.
+    var h = sheet.offsetHeight;
+    if (h > 20) natH = h;
+    // Compare against the slot's OWN inline value, not against the previous
+    // measurement — a new slot whose sheet happens to be exactly as tall as the
+    // last round's would otherwise never get its placeholder height back.
+    if (natH && slot.style.height !== natH + 'px') slot.style.height = natH + 'px';
+    return natH > 0;
+  }}
+
+  function cornerX() {{
+    // clientWidth, not innerWidth: the latter counts the scrollbar, which would
+    // tuck the thumbnail's edge underneath it.
+    return document.documentElement.clientWidth - GAP - natW;
   }}
 
   function updateCornerVars(sheet) {{
     // The corner transform lives in CSS (so :hover can override to scale .95
     // and animate smoothly). JS only supplies the translate target as vars.
-    sheet.style.setProperty('--sb-tx', (window.innerWidth - GAP - natW) + 'px');
+    sheet.style.setProperty('--sb-tx', cornerX() + 'px');
     sheet.style.setProperty('--sb-ty', CORNER_Y + 'px');
+  }}
+
+  function cornerTransform() {{
+    // Byte-for-byte the same transform as the CSS `.sb-sheet.sb-pin.is-corner`
+    // rule (keep CORNER_SCALE in sync with it) so that swapping between the
+    // inline value and the CSS one never moves the sheet.
+    return 'translate(' + cornerX() + 'px, ' + CORNER_Y + 'px) scale('
+         + CORNER_SCALE + ')';
+  }}
+
+  function releaseToCss(sheet) {{
+    // Drop the inline transform so the CSS rule owns it again — that is what
+    // lets :hover animate the thumbnail up to scale .95. Only safe once the
+    // flight is over: while .is-animating the inline value IS the animation's
+    // target, and clearing it mid-flight resets transform to `none`, which
+    // parks the full-size sheet on the viewport's top-left corner (over the
+    // questions) for the rest of the transition.
+    if (sheet.classList.contains('is-animating')) return;
+    if (sheet.style.transform) sheet.style.transform = '';
   }}
 
   function armAnim(sheet) {{
@@ -187,6 +235,9 @@ _SB_SCROLL_JS = f"""
     animTimer = setTimeout(function(){{
       sheet.classList.remove('is-animating');
       animTimer = null;
+      // Flight over → let CSS own the corner transform again (needed for the
+      // :hover zoom). No-op when we landed back in flow.
+      if (atCorner) releaseToCss(sheet);
     }}, ANIM_MS + 30);
   }}
 
@@ -202,16 +253,57 @@ _SB_SCROLL_JS = f"""
   }}
 
   function tick() {{
-    var sheet = document.querySelector('.sb-sheet');
-    var slot = document.querySelector('.sb-slot');
-    if (!sheet || !slot) return;
-    measure(sheet, slot);
-    if (!natW) return;                     // still not laid out
-    // Fragment reruns replace the sheet DOM without our styles/classes; a
-    // width-less position:fixed sheet renders full-viewport-wide at top-left
-    // ("变得巨大"). Re-apply width every tick — idempotent.
-    if (sheet.style.width !== natW + 'px') sheet.style.width = natW + 'px';
+    // `.sb-pin` = the questionnaire's sheet specifically; the intro page renders
+    // a plain in-flow sheet that this observer must not touch. Take the LAST
+    // match: a rerun can briefly leave the outgoing node in the DOM alongside
+    // its replacement, and driving the stale one would leave the live sheet
+    // unstyled (width-less position:fixed = "变得巨大" at the top-left).
+    var sheets = document.querySelectorAll('.sb-sheet.sb-pin');
+    var slots = document.querySelectorAll('.sb-slot.sb-pin');
+    if (!sheets.length || !slots.length) return;
+    var sheet = sheets[sheets.length - 1];
+    var slot = slots[slots.length - 1];
+    // measure() re-applies width AND the slot's placeholder height every tick,
+    // so a fragment rerun that replaced the DOM can never leave a width-less
+    // position:fixed sheet ("变得巨大") or a collapsed slot (sheet covering the
+    // questions). It returns false while the nodes are not laid out yet.
+    if (!measure(sheet, slot)) return;
 
+    // Hand the layout to JS only now that measuring works — this is what turns
+    // on the whole `:root.sb-js` block in _storyboard.py. Until then the sheet
+    // stays a plain visible in-flow table, so a page where this script never
+    // runs still shows the participant their storyboard. Placement happens
+    // below in the same tick, before the browser paints, so the switch from
+    // in-flow to `position:fixed` is not visible.
+    var root = document.documentElement;
+    if (!root.classList.contains('sb-js')) {{
+      root.classList.add('sb-js');
+      measure(sheet, slot);   // re-measure: the sheet is `position:fixed` now
+    }}
+
+    // A node the observer has never placed starts at transform:none, which for
+    // a fixed sheet is the viewport's top-left corner — right on top of the
+    // questions. Suppress transitions while this tick places it, so it appears
+    // where it belongs instead of gliding there from the corner of the screen.
+    // Without this every fragment swap (every 2s while illustrations generate)
+    // would drag a full-size sheet across the questionnaire.
+    var fresh = (sheet !== lastSheet);
+    if (fresh) {{
+      lastSheet = sheet;
+      sheet.classList.add('sb-noanim');
+    }}
+    try {{
+      place(sheet, slot);
+    }} finally {{
+      if (fresh) {{
+        void sheet.offsetWidth;              // commit the placement…
+        sheet.classList.remove('sb-noanim'); // …before transitions come back
+      }}
+    }}
+    if (!sheet.classList.contains('is-positioned')) sheet.classList.add('is-positioned');
+  }}
+
+  function place(sheet, slot) {{
     var slotRect = slot.getBoundingClientRect();
 
     // Safety net #1: at the very top of the page (slot top at or below the
@@ -220,7 +312,6 @@ _SB_SCROLL_JS = f"""
     // stale inline transform) drifted out of sync.
     if (slotRect.top >= 0) {{
       forceFlow(sheet, slotRect);
-      if (!sheet.classList.contains('is-positioned')) sheet.classList.add('is-positioned');
       return;
     }}
 
@@ -228,16 +319,37 @@ _SB_SCROLL_JS = f"""
     // top (slot.top < 0 means the top edge is already above; -natH*PIN_FRAC
     // means that much of the sheet is off-screen). Keeps the sheet visible at
     // natural size for a beat longer instead of snapping immediately.
-    var wantsCorner = slotRect.top < -natH * PIN_FRAC;
+    // Hysteresis: once pinned it takes a scroll back up to UNPIN_FRAC to
+    // release. Without the gap, scrolling up and down around the single
+    // threshold re-triggers the shrink/expand animation over and over,
+    // and each replay sweeps the full-size sheet across the questions below.
+    var wantsCorner = slotRect.top < -natH * (atCorner ? UNPIN_FRAC : PIN_FRAC);
 
     if (wantsCorner && !atCorner) {{
+      // Snap to the sheet's TRUE current position first, with the transition
+      // still off (CSS only arms it under .is-animating / .is-corner), then
+      // force a style flush so the browser adopts this as the animation's
+      // starting value. A jump-scroll — dragging the scrollbar, PageDown,
+      // a fast wheel flick — fires a single scroll event, so without this the
+      // flight would start from wherever the previous tick left the sheet
+      // (often still up at the top of the page) and drag it full-size straight
+      // across the questions. This is the "小概率" cover users hit while
+      // scrolling briskly.
+      sheet.style.transform = 'translate(' + slotRect.left + 'px, ' + slotRect.top + 'px) scale(1)';
+      void sheet.offsetWidth;   // reflow: commit the start value
       atCorner = true;
       updateCornerVars(sheet);
-      // Clear inline transform so the CSS .is-corner rule (which reads the
-      // vars we just set) takes over — that's what enables CSS :hover to
-      // override to scale .95 later, animated by the corner-active transition.
-      sheet.style.transform = '';
       sheet.classList.add('is-corner');
+      // Fly to the corner on an EXPLICIT inline transform rather than clearing
+      // it and letting the CSS .is-corner rule take over. Clearing it here is
+      // what used to make the storyboard cover the questions: for one moment
+      // transform is `none`, and since the sheet is `position:fixed;top:0;left:0`
+      // that parks the full-size sheet over the viewport's top-left corner —
+      // exactly where the questions are — and the transition then sweeps it
+      // across them from there. Interpolating from the sheet's real position
+      // keeps the flight along the short path. releaseToCss() hands control back
+      // to CSS (which :hover needs) once the flight is done.
+      sheet.style.transform = cornerTransform();
       armAnim(sheet);
     }} else if (!wantsCorner && atCorner) {{
       atCorner = false;
@@ -261,27 +373,23 @@ _SB_SCROLL_JS = f"""
       // DOM element (this is the root cause of "变得巨大" — width-less
       // position:fixed with no is-corner sheets at top-left).
       if (!sheet.classList.contains('is-corner')) sheet.classList.add('is-corner');
-      // Also clear stale inline transform so CSS .is-corner rule wins.
-      if (sheet.style.transform) sheet.style.transform = '';
+      releaseToCss(sheet);
     }}
-
-    if (!sheet.classList.contains('is-positioned')) sheet.classList.add('is-positioned');
-  }}
-
-  function onResize() {{
-    // Slot layout may have changed → invalidate cached natural dimensions.
-    natW = 0; natH = 0;
-    var slot = document.querySelector('.sb-slot');
-    if (slot) slot.style.height = '';    // let it re-lay out to natural
-    tick();
   }}
 
   // capture:true so scroll events on any inner container (Streamlit's
   // .stMain, .stMainBlockContainer, etc.) still fire the listener.
+  // resize needs no special handling: measure() re-derives width and height
+  // from the live layout on every tick, so one extra tick is enough.
   document.addEventListener('scroll', tick, {{ passive: true, capture: true }});
   window.addEventListener('scroll', tick, {{ passive: true }});
-  window.addEventListener('resize', onResize, {{ passive: true }});
+  window.addEventListener('resize', tick, {{ passive: true }});
   new MutationObserver(tick).observe(document.body, {{ childList: true, subtree: true }});
+  // Web fonts landing later re-flow the table taller. That changes no DOM and
+  // fires no scroll, so nothing else here would notice, and the slot would keep
+  // reserving the old (too short) height with the questions tucked under the
+  // overhang.
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(tick);
   requestAnimationFrame(function(){{ tick(); tick(); }});  // 2 frames: layout, then position
 }})();
 </script>
