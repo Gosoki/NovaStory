@@ -78,14 +78,14 @@
     "published_opt3": "Published 6 or more videos",
     "background": "Do you have a degree or professional experience in film, media, design, or a related field?",
     "written": "Have you ever written a storyboard script or screenplay before?",
-    "self_rating": "How would you rate your own skill at storyboard scriptwriting? (1 = no skill at all, 7 = very skilled)",
+    "self_rating": "How would you rate your own skill at storyboard scriptwriting?",
     "aiexp": "Have you used AI for any creative task (writing, storyboards, scripts, illustration prompts, etc.)?",
     "aiexp_opt1": "Never",
     "aiexp_opt2": "Tried a few times",
     "aiexp_opt3": "Use it often",
     "trait_section": "About you",
-    "trust": "I tend to trust that AI-generated content is reasonable (1 = strongly disagree, 7 = strongly agree)",
-    "own_trait": "I tend to see things I helped create as \"mine\" (1 = strongly disagree, 7 = strongly agree)",
+    "trust": "I tend to trust that AI-generated content is reasonable",
+    "own_trait": "I tend to see things I helped create as \"mine\"",
     "yes": "Yes",
     "no": "No",
     "quiz_section": "Quick quiz (if you are not sure, choose \"I don't know\")",
@@ -157,7 +157,11 @@
     "anchor_imag_high": "Very close",
     "anchor_amt_low": "Too few",
     "anchor_amt_mid": "Just right",
-    "anchor_amt_high": "Too many"
+    "anchor_amt_high": "Too many",
+    "anchor_skill_low": "No skill at all",
+    "anchor_skill_high": "Very skilled",
+    "anchor_sat_low": "Not at all satisfied",
+    "anchor_sat_high": "Very satisfied"
   },
   "history": {
     "title": "History",
@@ -178,7 +182,7 @@
     "hint": "Now that you've finished all three rounds, please share your overall impressions.",
     "q_pref": "Which round's way of creating did you like best?",
     "q_reuse": "If you use AI to create something in the future, which round's approach would you want to use?",
-    "q_overall": "Overall, how satisfied are you with this creative experience? (1 = not at all satisfied, 7 = very satisfied)",
+    "q_overall": "Overall, how satisfied are you with this creative experience?",
     "round_n": "Round {i}",
     "comment": "Anything else you'd like to add (optional)",
     "submit": "Submit and finish"
@@ -206,7 +210,9 @@
     "answer_all": "Some questions are still unanswered. Please answer all of them before submitting.",
     "unanswered": "Unanswered items → {items}",
     "answer_or_skip": "Please pick an option, write your own, or leave it to the AI.",
-    "revision_empty": "Please tell the AI what you want changed first."
+    "revision_empty": "Please tell the AI what you want changed first.",
+    "llm_empty": "The AI returned nothing this time (the service may be busy). Please try again.",
+    "not_ready": "The system is not ready. Please contact the researcher."
   },
   "postgen": {
     "title": "Current script (version {v}, directly editable)",

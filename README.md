@@ -131,6 +131,7 @@ uv run python scripts/deploy_check.py     # 公開前ゲート。赤が 1 つで
 
 - 段階：`consent → intro → screening → rounds ×3 → final_survey → done`。ラウンド内は `アイデア → 条件パイプライン → 質問紙`（ステップ表示 C=3 / D=4 / E=5）。
 - **言語は同意画面で 1 回だけ選択**（ja/zh/en、既定 ja）。以後、参加者側に切替 UI は出ない。
+  - **`?lang=ja|zh|en`** を URL に付けると、その言語が同意画面の選択肢に**あらかじめ入った状態**で始まる（テスト・募集リンク用）。効くのは**被験者行ができる前の 1 回だけ** —— 参加者は同意画面でまだ変更でき、途中で言語が入れ替わることはない。復帰した被験者は DB の `lang` が優先され、未知の値は無視して ja に落ちる。`?t=` との併用可（例：`?lang=zh&t=…`）。
 - アイデアは 8 文字以上（`MIN_INTENT_CHARS`）、`temperature = 0.8`、生成はストリーミング表示。注意チェックは**第 2 ラウンド**の質問紙に埋め込み。完了時に 8 文字の完了コードを発行。
 - カット単位の帰属タグは `mine / ai_ok / ai_against`。脚本の解析に失敗したときは脚本全体で 1 行にフォールバック。
 - E の**「5〜7 問」はプロンプト上の要求で、コードは検証していない**（空でないリストを受理し、各問の選択肢を 4 件に切り詰めるだけ）。JSON のパースが **3 回**（初回＋`GUIDANCE_JSON_RETRIES = 2` の再試行）失敗すると**自由記述 1 問**へフォールバックし、その事実が記録される。API 呼び出し自体の失敗ではフォールバックせず、再試行ボタンが出る。
@@ -145,12 +146,13 @@ SQLite（`data/novastory.db`、WAL、gitignore 済み）。ほかに `data/llm.l
 
 | テーブル | 1 行の単位 | 主な中身 |
 |---|---|---|
-| `participants` | 被験者 | `lang`, `seq`(0-17), 背景・属性 JSON, `passed`, 注意チェック, 復帰 `token`, `final_survey_json`, `completion_code`, `status` |
+| `participants` | 被験者 | `lang`, `seq`(0-17), 背景・属性 JSON, `passed`, 注意チェック, 復帰 `token`, `final_survey_json`, `completion_code`, `status`, `finished_at`（完了コード発行時刻＝`created_at` との差が**全体所要時間**） |
 | `trials` | 被験者 × ラウンド | `condition`, お題, `intent_statement`, `final_output`, `parse_ok`, `script_versions`, `guidance_json`(E), `revision_requests`(D), `n_ai_rounds`/`n_hand_edits`/`hand_edit_chars`, モデル/温度/base_url, 各種所要時間 |
-| `events` | 操作 1 件（追記のみ） | ms 精度の `ts`/`type`/`payload_json`, `seq_in_round`, `attempt`, `trial_id`（提出後に backfill）。`llm_done` にトークン使用量と seed / `system_fingerprint` |
+| `events` | 操作 1 件（追記のみ） | ms 精度の `ts`/`type`/`payload_json`, `seq_in_round`, `attempt`, `trial_id`（提出後に backfill）。`llm_done` にトークン使用量と seed / `system_fingerprint`。**`round_idx=0` は intake 段**（同意・説明・背景質問紙）で、被験者行ができる前に `participant_id=NULL` で書き、screening 送信時に backfill する |
 | `questionnaires` | 被験者 × ラウンド | own1-3 / soa1-2 / 負荷 / 意図違背 / イメージ一致 / 満足度 / E 専用 3 項目 / カット単位の帰属タグ |
 
 - 一意制約は `trials` と `questionnaires` の `(participant_id, round_idx)` の **2 つだけ**（＋`INSERT OR REPLACE`）。`events` と `participants.token` には無い。
+- **所要時間の出どころ**：ラウンド内の 5 列は `trials`（`t_read_intent` / `t_pregen`(E) / `t_postgen` / `t_llm_wait` / `t_total`、いずれも `t_total` は質問紙を含まない）。質問紙時間・intake 3 区間・全体質問紙・全体所要時間は `make events` が `analysis/events.py` で算出し、`v3_per_trial.csv` と **`v3_per_participant.csv`** に書き出す。
 - **再現性の範囲**：モデルは日付付きスナップショットに固定し、試行ごとの seed と `system_fingerprint` を記録する。主張してよいのは「**設定再現可能・ドリフト検知可能**」まで — **出力の逐語再現はしない**（`gpt-image-1` には固定できるスナップショットが無い）。
 
 ## 研究者モード

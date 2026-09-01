@@ -21,4 +21,5 @@ def render_pipeline(topic: dict) -> None:
         st.session_state["r_phase"] = "postgen"
         st.rerun()
     elif st.button(t("round.retry"), type="primary", width="stretch"):
+        state.log_event("retry_click", {"group": "D-final"})
         st.rerun()

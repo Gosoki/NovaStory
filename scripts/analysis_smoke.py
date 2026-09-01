@@ -120,9 +120,15 @@ def run(tmp: Path) -> None:
     for c in ("t_questionnaire", "n_llm_calls", "llm_total_tokens", "llm_wait_max"):
         assert merged[c].notna().all(), f"事件层指标 {c} 有空行"
     assert (merged["t_questionnaire"] > 0).all(), "问卷时长必须为正"
-    ev_dev = A_ev.per_trial(A_ev.load_events(db_path))
+    ev_raw, parts_raw = A_ev.load_events(db_path)
+    ev_dev = A_ev.per_trial(ev_raw)
     assert dev not in set(ev_dev["participant_id"]), "dev 被试混进了事件层"
-    ok(f"{len(A_ev._COLS)} 个事件层指标全部算出、dev 已排除")
+    assert (ev_dev["round_idx"] != 0).all(), "intake 段(round_idx=0)不该当成一轮 trial"
+    # 逐被试 intake/整场时长表:合成库没有 intake 埋点,列必须全 NaN 而不是抛栈
+    pp = A_ev.per_participant(ev_raw, parts_raw)
+    assert len(pp) and "t_intake_total" in pp.columns, "逐被试时长表没出来"
+    assert dev not in set(pp["participant_id"].dropna()), "dev 被试混进了逐被试时长表"
+    ok(f"{len(A_ev._COLS)} 个事件层指标全部算出、dev 已排除;逐被试时长表 {len(pp)} 行")
 
     rpid, rridx = info["redo_rounds"][0]
     n_all = _q1(db_path, "SELECT COUNT(*) FROM events WHERE participant_id=? AND round_idx=?"

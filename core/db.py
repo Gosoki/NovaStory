@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS participants (
   completion_code TEXT,
   token TEXT,                 -- opaque resume handle (URL ?t=), not the row id
   final_survey_json TEXT,     -- whole-study survey, shown after all rounds
+  finished_at TEXT,           -- set when the completion code is issued; created_at→here = whole-session time
   status TEXT NOT NULL DEFAULT 'in_progress'
 );
 CREATE TABLE IF NOT EXISTS trials (
@@ -106,6 +107,7 @@ _MIGRATIONS = [
     "ALTER TABLE participants ADD COLUMN attention_raw INTEGER",
     "ALTER TABLE participants ADD COLUMN token TEXT",
     "ALTER TABLE participants ADD COLUMN final_survey_json TEXT",
+    "ALTER TABLE participants ADD COLUMN finished_at TEXT",
     # v3 (guided co-creation) trial columns
     "ALTER TABLE trials ADD COLUMN guidance_json TEXT",
     "ALTER TABLE trials ADD COLUMN revision_requests TEXT",
@@ -226,7 +228,9 @@ def update_participant(pid: int, **fields: Any) -> None:
 
 def make_completion_code(pid: int) -> str:
     code = "".join(random.choices(string.ascii_uppercase + string.digits, k=8))
-    update_participant(pid, completion_code=code, status="done")
+    # finished_at closes the only timing gap the events table can't fill on its
+    # own: whole-session duration = finished_at - created_at (intake included).
+    update_participant(pid, completion_code=code, status="done", finished_at=_now())
     return code
 
 
@@ -283,6 +287,23 @@ def attach_trial_to_events(
             "UPDATE events SET trial_id=? WHERE participant_id=? AND round_idx=?"
             " AND attempt=?",
             (trial_id, participant_id, round_idx, attempt),
+        )
+
+
+def attach_intake_events(participant_id: int, session_id: str) -> None:
+    """Backfill the participant id onto this browser session's intake events.
+
+    Consent / how-it-works / screening happen before a participant row exists,
+    so those events are written with participant_id NULL at round_idx 0, keyed
+    by the browser session id in `attempt`. Screening calls this the moment the
+    row is created, which is what makes intake dwell times attributable."""
+    if not session_id:
+        return
+    with _conn() as conn:
+        conn.execute(
+            "UPDATE events SET participant_id=? WHERE participant_id IS NULL"
+            " AND round_idx=0 AND attempt=?",
+            (participant_id, session_id),
         )
 
 

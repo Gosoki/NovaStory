@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import streamlit as st
 
+from core import state
 from i18n import t
 from views._lang import language_radio
 
 
 def render() -> None:
+    state.log_intake_event("consent_shown")
     # Subject picks their language once, here, before consenting. After this it is
     # not shown to the subject anywhere (only admins can switch it) — keeps a
     # Japanese subject from ever flipping into another language mid-study (JP6).
@@ -25,6 +27,7 @@ def render() -> None:
         disabled=not agree,
         width="stretch",
     ):
+        state.log_intake_event("consent_agree", {"lang": st.session_state.get("lang")})
         # The "how it works" page (flow + input-freedom) comes next, before screening.
         st.session_state["stage"] = "intro"
         st.rerun()

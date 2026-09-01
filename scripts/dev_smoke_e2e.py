@@ -4,7 +4,7 @@ Drives the full v3 participant flow with Streamlit's AppTest:
 consent → screening → R1(C one-shot) → R2(D revise + hand-edit, attention check)
 → R3(E guidance round-1 → script → follow-up guidance → hand-edit) → done,
 then asserts the database contents (guidance_json / revision_requests /
-script_versions / behavioral counters / timing columns).
+script_versions / behavioral counters / timing columns / intake event trail).
 
 Run:  .venv/bin/python scripts/dev_smoke_e2e.py
 """
@@ -304,6 +304,34 @@ def _assert_db() -> None:
     aqa = q.set_index("round_idx")["ai_q_amount"]   # E-only (round 3); NULL for C/D
     assert aqa[3] == 4 and pd.isna(aqa[1]) and pd.isna(aqa[2]), aqa.to_dict()
 
+    # intake stage: logged before the participant row existed (round_idx 0,
+    # keyed by session_id) and backfilled with the id at screening — that
+    # backfill is what makes consent/intro/screening dwell times attributable.
+    intake = ev[ev["round_idx"] == 0]
+    assert set(intake["type"]) == {
+        "consent_shown", "consent_agree", "intro_shown", "intro_continue",
+        "screening_shown", "screening_submit",
+    }, f"intake 事件不全: {sorted(set(intake['type']))}"
+    assert intake["participant_id"].notna().all(), "intake 事件没回填 participant_id"
+    assert intake["attempt"].nunique() == 1, "intake 事件的 session_id 不唯一"
+    assert list(intake.sort_values("id")["seq_in_round"]) == [1, 2, 3, 4, 5, 6], \
+        "intake 事件序号不连续(去重逻辑漏了或重复落库)"
+    assert pd.notna(p.iloc[0]["finished_at"]), "finished_at 没写入,整场时长算不出"
+
+    # the events analyzer must read the trail without counting intake as a round
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from analysis import events as A_ev  # noqa: PLC0415 — test-only import
+
+    aev, aparts = A_ev.load_events(db.DB_PATH)
+    assert (A_ev.per_trial(aev)["round_idx"] != 0).all(), "intake 段被当成了一轮 trial"
+    pp = A_ev.per_participant(aev, aparts).set_index("participant_id")
+    row = pp.loc[int(p.iloc[0]["id"])]
+    for c in ("t_consent", "t_intro", "t_screening", "t_intake_total",
+              "t_final_survey", "t_session_total"):
+        assert pd.notna(row[c]) and row[c] >= 0, f"时长列 {c} 算不出: {row[c]}"
+    print(f"intake ok: 同意 {row['t_consent']:.1f}s · 说明 {row['t_intro']:.1f}s · "
+          f"背景问卷 {row['t_screening']:.1f}s · 总问卷 {row['t_final_survey']:.1f}s")
+
     r3 = set(ev[ev["round_idx"] == 3]["type"])
     for needed in ("round_start", "intent_submit", "guidance_shown", "guidance_answer",
                    "guidance_submit", "script_shown", "continue_guidance_click",
@@ -312,6 +340,37 @@ def _assert_db() -> None:
     r2ev = set(ev[ev["round_idx"] == 2]["type"])
     assert "revision_request" in r2ev and "hand_edit_saved" in r2ev
     print(f"db ok: trials={len(tr)} questionnaires={len(q)} events={len(ev)}")
+
+
+def _url_lang_check() -> None:
+    """`?lang=` preselects the session language so a test/recruitment link can
+    pin it without clicking the consent-page picker. Must apply only before a
+    participant exists, and must ignore junk values rather than break the app."""
+    at = AppTest.from_file("app.py", default_timeout=60)
+    at.query_params["lang"] = "en"
+    at.run()
+    assert at.session_state["lang"] == "en", at.session_state["lang"]
+    # the consent picker reflects it (the subject can still change it there)
+    assert at.radio(key="_consent_lang").value == "English", \
+        at.radio(key="_consent_lang").value
+
+    at = AppTest.from_file("app.py", default_timeout=60)
+    at.query_params["lang"] = "klingon"
+    at.run()
+    assert at.session_state["lang"] == "ja", "未知语言应被忽略,回落 ja"
+
+    # a resumed participant keeps THEIR language: ?lang= must not override it
+    pid, _, token = db.insert_participant(
+        "ja", {"age_idx": 0}, {"is_novice": True}, passed=True
+    )
+    at = AppTest.from_file("app.py", default_timeout=60)
+    at.query_params["t"] = token
+    at.query_params["lang"] = "en"
+    at.run()
+    assert at.session_state["participant_id"] == pid
+    assert at.session_state["lang"] == "ja", \
+        f"续接被试的语言被 URL 覆盖了: {at.session_state['lang']}"
+    print("url lang ok: ?lang=en 生效 · 未知值回落 ja · 续接被试不被覆盖")
 
 
 def _resume_check() -> None:
@@ -362,5 +421,6 @@ def _redo_dangling_check() -> None:
 
 if __name__ == "__main__":
     run()
+    _url_lang_check()
     _resume_check()
     _redo_dangling_check()

@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import streamlit as st
 
-from core import db, state
+from core import config, db, state
 from i18n import t
+from views import _scale
 
 # Indices of the correct quiz options. Nobody is gated on these anymore —
 # novice status is recorded as a covariate (screening_json["is_novice"]) and
@@ -13,6 +14,7 @@ _QUIZ2_CORRECT = 1
 
 
 def render() -> None:
+    state.log_intake_event("screening_shown")
     st.header(t("screening.title"))
     st.caption(t("screening.hint"))
 
@@ -59,25 +61,16 @@ def render() -> None:
             index=None,
             horizontal=True,
         )
-        self_rating = st.segmented_control(
-            t("screening.self_rating"),
-            list(range(1, 8)),
-            selection_mode="single",
-            key="_scr_self",
+        self_rating = _scale.likert(
+            t("screening.self_rating"), "_scr_self", anchors="skill"
         )
 
         # Baseline traits (7-point), measured pre-task so they aren't contaminated
         # by the experience — covariates/moderators for paper/10 H1 (ownership)
         # and H7 (reverse branch: trusting novices may be satisfied with C/D).
         st.subheader(t("screening.trait_section"))
-        trust = st.segmented_control(
-            t("screening.trust"), list(range(1, 8)),
-            selection_mode="single", key="_scr_trust",
-        )
-        own_trait = st.segmented_control(
-            t("screening.own_trait"), list(range(1, 8)),
-            selection_mode="single", key="_scr_own",
-        )
+        trust = _scale.likert(t("screening.trust"), "_scr_trust")
+        own_trait = _scale.likert(t("screening.own_trait"), "_scr_own")
 
         st.subheader(t("screening.quiz_section"))
         quiz1 = st.radio(
@@ -98,10 +91,20 @@ def render() -> None:
     if not submitted:
         return
 
-    answers = [age, gender, ai_freq, aiexp, published, background, written,
-               self_rating, trust, own_trait, quiz1, quiz2]
-    if any(a is None for a in answers):
-        st.error(t("errors.answer_all"))
+    # (label, value) so an unanswered item can be named back to the subject —
+    # same feedback as the per-round questionnaire (a 12-item form must not say
+    # only "something is missing" and leave them hunting for it).
+    answered = [
+        (t("screening.age"), age), (t("screening.gender"), gender),
+        (t("screening.ai_freq"), ai_freq), (t("screening.aiexp"), aiexp),
+        (t("screening.published"), published), (t("screening.background"), background),
+        (t("screening.written"), written), (t("screening.self_rating"), self_rating),
+        (t("screening.trust"), trust), (t("screening.own_trait"), own_trait),
+        (t("screening.quiz1"), quiz1), (t("screening.quiz2"), quiz2),
+    ]
+    missing = [_scale.short(lbl) for lbl, v in answered if v is None]
+    if missing:
+        st.error(t("errors.unanswered", items=" / ".join(missing)))
         return
 
     # Store categorical answers as language-invariant option indices (not the
@@ -140,8 +143,19 @@ def render() -> None:
         "quiz_correct": quiz_correct,
         "is_novice": is_novice,
     }
+    # 题库必须先于入库就绪:`begin_rounds` 在题数不足时抛 RuntimeError,而那一刻被试行
+    # 已经 INSERT、拉丁方 seq 已被消耗 —— 留下一个永远走不完的孤儿被试,还挪动了后续
+    # 所有人的轮转。deploy_check 在部署前拦一次;这里兜住「采数期间有人改坏
+    # topics.json」的运行时窗口。
+    if len(state.load_topics()) < config.N_ROUNDS:
+        st.error(t("errors.not_ready"))
+        return
+
+    state.log_intake_event("screening_submit")
     pid, seq, token = db.insert_participant(
         st.session_state.get("lang", "ja"), demographics, screening, passed=True
     )
+    # Now that the id exists, claim this browser session's intake events for it.
+    db.attach_intake_events(pid, st.session_state.get("session_id", ""))
     state.begin_rounds(pid, seq, token)
     st.rerun()

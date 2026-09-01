@@ -6,54 +6,14 @@ import streamlit as st
 
 from core import db, imagegen, shots, state
 from i18n import get_lang, t
-from views import _storyboard
+from views import _scale, _storyboard
 
-_SCALE = list(range(1, 8))
-_SCALE_WIDTH = 600      # px; width of the 1-7 button row + aligned anchors (tunable)
 _OWN_ITEMS = 3          # q.own1..own3 (trimmed for session length)
 _SOA_ITEMS = 2          # q.soa1..soa2
 _TLX_ITEMS = 1          # q.tlx1
 _ATTENTION_ROUND = 2    # attention check embedded in round 2's questionnaire
 _ATTENTION_EXPECTED = 2
 _SHOT_TAGS = ("mine", "ai_ok", "ai_against")
-
-# Endpoint (+ optional midpoint) labels shown under each 1-7 scale. Most items
-# are agreement-type; violation/imagine are intensity scales with their own poles.
-_ANCHOR_SETS = {
-    "agree": ("anchor_disagree", "anchor_neutral", "anchor_agree"),
-    "violation": ("anchor_viol_low", "anchor_neutral", "anchor_viol_high"),
-    "imagine": ("anchor_imag_low", "anchor_neutral", "anchor_imag_high"),
-    "amount": ("anchor_amt_low", "anchor_amt_mid", "anchor_amt_high"),
-}
-
-
-def _anchor_html(text: str, align: str) -> str:
-    return (
-        f"<div style='text-align:{align};color:rgba(140,140,140,0.95);"
-        f"font-size:0.78rem;line-height:1.15'>{text}</div>"
-    )
-
-
-def _scale_anchors(kind: str | None) -> None:
-    """Anchor labels aligned under the scale: left / (center) / right, inside a
-    container the same width as the button row so they line up with 1 / mid / 7."""
-    if not kind:
-        return
-    left, mid, right = _ANCHOR_SETS[kind]
-    with st.container(width=_SCALE_WIDTH):
-        c1, c2, c3 = st.columns(3)
-        c1.markdown(_anchor_html(t(f"q.{left}"), "left"), unsafe_allow_html=True)
-        if mid:
-            c2.markdown(_anchor_html(t(f"q.{mid}"), "center"), unsafe_allow_html=True)
-        c3.markdown(_anchor_html(t(f"q.{right}"), "right"), unsafe_allow_html=True)
-
-
-def _short(label: str, n: int = 18) -> str:
-    """A compact, recognizable form of a long item label for the unanswered list."""
-    label = label.strip()
-    return label if len(label) <= n else label[:n] + "…"
-
-
 
 
 def _ai_q_best_pick(ridx: int):
@@ -418,14 +378,9 @@ def render() -> None:
     missing: list[str] = []  # labels of unanswered items, named back to the user
 
     def likert(key: str, label: str, anchors: str | None = "agree") -> None:
-        st.markdown(label)
-        val = st.segmented_control(
-            label, _SCALE, selection_mode="single", key=f"_q_{key}_{ridx}",
-            width=_SCALE_WIDTH, label_visibility="collapsed",
-        )
-        _scale_anchors(anchors)
+        val = _scale.likert(label, f"_q_{key}_{ridx}", anchors=anchors)
         if val is None:
-            missing.append(_short(label))
+            missing.append(_scale.short(label))
         answers[key] = val
         st.divider()
 
@@ -477,7 +432,7 @@ def render() -> None:
             key=f"_q_whole_{ridx}",
         )
         if sel is None:
-            missing.append(_short(t("q.whole_tag_label")))
+            missing.append(_scale.short(t("q.whole_tag_label")))
         shot_annotations.append({"shot": 0, "tag": lbl2tag.get(sel)})
 
     if st.button(t("q.submit"), type="primary", width="stretch"):

@@ -84,12 +84,25 @@ def stream_llm(system: str, user: str, *, group: str) -> Optional[str]:
 
     elapsed = round(time.time() - t0, 2)
     state.add_llm_wait(elapsed)
+    text = llm.clean_output(out if isinstance(out, str) else "".join(out))
+    # A congested gateway can close the stream having sent nothing at all — no
+    # exception, just empty content (`generate_json` already treats that as a
+    # failed attempt; the streaming path used to drop through). Without this the
+    # callers' `if out and out.strip()` guard fails SILENTLY: the participant
+    # clicks 「AIに伝える」/「回答を終えて生成」and nothing happens, while the
+    # status bar still reads "generation complete". Same handling as a raised
+    # error — log it, say it, return None — so every caller's existing failure
+    # branch (retry button / keep the draft) engages.
+    if not text:
+        state.log_event("llm_error", {"group": group, "elapsed": elapsed, "kind": "empty"})
+        status.update(label=t("llm.failed"), state="error")
+        st.error(t("errors.llm_empty"))
+        return None
     state.log_event("llm_done", {"group": group, "elapsed": elapsed,
                                  "usage": st.session_state.get("_last_llm_usage"),
                                  "repro": st.session_state.get("_last_llm_repro")})
     status.update(label=t("llm.completed"), state="complete")
-    text = out if isinstance(out, str) else "".join(out)
-    return llm.clean_output(text)
+    return text
 
 
 def call_llm_json(system: str, user: str, *, group: str) -> Optional[dict]:

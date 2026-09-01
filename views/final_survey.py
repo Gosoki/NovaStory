@@ -6,6 +6,7 @@ import streamlit as st
 
 from core import config, db, state
 from i18n import get_lang, t
+from views import _scale
 
 # Whole-study questionnaire shown once, after all rounds are finished and before
 # the completion code. Captures cross-condition preference + behavioral intent +
@@ -15,6 +16,9 @@ from i18n import get_lang, t
 
 def render() -> None:
     pid = st.session_state["participant_id"]
+    # once=True: the page re-renders on every keystroke, we want one arrival
+    # stamp so final_survey_shown → final_survey_submit is its answering time.
+    state.log_event("final_survey_shown", once=True)
     st.header(t("final_survey.title"))
     st.caption(t("final_survey.hint"))
 
@@ -32,16 +36,18 @@ def render() -> None:
     lbl2round = dict(zip(labels, rounds))
     pref_sel = st.radio(t("final_survey.q_pref"), labels, index=None)
     reuse_sel = st.radio(t("final_survey.q_reuse"), labels, index=None)
-    st.markdown(t("final_survey.q_overall"))
-    sat = st.segmented_control(
-        t("final_survey.q_overall"), list(range(1, 8)),
-        selection_mode="single", key="_fs_sat", label_visibility="collapsed",
-    )
+    sat = _scale.likert(t("final_survey.q_overall"), "_fs_sat", anchors="satisfied")
     comment = st.text_area(t("final_survey.comment"), key="_fs_comment")
 
     if st.button(t("final_survey.submit"), type="primary", width="stretch"):
-        if pref_sel is None or reuse_sel is None or sat is None:
-            st.error(t("errors.answer_all"))
+        # Name the unanswered items back, same as every other form in the study.
+        missing = [_scale.short(lbl) for lbl, v in (
+            (t("final_survey.q_pref"), pref_sel),
+            (t("final_survey.q_reuse"), reuse_sel),
+            (t("final_survey.q_overall"), sat),
+        ) if v is None]
+        if missing:
+            st.error(t("errors.unanswered", items=" / ".join(missing)))
             return
         db.update_participant(
             pid,

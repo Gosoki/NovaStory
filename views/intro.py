@@ -6,6 +6,7 @@ from pathlib import Path
 
 import streamlit as st
 
+from core import state
 from i18n import get_lang, t
 from views import _storyboard
 
@@ -77,6 +78,9 @@ def _example(label: str, text: str) -> str:
 
 
 def render() -> None:
+    # intro_shown → intro_continue is the dwell time on the standardized
+    # onboarding; a subject who clicks through in 2s did not get the briefing.
+    state.log_intake_event("intro_shown")
     st.header(t("intro.title"))
     with st.container(border=True):
         st.markdown(t("intro.flow"))
@@ -98,5 +102,6 @@ def render() -> None:
 
     st.caption(t("intro.reassure"))
     if st.button(t("intro.start"), type="primary", width="stretch"):
+        state.log_intake_event("intro_continue")
         st.session_state["stage"] = "screening"
         st.rerun()

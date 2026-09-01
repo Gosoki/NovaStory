@@ -10,6 +10,7 @@ from typing import Any, Optional
 import streamlit as st
 
 from core import config, db
+from i18n import AVAILABLE_LANGS
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "data"
@@ -100,6 +101,10 @@ ROUND_PAYLOAD_DEFAULTS: dict[str, Any] = {
 
 DEFAULTS: dict[str, Any] = {
     "lang": "ja",
+    # Opaque id for this browser session, minted before a participant row
+    # exists so the intake stage (consent → intro → screening) can log events
+    # and have them backfilled with the participant id at screening.
+    "session_id": "",
     "api_key": "",
     "base_url": "",
     "model": "",
@@ -122,8 +127,33 @@ def init_state() -> None:
     for k, v in DEFAULTS.items():
         if k not in st.session_state:
             st.session_state[k] = v if not isinstance(v, (dict, list)) else _clone(v)
+    if not st.session_state["session_id"]:
+        st.session_state["session_id"] = secrets.token_hex(4)
+    _apply_url_lang()
     _ensure_api_defaults()
     _attempt_resume()
+
+
+def _apply_url_lang() -> None:
+    """`?lang=ja|zh|en` preselects the session language (testing / recruitment aid).
+
+    Applied ONCE per browser session and only before a participant row exists,
+    so it behaves exactly like arriving on the consent page with the picker
+    already set: the subject can still change it there, and nothing can flip the
+    language mid-study (JP6). An unknown value is ignored, leaving the ja
+    default. The pick lands on `participants.lang`, so monitor_panel's
+    language-mix warning still catches a session run in the wrong language."""
+    if st.session_state.get("_url_lang_done"):
+        return
+    st.session_state["_url_lang_done"] = True
+    if st.session_state.get("participant_id"):
+        return
+    try:
+        v = (st.query_params.get("lang") or "").strip().lower()
+    except Exception:  # query params unavailable (e.g. headless AppTest)
+        return
+    if v in AVAILABLE_LANGS:
+        st.session_state["lang"] = v
 
 
 def _resume_token() -> str:
@@ -307,7 +337,13 @@ def _edit_chars(a: str, b: str) -> int:
 
 # ---------------- events & timing ----------------
 
-def log_event(type_: str, payload: Optional[dict] = None) -> None:
+def log_event(type_: str, payload: Optional[dict] = None, *, once: bool = False) -> None:
+    """Round-scoped event. `once=True` records at most one per round attempt —
+    Streamlit re-runs the whole script on every interaction, so an unguarded
+    page-view log would fire once per keystroke. `r_events` is the per-attempt
+    mirror, so a redone round logs its own copy."""
+    if once and any(ty == type_ for _, ty in st.session_state["r_events"]):
+        return
     st.session_state["r_events"].append((time.time(), type_))
     db.insert_event(
         st.session_state.get("participant_id"),
@@ -330,6 +366,30 @@ def add_llm_wait(seconds: float) -> None:
     # round_durations can keep it out of t_pregen (a creative-time column).
     if "guidance_shown" in types and "guidance_submit" not in types:
         st.session_state["r_llm_wait_pre"] += seconds
+
+
+def log_intake_event(type_: str, payload: Optional[dict] = None) -> None:
+    """Intake-stage event (consent → intro → screening), logged BEFORE a
+    participant row exists — that stage is the one part of the study with no
+    timing data otherwise, and "did they actually read the how-it-works page"
+    is a data-quality question.
+
+    Written at `round_idx=0` so it never lands in a round's event stream, keyed
+    by `session_id` in `attempt`; `db.attach_intake_events` backfills the
+    participant id at screening. Each type is recorded at most once per session
+    (these are one-shot page views, and Streamlit re-runs on every keystroke)."""
+    seen = st.session_state.setdefault("_intake_seen", [])
+    if type_ in seen:
+        return
+    seen.append(type_)
+    db.insert_event(
+        st.session_state.get("participant_id"),
+        0,
+        type_,
+        payload,
+        seq_in_round=len(seen),
+        attempt=st.session_state.get("session_id") or None,
+    )
 
 
 def _ts(type_: str, last: bool = False) -> Optional[float]:

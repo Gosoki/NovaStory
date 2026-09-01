@@ -22,4 +22,5 @@ def render_pipeline(topic: dict) -> None:
     # Generation failed/empty: stream_llm already showed the error; offer a
     # retry so the participant is never hard-stuck with no clickable control.
     elif st.button(t("round.retry"), type="primary", width="stretch"):
+        state.log_event("retry_click", {"group": "C-final"})
         st.rerun()

@@ -9,6 +9,8 @@
   ⑤ .gitignore 覆盖被试数据
   ⑥ 备份脚本就位
   ⑦ 分析依赖已装(研究员后台「数据分析」面板非惰性 import,缺一个就当场崩)
+  ⑧ topics.json 可用(≥N_ROUNDS 题、三语齐、镜数/秒数合法)——写坏了闸门不拦的话,
+     第一个被试**提交筛查之后**才撞 RuntimeError,那时被试行已入库、拉丁方 seq 已被消耗
 
 用法: .venv/bin/python scripts/deploy_check.py
 """
@@ -23,6 +25,7 @@ import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))   # check_topics 要 import core.{config,state}
 G, Y, R = "🟢", "🟡", "🔴"
 rows: list[tuple[str, str, str]] = []
 
@@ -143,6 +146,54 @@ def check_baseline(sec: dict) -> None:
         add(G, "机器基线", f"{len(files)} 题基线就位,模型 {sorted(models)} 与正式模型一致。")
 
 
+def check_topics() -> None:
+    """题库必须先于第一个被试就绪。
+
+    `load_topics()` 对损坏文件是**静默回退种子主题**(不崩也不告警),所以研究员改坏了
+    题目自己不会知道;而题数 < N_ROUNDS 时 `begin_rounds` 抛 RuntimeError —— 那一刻
+    被试行已经 INSERT、seq 已经消耗,留下一个永远走不完的孤儿被试。故在部署前拦。"""
+    from core import config, state
+
+    f = ROOT / "data" / "topics.json"
+    if not f.exists():
+        add(Y, "题库 topics.json", "文件不存在 → 首次启动会写入种子主题(3 题 ja/zh),"
+                                   "确认那就是你要用的题目。")
+        return
+    try:
+        raw = json.loads(f.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as e:
+        add(R, "题库 topics.json", f"文件损坏({type(e).__name__}) → load_topics 会**静默**"
+                                   f"回退种子主题,被试跑的不是你以为的题目。")
+        return
+    if not isinstance(raw, list):
+        add(R, "题库 topics.json", "顶层不是数组 → 会静默回退种子主题。")
+        return
+    topics = state.load_topics()
+    if len(topics) < config.N_ROUNDS:
+        add(R, "题库 topics.json", f"只有 {len(topics)} 题 < N_ROUNDS={config.N_ROUNDS} →"
+                                   f" 被试提交筛查后才崩,且已消耗一个 seq。")
+        return
+    used = topics[: config.N_ROUNDS]
+    bad = []
+    for i, t in enumerate(used):
+        for field in ("title", "scenario"):
+            v = t.get(field)
+            missing = [lg for lg in ("ja", "zh", "en")
+                       if not (v.get(lg) if isinstance(v, dict) else (v if lg == "ja" else None))]
+            if missing:
+                bad.append(f"#{i + 1}.{field} 缺 {'/'.join(missing)}")
+        if not (1 <= t.get("shot_count", 0) <= 12):
+            bad.append(f"#{i + 1}.shot_count={t.get('shot_count')}")
+        if not (3 <= t.get("total_seconds", 0) <= 300):
+            bad.append(f"#{i + 1}.total_seconds={t.get('total_seconds')}")
+    if bad:
+        add(Y, "题库 topics.json", f"{len(topics)} 题可用,但:{' · '.join(bad[:4])}"
+                                   f"(缺的语言会回退到 ja/zh,被试可能看到混语)。")
+    else:
+        add(G, "题库 topics.json", f"{len(topics)} 题、前 {config.N_ROUNDS} 题三语齐、"
+                                   f"镜数/秒数合法。⚠️ 采数期间禁止再改(会静默重配在跑被试的题目)。")
+
+
 def check_backup() -> None:
     if (ROOT / "scripts" / "backup_db.sh").exists():
         add(G, "备份脚本", "scripts/backup_db.sh 就位;确认已进 cron(每日 + 每场后)、异地一份。")
@@ -162,6 +213,7 @@ def main() -> None:
     check_config()
     check_gitignore()
     check_baseline(sec)
+    check_topics()
     check_backup()
     check_analysis_deps()
 

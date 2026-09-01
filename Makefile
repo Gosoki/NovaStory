@@ -4,7 +4,7 @@
 PY := .venv/bin/python
 .DEFAULT_GOAL := help
 
-.PHONY: help baseline norming v3 events pilot embed judge stats power figures analysis smoke
+.PHONY: help baseline norming v3 events pilot embed judge stats power figures analysis smoke robust smoke-e2e
 
 help:       ## 列出所有命令(直接敲 `make` 就看这个)
 	@grep -hE '^[a-z][a-zA-Z0-9_-]*:.*##' $(MAKEFILE_LIST) | sed -E 's/:.*## / — /' | sort
@@ -41,6 +41,12 @@ figures:    ## 招牌图(努力再分配)+ 主 DV 分条件 → data/analysis/fi
 
 smoke:      ## 分析链路回归自测(合成 N=36 跑完整条链并断言;临时库,不碰 data/novastory.db)
 	$(PY) scripts/analysis_smoke.py
+
+smoke-e2e:  ## 被试全流程 E2E(正常路径:consent→3轮→完成码 + intake埋点/?lang=/续接/重做)
+	$(PY) scripts/dev_smoke_e2e.py
+
+robust:     ## 实测就绪性验收(出事时扛不扛得住:并发/断网/刷新/脏数据/后台线程)→ docs/paper/12
+	$(PY) scripts/robustness_check.py
 
 # 真数据到手后的完整链路。events 必须排在 v3 之后(它把事件层列合入 v3 写的 CSV);
 # events / embed / judge 互不依赖(三者都是「先删自己的列再 merge」,顺序无关),但都得在 v3

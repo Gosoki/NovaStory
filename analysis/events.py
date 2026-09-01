@@ -5,6 +5,11 @@
   问卷时长(trial_submit→questionnaire_submit)、每轮 AI 调用次数/失败次数、
   token 成本(llm_done.usage.total_tokens)、最长单次等待、续接次数。
 
+**逐被试**另出一张 intake 时长表(`--out-participant`):同意页/说明页/背景问卷各停留多久、
+总问卷用时、整场用时(participants.created_at→finished_at)。说明页停留 2 秒 = 标准化
+onboarding 没生效,属数据质量信号,采数期就要看得见。intake 事件写在 round_idx=0
+(见 core/state.log_intake_event),故逐 trial 表把 round_idx=0 整段排除。
+
 重做轮切段(docs/paper/03 §6.1):同 (participant, round) 下按 `attempt` 分组,进了论文的
 那段 = 含 trial_id 非空行的那段;取该段**全部**事件(不用 WHERE trial_id IS NOT NULL
 过滤,否则丢掉 questionnaire_submit 等提交后事件)。旧行(7-02 前)attempt 全 NULL、
@@ -16,6 +21,7 @@ ts 只有秒级 → 退化为按 (participant, round) 整取,指标照算(精度
 
 用法: .venv/bin/python analysis/events.py [--db data/novastory.db]
                                           [--csv data/analysis/v3_per_trial.csv]
+                                          [--out-participant <逐被试时长表>]
 """
 from __future__ import annotations
 
@@ -31,25 +37,27 @@ ROOT = Path(__file__).resolve().parent.parent
 
 DEFAULT_DB = ROOT / "data" / "novastory.db"
 DEFAULT_CSV = ROOT / "data" / "analysis" / "v3_per_trial.csv"
+PARTICIPANT_CSV_NAME = "v3_per_participant.csv"   # 与 --csv 同目录(两张表是同一批产物)
 _COLS = ["t_questionnaire", "n_llm_calls", "n_llm_errors",
          "llm_total_tokens", "llm_wait_max", "n_resumes"]
 
 
-def load_events(db_path: Path) -> pd.DataFrame:
-    """events(排除 dev 被试),按 (ts, id) 排序;ts 解析为 datetime,旧秒级行也吃。"""
+def load_events(db_path: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """(events, participants),都已排除 dev 被试;ts 解析为 datetime,旧秒级行也吃。"""
     con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     try:
         ev = pd.read_sql("SELECT * FROM events", con)
-        parts = pd.read_sql("SELECT id, screening_json FROM participants", con)
+        parts = pd.read_sql("SELECT * FROM participants", con)
     finally:
         con.close()
     dev_ids = {int(r.id) for r in parts.itertuples()
                if _loads(r.screening_json).get("dev")}
     if dev_ids:
         ev = ev[~ev["participant_id"].isin(dev_ids)]
+        parts = parts[~parts["id"].isin(dev_ids)]
     ev = ev.dropna(subset=["participant_id", "round_idx"])
     ev["ts"] = pd.to_datetime(ev["ts"], format="ISO8601", errors="coerce")
-    return ev.sort_values(["ts", "id"])
+    return ev.sort_values(["ts", "id"]), parts
 
 
 def _loads(x) -> dict:
@@ -97,18 +105,79 @@ def round_metrics(g: pd.DataFrame) -> dict:
 
 def per_trial(ev: pd.DataFrame) -> pd.DataFrame:
     rows = []
+    ev = ev[ev["round_idx"] != 0]  # round_idx=0 = intake stage, not a trial
     for (pid, ridx), g in ev.groupby(["participant_id", "round_idx"], sort=True):
         rows.append({"participant_id": int(pid), "round_idx": int(ridx), **round_metrics(g)})
     return pd.DataFrame(rows, columns=["participant_id", "round_idx", *_COLS])
+
+
+_PCOLS = ["t_consent", "t_intro", "t_screening", "t_intake_total",
+          "t_final_survey", "t_session_total"]
+
+
+def _gap(g: pd.DataFrame, a: str, b: str) -> float:
+    """b 的首次 − a 的首次(秒);任一缺失或倒序 → NaN。"""
+    ta = g.loc[g["type"] == a, "ts"]
+    tb = g.loc[g["type"] == b, "ts"]
+    if not len(ta) or not len(tb):
+        return np.nan
+    d = (tb.min() - ta.min()).total_seconds()
+    return d if d >= 0 else np.nan
+
+
+def per_participant(ev: pd.DataFrame, parts: pd.DataFrame) -> pd.DataFrame:
+    """逐被试的 intake / 总问卷 / 整场时长。
+
+    intake 三段来自 round_idx=0 的事件对(consent_shown→consent_agree 等);
+    整场时长来自 participants 的 created_at→finished_at(唯一 events 补不了的一段:
+    完成码签发那一刻)。老库(无 intake 埋点 / 无 finished_at)相应列为 NaN。"""
+    rows = []
+    for pid, g in ev.groupby("participant_id", sort=True):
+        t_consent = _gap(g, "consent_shown", "consent_agree")
+        t_intro = _gap(g, "intro_shown", "intro_continue")
+        t_screening = _gap(g, "screening_shown", "screening_submit")
+        intake = _gap(g, "consent_shown", "screening_submit")
+        rows.append({
+            "participant_id": int(pid),
+            "t_consent": t_consent,
+            "t_intro": t_intro,
+            "t_screening": t_screening,
+            "t_intake_total": intake,
+            "t_final_survey": _gap(g, "final_survey_shown", "final_survey_submit"),
+        })
+    out = pd.DataFrame(rows, columns=["participant_id", *_PCOLS])
+    if parts.empty:
+        return out
+    p = parts.rename(columns={"id": "participant_id"}).copy()
+    for c in ("created_at", "finished_at"):
+        p[c] = pd.to_datetime(p[c], errors="coerce") if c in p else pd.NaT
+    p["t_session_total"] = (p["finished_at"] - p["created_at"]).dt.total_seconds()
+    return (out.drop(columns=["t_session_total"])
+               .merge(p[["participant_id", "t_session_total"]],
+                      on="participant_id", how="outer")
+               .sort_values("participant_id"))
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="A6 events 逐 trial 指标")
     ap.add_argument("--db", type=Path, default=DEFAULT_DB)
     ap.add_argument("--csv", type=Path, default=DEFAULT_CSV, help="合入的 v3 逐 trial CSV")
+    ap.add_argument("--out-participant", type=Path, default=None,
+                    help=f"逐被试 intake/整场时长表(默认 --csv 同目录的 {PARTICIPANT_CSV_NAME})")
     args = ap.parse_args()
 
-    ev = load_events(args.db)
+    ev, parts = load_events(args.db)
+    out_p = args.out_participant or args.csv.with_name(PARTICIPANT_CSV_NAME)
+    pp = per_participant(ev, parts)
+    if not pp.empty:
+        out_p.parent.mkdir(parents=True, exist_ok=True)
+        pp.to_csv(out_p, index=False)
+        with pd.option_context("display.width", 200, "display.float_format",
+                               lambda x: f"{x:.1f}"):
+            print("=== 逐被试 intake / 整场时长(秒)均值 ===")
+            print(pd.DataFrame({"mean": pp[_PCOLS].mean(numeric_only=True),
+                                "n_notna": pp[_PCOLS].notna().sum()}))
+            print(f"→ {out_p}\n")
     pt = per_trial(ev)
     if pt.empty:
         print(f"{args.db} 里还没有可用 events(N=0)。")

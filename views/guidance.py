@@ -36,11 +36,13 @@ def render(topic: dict) -> None:
         if not st.session_state["r_g_questions"]:
             # transient call/config error: offer an explicit retry (never hard-stuck)
             if st.button(t("round.retry"), type="primary", width="stretch"):
+                state.log_event("retry_click", {"group": "E-guidance"})
                 st.rerun()
             # Follow-up rounds have a draft to fall back to — offer the same
             # escape hatch as below, or a persistently busy gateway locks the
             # participant on this screen with nothing but a retry button.
             if st.session_state["r_versions"] and st.button(t("guidance.cancel"), width="stretch"):
+                state.log_event("guidance_cancel", {"at": "questions_failed"})
                 st.session_state["r_phase"] = "postgen"
                 st.rerun()
             return
@@ -101,6 +103,9 @@ def render(topic: dict) -> None:
     # back to the draft, so a failing/looping final generation can't trap the
     # user on the guidance screen with no way to submit their existing script.
     if st.session_state["r_versions"] and st.button(t("guidance.cancel"), width="stretch"):
+        # Abandoning a follow-up guidance round mid-way is a real E behaviour
+        # (the AI's questions weren't worth it) — must be countable, not silent.
+        state.log_event("guidance_cancel", {"at": "question", "q": idx})
         st.session_state["r_phase"] = "postgen"
         st.rerun()
 

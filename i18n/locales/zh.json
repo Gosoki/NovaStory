@@ -78,14 +78,14 @@
     "published_opt3": "发布过 6 条以上",
     "background": "你是否有影视、传媒、设计等相关专业的学历或职业经历?",
     "written": "你以前写过分镜脚本或影视剧本吗?",
-    "self_rating": "你对「分镜脚本写作」的熟练程度自评(1=完全不会,7=非常熟练)",
+    "self_rating": "你对「分镜脚本写作」的熟练程度自评",
     "aiexp": "你用 AI 做过创作类任务(写作/分镜/脚本/绘画指示等)吗?",
     "aiexp_opt1": "从未用过",
     "aiexp_opt2": "试过几次",
     "aiexp_opt3": "经常用",
     "trait_section": "关于你自己",
-    "trust": "我倾向于信任 AI 生成的内容是合理的(1=完全不同意,7=完全同意)",
-    "own_trait": "我倾向于把自己参与做出来的东西看作是「我的」(1=完全不同意,7=完全同意)",
+    "trust": "我倾向于信任 AI 生成的内容是合理的",
+    "own_trait": "我倾向于把自己参与做出来的东西看作是「我的」",
     "yes": "是",
     "no": "否",
     "quiz_section": "小测验(不确定就选「我不知道」)",
@@ -157,7 +157,11 @@
     "anchor_imag_high": "非常接近",
     "anchor_amt_low": "太少了",
     "anchor_amt_mid": "刚刚好",
-    "anchor_amt_high": "太多了"
+    "anchor_amt_high": "太多了",
+    "anchor_skill_low": "完全不会",
+    "anchor_skill_high": "非常熟练",
+    "anchor_sat_low": "完全不满意",
+    "anchor_sat_high": "非常满意"
   },
   "history": {
     "title": "历史记录",
@@ -178,7 +182,7 @@
     "hint": "完成全部三轮后,请谈谈你整体的感受。",
     "q_pref": "你最喜欢哪一轮的创作方式?",
     "q_reuse": "以后用 AI 创作,你最想用哪一轮那种方式?",
-    "q_overall": "总体而言,你对这次创作体验有多满意?(1=完全不满意,7=非常满意)",
+    "q_overall": "总体而言,你对这次创作体验有多满意?",
     "round_n": "第{i}轮",
     "comment": "其他想说的(选填)",
     "submit": "提交并完成"
@@ -206,7 +210,9 @@
     "answer_all": "还有未回答的题目,请全部作答后再提交。",
     "unanswered": "还有未回答的题目 → {items}",
     "answer_or_skip": "请选择一个选项、自己写一个,或交给 AI 决定。",
-    "revision_empty": "请先告诉 AI 你想怎么改。"
+    "revision_empty": "请先告诉 AI 你想怎么改。",
+    "llm_empty": "AI 这次没有返回内容(接口可能繁忙)。请再试一次。",
+    "not_ready": "系统尚未就绪,请联系实验员。"
   },
   "postgen": {
     "title": "当前脚本(第 {v} 版,可直接编辑)",
