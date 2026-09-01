@@ -166,7 +166,12 @@ def run(tmp: Path) -> None:
     n_tab = out.count("LMM 计划对比")
     assert n_tab == len(endpoints), f"stats CLI 只打印了 {n_tab}/{len(endpoints)} 张计划对比表"
     assert "⛔ 最终警告" not in out, out[-800:]
-    assert "H4 质量非劣" in out and "H5 剂量-反应" in out, "H4/H5 段落没跑"
+    # 2026-09-01 拍板 2.4:H4 降为描述性,标题与口径都改了。门禁盯的是**新口径**:
+    # 段落要在、且必须带上「不作确证性非劣主张」的警告 —— 若有人把它改回「非劣」,
+    # 这条断言要当场拦住(那是把一个贴天花板的 DV 重新包装成结论)。
+    assert "H4 质量(描述性" in out and "H5 剂量-反应" in out, "H4/H5 段落没跑"
+    assert "不得写成「不劣」" in out or "未测量审美" in out or "INCONCLUSIVE" in out, \
+        "H4 段落缺少『不作非劣主张』的口径警告(prereg.H4_NOTE 没打出来?)"
     # H4 的小标题是无条件打印的:质量 DV 建不出来时它照样在,底下换成一行 ⛔——
     # 只查标题等于没查,非劣主张可以整个消失而门禁全绿
     assert f"⛔ {A_stats._H4_QUALITY_DV} 未构建" not in out, \
@@ -190,24 +195,43 @@ def run(tmp: Path) -> None:
     # (analysis/stats.py:397 明写"勿单独下非劣结论"),拿成分代打测不到 build_quality 的死活。
     h4_dv = A_stats._H4_QUALITY_DV
     assert h4_dv in df.columns, f"H4 的质量 DV {h4_dv} 没构建出来,非劣检验根本没有对象"
-    locked = prereg.SESOI
+    # 2026-09-01 拍板 2.3:界按**终点**从 SESOI_BY_ENDPOINT 取,不再是一个标量套所有人。
+    # 门禁必须打在真正被读的那个字典上 —— 改成按终点取界之后,老测试还在 patch 标量
+    # `prereg.SESOI`,注入**静默失效**、tost 照常出结论,而断言仍然"通过"过一阵子。
+    locked = prereg.SESOI_BY_ENDPOINT.get(h4_dv)
     assert isinstance(locked, (int, float)) and locked > 0, \
-        f"prereg.SESOI 应是采数前锁定的正数(DV 原始单位),现在是 {locked!r}"
+        f"SESOI_BY_ENDPOINT[{h4_dv}] 应是采数前锁定的正数(DV 原始单位),现在是 {locked!r}"
     r2, _log = quiet(lambda: A_stats.tost(df, h4_dv))
     assert isinstance(r2.get("equivalent"), bool), f"SESOI 已锁定却没出结论: {r2}"
     assert r2["bound"] == locked and r2["n"] >= 5, r2
+    assert r2["verdict"] in ("equivalent", "INCONCLUSIVE"), r2   # 三分支必须表态
     ok(f"锁定的 SESOI={locked} → {h4_dv} 出结论 equivalent={r2['equivalent']}"
-       f"(mean_diff={r2['mean_diff']:.3f}、n={r2['n']})")
+       f"/verdict={r2['verdict']}(mean_diff={r2['mean_diff']:.3f}、n={r2['n']})")
 
+    # 两个主终点也必须各自登记了界(此前它们的「≈(不劣)」格在统计上是空的)
+    for dv in prereg.PRIMARY_ENDPOINTS:
+        b = prereg.SESOI_BY_ENDPOINT.get(dv)
+        assert isinstance(b, (int, float)) and b > 0, \
+            f"主终点 {dv} 没有冻结的等价界 → 四象限的「≈」格无检验支撑"
+    ok(f"两个主终点各自登记了等价界: "
+       f"{ {k: prereg.SESOI_BY_ENDPOINT[k] for k in prereg.PRIMARY_ENDPOINTS} }")
+
+    orig = dict(prereg.SESOI_BY_ENDPOINT)
     try:
         for bad in (None, 0.0, -0.10):  # 未锁定 / 研究员手滑填 0 或负数
-            prereg.SESOI = bad
+            prereg.SESOI_BY_ENDPOINT[h4_dv] = bad
             rb, _log = quiet(lambda: A_stats.tost(df, h4_dv))
-            assert rb["equivalent"] is None and "SESOI" in rb.get("note", ""), (bad, rb)
-        ok("SESOI = None / 0 / 负数 → TOST 一律拒绝执行,不退回任何默认界")
+            assert rb["equivalent"] is None and rb.get("verdict") == "INCONCLUSIVE" \
+                and "SESOI" in rb.get("note", ""), (bad, rb)
+        # 未登记的终点也必须拒绝,而不是回退到别的终点的界
+        prereg.SESOI_BY_ENDPOINT.pop(h4_dv, None)
+        rb, _log = quiet(lambda: A_stats.tost(df, h4_dv))
+        assert rb["equivalent"] is None and rb.get("verdict") == "INCONCLUSIVE", rb
+        ok("SESOI = None / 0 / 负数 / 未登记 → TOST 一律拒绝执行,不回退任何默认界")
     finally:
-        prereg.SESOI = locked
-    assert prereg.SESOI == locked, "monkeypatch 之后没把 prereg.SESOI 还原"
+        prereg.SESOI_BY_ENDPOINT.clear()
+        prereg.SESOI_BY_ENDPOINT.update(orig)
+    assert prereg.SESOI_BY_ENDPOINT == orig, "monkeypatch 之后没把 SESOI_BY_ENDPOINT 还原"
 
     r3, _log = quiet(lambda: A_stats.tost(df[df["condition"] != "E"], h4_dv))
     assert r3["equivalent"] is None and "缺条件" in r3["note"], r3
@@ -318,7 +342,7 @@ def run(tmp: Path) -> None:
     assert p_csv.exists() and len(pd.read_csv(p_csv)) == p_info["trials_non_dev"], out[-400:]
     _, _log = quiet(lambda: _cli(A_ev.main, ["--db", str(p_db), "--csv", str(p_csv)]))
     _, out = quiet(lambda: _cli(A_stats.main, ["--csv", str(p_csv)]))
-    assert "端点: ownership_composite" in out and "H4 质量非劣" in out, out[-800:]
+    assert "端点: ownership_composite" in out and "H4 质量(描述性" in out, out[-800:]
     _, out_p = quiet(lambda: pilot_check.run(p_db))
     for sec in ("D 地板效应", "C 天花板", "novice 占比", "量表信度"):
         assert sec in out_p, f"pilot_check 少了「{sec}」段:\n{out_p[-600:]}"

@@ -76,8 +76,9 @@ def topic_text(topic: dict, field: str, lang: str) -> str:
 
 # Per-round payload, reset at the start of every round.
 ROUND_PAYLOAD_DEFAULTS: dict[str, Any] = {
-    "r_phase": "intent",          # intent → pipeline → (guidance ⇄) postgen → questionnaire
+    "r_phase": "intent",          # intent → snapshot → pipeline → (guidance ⇄) postgen → questionnaire
     "r_intent": "",
+    "r_snapshot": [],             # 事前意图快照:AI 介入前的「一定要有的东西」(2.5)
     "r_versions": [],             # [{"v", "author": "ai"|"user_edit", "text"}]
     "r_guidance_rounds": [],      # guidance_json["rounds"] (condition E)
     "r_revision_requests": [],    # [{"round", "text"}] (condition D)
@@ -272,7 +273,8 @@ def reset_round_payload() -> None:
     # Ephemeral widget keys (Streamlit usually cleans these on unmount; pop
     # defensively so a new round never inherits stale editor content).
     for k in list(st.session_state.keys()):
-        if k in ("_script_edit", "_intent_input", "_revision_input") or k.startswith("_g_"):
+        if (k in ("_script_edit", "_intent_input", "_revision_input")
+                or k.startswith("_g_") or k.startswith("_snap_")):
             st.session_state.pop(k, None)
 
 

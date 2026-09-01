@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import hashlib
+from datetime import datetime
+
 import streamlit as st
 
+from analysis import prereg
 from core import config, db, state
 from i18n import t
 from views import _scale
@@ -121,16 +125,27 @@ def render() -> None:
     is_no = t("screening.no")
 
     # Recorded, not gating: everyone proceeds to the experiment.
-    is_novice = (
-        published_idx == 0
-        and background == is_no
-        and written == is_no
-        and int(self_rating) <= 2
-        and quiz_correct <= 1
-    )
+    # 判定走 analysis.prereg.is_novice —— 这里曾经有一份内联的同义逻辑,与 prereg 的
+    # NOVICE_DEF 字符串并存,两处都可能被单独改动而不自知(2026-09-01 拍板 2.1)。
+    # 现在入库的这个布尔只是**便利列**,分析侧一律从原始 5 项重算。
+    novice_src = {
+        "published_idx": published_idx,
+        "background": "no" if background == is_no else "yes",
+        "written": "no" if written == is_no else "yes",
+        "self_rating": int(self_rating),
+        "quiz_correct": quiz_correct,
+    }
+    is_novice = prereg.is_novice(novice_src)
 
     demographics = {"age_idx": age_idx, "gender_idx": gender_idx, "ai_freq_idx": ai_freq_idx}
     screening = {
+        # 同意书版本存证(2026-09-01 拍板 0.5):记下这位被试实际看到的同意文的
+        # 指纹 + 语言 + 时刻。采数期间同意书改动一个字(哪怕是修错别字),事后就无法
+        # 证明每位被试同意的是哪一版 —— 而这是审查时会被直接问到的。
+        "consent_sha1": hashlib.sha1(
+            t("consent.body").encode("utf-8")).hexdigest()[:16],
+        "consent_lang": st.session_state.get("lang", "ja"),
+        "consent_at": datetime.now().isoformat(timespec="seconds"),
         "published_idx": published_idx,
         "background": "no" if background == is_no else "yes",
         "written": "no" if written == is_no else "yes",

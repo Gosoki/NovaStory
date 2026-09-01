@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS trials (
   condition TEXT NOT NULL,
   topic_json TEXT,
   intent_statement TEXT,
+  intent_snapshot_json TEXT,  -- 事前意图快照:AI 介入前写下的「一定要有的东西」×3(2026-09-01 拍板 2.5)
   final_output TEXT,
   parse_ok INTEGER,
   regen_count INTEGER DEFAULT 0,
@@ -117,6 +118,7 @@ _MIGRATIONS = [
     "ALTER TABLE trials ADD COLUMN hand_edit_chars INTEGER",
     "ALTER TABLE trials ADD COLUMN t_pregen REAL",
     "ALTER TABLE trials ADD COLUMN t_postgen REAL",
+    "ALTER TABLE trials ADD COLUMN intent_snapshot_json TEXT",
     # detailed-log batch (LOG3/LOG4, 2026-07-02)
     "ALTER TABLE events ADD COLUMN seq_in_round INTEGER",
     "ALTER TABLE events ADD COLUMN attempt TEXT",

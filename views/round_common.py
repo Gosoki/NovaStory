@@ -4,7 +4,9 @@ import streamlit as st
 
 from core import config, state
 from i18n import get_lang, t
-from views import _postgen, group_c, group_d, group_e, guidance, questionnaire
+from views import (
+    _postgen, _snapshot, group_c, group_d, group_e, guidance, questionnaire,
+)
 
 
 def render() -> None:
@@ -22,6 +24,10 @@ def render() -> None:
         _postgen.render_history()
     if phase == "intent":
         _render_intent(cond, topic)
+    elif phase == "snapshot":
+        # 事前意图快照:三条件同文、在任何 AI 介入之前(2.5)
+        st.text_input(t("round.intent_label"), value=st.session_state["r_intent"], disabled=True)
+        _snapshot.render(topic)
     elif phase == "pipeline":
         st.info(t(f"round.instr_{cond}", shot_count=topic["shot_count"]))
         st.text_input(
@@ -49,7 +55,7 @@ def render() -> None:
 
 def _step_strip(cond: str) -> None:
     """Visual stepper; every condition previews its own steps the same way."""
-    steps = [t("round.step_intent")]
+    steps = [t("round.step_intent"), t("round.step_snapshot")]
     if cond == "E":
         steps.append(t("round.step_guidance"))
     steps.append(t("round.step_generate"))
@@ -58,7 +64,8 @@ def _step_strip(cond: str) -> None:
     steps.append(t("round.step_questionnaire"))
 
     cur = _current_step(cond, len(steps))
-    nums = "①②③④⑤"
+    # 快照步骤加入后 E 条件是 6 格;备到 ⑩ 以免以后再加一步又越界
+    nums = "①②③④⑤⑥⑦⑧⑨⑩"
     parts = []
     for i, s_ in enumerate(steps):
         if i < cur:
@@ -74,17 +81,20 @@ def _current_step(cond: str, n_steps: int) -> int:
     phase = st.session_state["r_phase"]
     if phase == "intent":
         return 0
+    if phase == "snapshot":
+        return 1
     if phase == "questionnaire":
         return n_steps - 1
+    # 快照占掉第 1 格,其后的原有步骤整体后移一位
     if cond == "C":
-        return 1  # generate / view
+        return 2  # generate / view
     if cond == "D":
-        return 1 if phase == "pipeline" else 2  # generate → polish
+        return 2 if phase == "pipeline" else 3  # generate → polish
     # E
     if phase in ("pipeline", "guidance"):
         # follow-up guidance rounds happen mid-polish
-        return 1 if not st.session_state["r_versions"] else 3
-    return 2 if not st.session_state["r_versions"] else 3
+        return 2 if not st.session_state["r_versions"] else 4
+    return 3 if not st.session_state["r_versions"] else 4
 
 
 def _topic_card(topic: dict) -> None:
@@ -124,5 +134,5 @@ def _render_intent(cond: str, topic: dict) -> None:
             return
         st.session_state["r_intent"] = val
         state.log_event("intent_submit", {"chars": len(val)})
-        st.session_state["r_phase"] = "pipeline"
+        st.session_state["r_phase"] = "snapshot"   # 先取事前意图快照(2.5),再进条件流水线
         st.rerun()

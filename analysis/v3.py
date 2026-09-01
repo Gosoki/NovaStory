@@ -28,7 +28,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from analysis import textstats  # noqa: E402
+from analysis import prereg, textstats  # noqa: E402
 from core.shots import parse_shots, strip_format  # noqa: E402
 
 DEFAULT_DB = ROOT / "data" / "novastory.db"
@@ -49,7 +49,8 @@ def load(db_path: Path) -> pd.DataFrame:
     try:
         trials = pd.read_sql("SELECT * FROM trials", con)
         quest = pd.read_sql("SELECT * FROM questionnaires", con)
-        parts = pd.read_sql("SELECT id, lang, screening_json FROM participants", con)
+        parts = pd.read_sql(
+            "SELECT id, lang, seq, status, screening_json FROM participants", con)
     finally:
         con.close()
     dev_ids = {int(r.id) for r in parts.itertuples()
@@ -65,9 +66,22 @@ def load(db_path: Path) -> pd.DataFrame:
     # the scales and the embedding fidelity Δ — so analyses must be able to split or
     # filter on it, and the report must state the language mix. Formal study is ja;
     # any non-ja row is a researcher test or an off-protocol session.
-    df = df.merge(parts[["id", "lang"]].rename(columns={"id": "participant_id"}),
-                  on="participant_id", how="left")
+    # 2026-09-01 拍板 2.1:主分析人群必须进得了管线。此前 v3 只带出 lang,于是
+    # 「主分析 = novice 子集」(B1)在分析侧无从筛选,stats 实际跑的是全样本。
+    # novice **每次从 screening_json 的原始 5 项重算**(prereg.is_novice),不信任
+    # 入库时写下的布尔 —— 定义若在冻结前微调,旧行的布尔就是按旧定义算的。
+    # 同时带出 status / seq:status 用于纳入规则(离脱者不进分析),
+    # seq 用于核对拉丁方平衡。
+    pmeta = parts.rename(columns={"id": "participant_id"}).copy()
+    scr = pmeta["screening_json"].map(lambda x: _loads(x, {}))
+    pmeta["novice"] = scr.map(prereg.is_novice)
+    for k in prereg.NOVICE_CRITERIA:      # 5 个原始子项,便于分报「哪一项筛掉了人」
+        pmeta[f"nv_{k}"] = scr.map(lambda d, _k=k: prereg.novice_criteria(d)[_k])
+    keep = ["participant_id", "lang", "seq", "status", "novice"] + \
+           [f"nv_{k}" for k in prereg.NOVICE_CRITERIA]
+    df = df.merge(pmeta[keep], on="participant_id", how="left")
     df["lang"] = df["lang"].fillna("ja")
+    df["novice"] = df["novice"].fillna(False).astype(bool)
     return df
 
 
@@ -163,8 +177,14 @@ def shot_fidelity(shot_annotations_json) -> dict:
                                      and ann[0].get("shot") == 0),
     }
     if not tags:
-        return {**gran, **{f"{t}_ratio": np.nan for t in _TAGS}}
-    return {**gran, **{f"{t}_ratio": tags.count(t) / len(tags) for t in _TAGS}}
+        return {**gran, **{f"{t}_ratio": np.nan for t in _TAGS}, "not_against": np.nan}
+    ratios = {f"{t}_ratio": tags.count(t) / len(tags) for t in _TAGS}
+    # 2026-09-01 拍板 2.5:保真主复合的第三腿 = **意图一致性**,不是贡献量。
+    # not_against = 没有违背本意的镜头占比(mine + ai_ok)。与 mine_ratio 的区别:
+    # 一份全由 AI 写、但每一镜都合我意的稿子 not_against=1 而 mine_ratio=0 —— 保真高、
+    # 贡献低,这正是「E 提高的是保真还是贡献量」要能分开的那一维。
+    # mine_ratio 仍导出,降为描述性/机制变量(它与 own3 同构念,见 stats._FIDELITY_SUBJ_LEGS)。
+    return {**gran, **ratios, "not_against": 1.0 - ratios["ai_against_ratio"]}
 
 
 def guidance_dose(guidance_json) -> dict:
@@ -263,6 +283,13 @@ def per_trial(df: pd.DataFrame) -> pd.DataFrame:
             # 被试在同意页选的语言(ja/zh/en)。prompt / 题目情境 / 分镜解析 / 量表 /
             # embedding 保真Δ 全都随语言变,故必须能按它切分或过滤,且报告要写明语言构成。
             "lang": r.get("lang") or "ja",
+            # 主分析人群与纳入/平衡列(2026-09-01 拍板 2.1)。novice 由 load() 从
+            # screening_json 的原始 5 项重算;nv_* 是 5 个子项,用来分报「哪一项筛掉了人」
+            # (试测时若 novice 占比不足,要靠它判断该收紧招募还是放宽到 4-of-5)。
+            "novice": bool(r.get("novice")),
+            "status": r.get("status"),
+            "seq": r.get("seq"),
+            **{f"nv_{k}": bool(r.get(f"nv_{k}")) for k in prereg.NOVICE_CRITERIA},
         }
         m.update(structural(r.get("final_output"), _topic_seconds(r.get("topic_json"))))
         m.update(shot_fidelity(r.get("shot_annotations_json")))
@@ -318,7 +345,7 @@ def diversity_by_group(df: pd.DataFrame) -> pd.DataFrame:
 _SUMMARY_COLS = [
     "parse_ok", "field_completeness", "shots_ok", "spec_ok", "dur_total",
     "own_mean", "soa_mean", "satisfaction", "imagine", "violation", "ai_q_quality",
-    "mine_ratio", "ai_against_ratio", "final_vs_firstai_sim",
+    "mine_ratio", "ai_against_ratio", "not_against", "final_vs_firstai_sim",
     "n_shots_tagged", "whole_script_fallback",
     "g_custom_rate", "g_ai_decided_rate", "g_fallback_rate", "g_n_questions", "g_n_rounds",
     "pre_investment", "post_investment", "total_investment",
@@ -341,6 +368,21 @@ def main() -> None:
     pt.to_csv(args.out, index=False)
 
     print(f"载入 {len(raw)} 行 trials;逐 trial 指标 {len(pt)} 行 → {args.out}\n")
+    # 人群构成必须在抬头就看见 —— 主分析跑的是 novice 子集(B1),它的 N 往往远小于全样本,
+    # 而此前整条管线里没有任何一处会把这个数字说出来。
+    n_p = pt["participant_id"].nunique()
+    n_nv = pt.loc[pt["novice"], "participant_id"].nunique()
+    share = (n_nv / n_p) if n_p else float("nan")
+    print(f"=== 人群:全样本 {n_p} 人 / novice 子集 {n_nv} 人({share:.0%})===")
+    print(f"    主分析人群 = novice(prereg.NOVICE_MIN_CRITERIA="
+          f"{prereg.NOVICE_MIN_CRITERIA}/5,B1);全样本作稳健性")
+    if n_p and share < prereg.NOVICE_SHARE_YELLOW:
+        print(f"    ⚠️ novice 占比 <{prereg.NOVICE_SHARE_YELLOW:.0%} = pilot_check ③ 🔴"
+              f" —— 需收紧招募或启用 4-of-5 退路(B1)")
+    # 哪一项把人筛掉了 —— 试测时据此判断该改招募还是该放宽定义
+    fails = {k: int((~pt.drop_duplicates("participant_id")[f"nv_{k}"]).sum())
+             for k in prereg.NOVICE_CRITERIA}
+    print(f"    未满足人数(按子项): {fails}\n")
     if "lang" in pt.columns:
         mix = pt.groupby("lang")["participant_id"].nunique().to_dict()
         note = "" if set(mix) <= {"ja"} else "   ⚠️ 非 ja 会话(研究员测试/脱离协议)——分析前确认是否剔除"

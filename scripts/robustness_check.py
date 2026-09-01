@@ -92,11 +92,26 @@ def pick_zh(at: AppTest) -> None:
     at.run()
 
 
+def safe_run(at: AppTest) -> None:
+    """AppTest 变通:st.rerun 换页后,元素树里仍留着已被 Streamlit 丢弃 key 的旧 widget,
+    下一次 run 序列化它们时会 KeyError(dev_smoke_e2e 里同款处理)。先补齐缺失的 key。"""
+    for w in list(at.radio) + list(at.selectbox) + list(at.get("button_group")):
+        if w.key and w.key not in at.session_state:
+            at.session_state[w.key] = None
+    for w in list(at.text_input) + list(at.text_area):
+        if w.key and w.key not in at.session_state:
+            at.session_state[w.key] = ""
+    for c in list(at.checkbox):
+        if c.key and c.key not in at.session_state:
+            at.session_state[c.key] = False
+    at.run()
+
+
 def click(at: AppTest, label: str) -> None:
     hits = [b for b in at.button if b.label == label]
     assert hits, f"按钮不存在 {label!r},现有:{[b.label for b in at.button]}"
     hits[0].click()
-    at.run()
+    safe_run(at)
 
 
 def has_button(at: AppTest, label: str) -> bool:
@@ -124,7 +139,7 @@ def run_intake(at: AppTest) -> None:
     at.radio[4].set_value("我不知道")
     for key, val in (("_scr_self", 1), ("_scr_trust", 4), ("_scr_own", 5)):
         [b for b in at.get("button_group") if b.key == key][0].set_value(val)
-    at.run()
+    safe_run(at)
     click(at, "提交并继续")
 
 
@@ -145,8 +160,17 @@ def seed_round(cond: str) -> AppTest:
 
 
 def write_intent(at: AppTest) -> None:
+    """写创意 → 事前意图快照(2.5,三条件同文)→ 进入条件流水线。"""
     at.text_area(key="_intent_input").set_value("测试用的故事创意,长度肯定够")
     click(at, "确定,开始创作")
+    assert at.session_state["r_phase"] == "snapshot", at.session_state["r_phase"]
+    # 走真实 widget accessor:三个输入框都要 set_value —— 直接塞 session_state 时,
+    # 未被赋值的那两个 key 在下一次 rerun 序列化 widget 树时会 KeyError。
+    for i in range(3):
+        at.text_input(key=f"_snap_{i}").set_value(
+            "测试:结尾要让人笑一下" if i == 0 else "")
+    safe_run(at)
+    click(at, "写好了,交给 AI")
 
 
 def answer_guidance(at: AppTest) -> None:
@@ -155,7 +179,7 @@ def answer_guidance(at: AppTest) -> None:
         bgs = [b for b in at.get("button_group") if (b.key or "").startswith("_g_opt_")]
         if bgs:
             bgs[0].set_value(bgs[0].options[0])
-            at.run()
+            safe_run(at)
         if has_button(at, "完成作答,生成脚本"):
             return
         click(at, "下一问")

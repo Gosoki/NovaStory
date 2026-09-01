@@ -6,7 +6,7 @@ import streamlit as st
 
 from core import db, imagegen, shots, state
 from i18n import get_lang, t
-from views import _scale, _storyboard
+from views import _scale, _snapshot, _storyboard
 
 _OWN_ITEMS = 3          # q.own1..own3 (trimmed for session length)
 _SOA_ITEMS = 2          # q.soa1..soa2
@@ -392,6 +392,9 @@ def render() -> None:
         likert("attention", t("q.attention"), anchors=None)
     for i in range(1, _TLX_ITEMS + 1):
         likert(f"tlx{i}", t(f"q.tlx{i}"))
+    # 保真两题必须锚在**AI 介入之前**写下的东西上,否则 E 条件的参照系已被 E 自己
+    # 塑造过(2026-09-01 拍板 2.5)。把快照原样摆在题目上方,比对的是字不是回忆。
+    _snapshot.render_reference()
     likert("violation", t("q.violation"), anchors="violation")
     likert("imagine", t("q.imagine"), anchors="imagine")
     likert("sat", t("q.satisfaction"))
@@ -402,7 +405,9 @@ def render() -> None:
     if state.current_round()["condition"] == "E":
         likert("ai_q_quality", t("q.ai_q_quality"))
         likert("ai_q_amount", t("q.ai_q_amount"), anchors="amount")
-        answers["ai_q_best"] = _ai_q_best_pick(ridx)
+        # ⚠️ ai_q_best 曾经在这里。它会把被试的全部引导问答**原样复读一遍**,
+        # 紧接着就是逐镜头归属标注 —— 等于在打标注前先给他垫上「我参与了很多」的底色,
+        # 直接抬高 mine_ratio。2026-09-01 拍板 2.5 移到逐镜头标注**之后**。
 
     # ---- per-shot intent annotation ----
     # Options are the localized labels themselves (no format_func): a
@@ -434,6 +439,10 @@ def render() -> None:
         if sel is None:
             missing.append(_scale.short(t("q.whole_tag_label")))
         shot_annotations.append({"shot": 0, "tag": lbl2tag.get(sel)})
+
+    # E 专属、可选:哪些引导问题真的帮到了。放在逐镜头标注**之后**(见上方注释)。
+    if state.current_round()["condition"] == "E":
+        answers["ai_q_best"] = _ai_q_best_pick(ridx)
 
     if st.button(t("q.submit"), type="primary", width="stretch"):
         if missing:

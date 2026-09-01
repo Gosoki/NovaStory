@@ -30,7 +30,14 @@ from analysis import prereg  # noqa: E402  (冻结分析计划常量的单一真
 
 CSV = ROOT / "data" / "analysis" / "v3_per_trial.csv"
 _PAIRS = [("E", "D"), ("E", "C"), ("D", "C")]  # E−D 为主
-_FIDELITY_SUBJ_LEGS = ("imagine", "violation", "mine_ratio")   # 主观三腿,先内部平均
+# 2026-09-01 拍板 2.5:第三腿由 mine_ratio 换成 1−ai_against_ratio(v3 导出 `not_against`)。
+# 理由:mine_ratio =「这一镜主要是我的想法」的占比,量的是**人类贡献量** —— 与 own3
+# (self-investment)同构念。用它当保真腿,「E 保真最高」就成了**定义性的**:E 让人投入更多
+# → 贡献量更高 → 保真更高,审稿人一句「E 到底提高了保真,还是重新定义了意图?」答不了。
+# 1−ai_against_ratio 量的是「没有违背我本意的镜头占比」,是**意图一致性**,与贡献量正交:
+# 一份全部由 AI 写、但每一镜都合我意的稿子,not_against=1 而 mine_ratio=0 —— 这正是要区分的。
+# mine_ratio 仍然导出并作描述性/机制变量分报,只是不再进保真主复合。
+_FIDELITY_SUBJ_LEGS = ("imagine", "violation", "not_against")   # 主观三腿,先内部平均
 _FIDELITY_OBJ_LEG = "embed_fidelity"                          # 唯一的客观腿,占一半
 _FIDELITY_LEGS = (*_FIDELITY_SUBJ_LEGS, _FIDELITY_OBJ_LEG)    # 仅用于「缺腿」告警的全集
 _EFFORT_LEGS = ("n_ai_rounds", "hand_edit_chars", "post_investment")
@@ -288,43 +295,57 @@ def tost(df: pd.DataFrame, dv: str, pair=("E", "D"), bound: float | None = None)
     随抽样噪声漂移、Type I 失控(代码审查 + 统计专家一致指正)。
     SESOI 无效(None / 非正 / 非有限)时**拒绝执行**,不退回任何默认值。
 
-    ⚠️ 已知局限(勿再删):方法学上**每个终点都该按其源量表/文献各设一个 bound**,
-    而 prereg.SESOI 现在是**单一标量**,谁调用就套给谁。它是按 H4 的结构完整度
-    (0-1 比例,0.10 = 10 个百分点)定的;若把本函数用到别的终点、尤其是 z 单位的复合上,
-    这个界的实质含义就变了,必须在冻结文件里为该终点另设界并在报告里写明。"""
+    2026-09-01 拍板 2.3 起,界按**终点**从 `prereg.SESOI_BY_ENDPOINT` 取
+    (ownership/fidelity = 7 点量表 0.5 分;structural = 0.10 比例)。该终点没登记界时
+    **拒绝执行**而不是套用别的终点的界 —— 此前只有一个标量,谁调用就套给谁,
+    用到 z 单位的复合上时这个界的实质含义已经变了。
+
+    返回值里的 `verdict` 是冻结的三分支判定(`prereg.DECISION_BRANCHES`)之一:
+    `equivalent` / `INCONCLUSIVE`。⛔ `INCONCLUSIVE` **不得**在论文里写成「不劣/非劣」。"""
     if bound is None:
-        bound = prereg.SESOI
+        # 2026-09-01 拍板 2.3:界按**终点**取,不再一个标量套给所有人。
+        # 找不到该终点的界时**不回退**到 H4 的界 —— 那正是下面「已知局限」警告过的事。
+        bound = prereg.SESOI_BY_ENDPOINT.get(dv)
     # NaN/inf 也必须走这条:`nan <= 0` 是 False,漏进去会算出 p=nan、equivalent=False
     # ——一个笔误的 SESOI 换来一个看着像结论的「不等价」。
     if bound is None or not np.isfinite(bound) or bound <= 0:
-        why = ("prereg.SESOI 仍为 None" if bound is None
+        why = (f"prereg.SESOI_BY_ENDPOINT 里没有 {dv} 的界" if bound is None
                else f"SESOI={bound} 不是正的有限数(等价界须为正的绝对值,疑似笔误/符号写反)")
         print("!" * 78)
         print(f"⛔ TOST 拒绝执行(H4 非劣,dv={dv},{pair[0]}−{pair[1]}):{why}。")
         print(f"   采数前研究员必须拍板:{dv} 上多大的 {pair[0]}−{pair[1]} 差异才算「实质劣于」")
         print("   (即等价界 SESOI,用 DV 原始单位:结构完整度是 0-1 比例,0.10 = 10 个百分点),")
-        print("   并把该数值写入 analysis/prereg.py 的 SESOI。在此之前 H4 无结论,不得用默认界代替。")
+        print(f"   并把该数值写入 analysis/prereg.py 的 SESOI_BY_ENDPOINT['{dv}']。")
+        print("   在此之前该终点无等价结论 —— ⛔ 不得用别的终点的界代替,也不得写成「不劣」。")
         print("!" * 78)
         return {"pair": f"{pair[0]}-{pair[1]}", "dv": dv, "equivalent": None,
-                "note": f"SESOI 无效({why}),拒绝执行"}
+                "verdict": "INCONCLUSIVE", "note": f"SESOI 无效({why}),拒绝执行"}
     wide = _paired(df, dv)
     a, b = pair
     if a not in wide or b not in wide:  # 该条件整列缺/全 NaN(试测期 E 未跑、解析全失败)
-        return {"pair": f"{a}-{b}", "dv": dv, "equivalent": None, "note": f"缺条件 {a}/{b} 的配对数据"}
+        return {"pair": f"{a}-{b}", "dv": dv, "equivalent": None,
+                "verdict": "INCONCLUSIVE", "note": f"缺条件 {a}/{b} 的配对数据"}
     d = (wide[a] - wide[b]).dropna()
     n = len(d)
     if n < 5:
-        return {"pair": f"{a}-{b}", "n": n, "equivalent": None}
+        return {"pair": f"{a}-{b}", "n": n, "equivalent": None,
+                "verdict": "INCONCLUSIVE", "note": "配对样本 <5"}
     m, sd = d.mean(), d.std(ddof=1)
     if sd == 0:  # 零方差 → 除零;t 无定义,非劣无法判定(SESOI 无效已在上面大声拦下)
-        return {"pair": f"{a}-{b}", "n": n, "mean_diff": float(m),
-                "equivalent": None, "note": "配对差零方差"}
+        # H4 的 spec_ok 触顶时正是这一支(2026-09-01 拍板 2.4):三条件都 100% 达标 →
+        # 配对差恒为 0 → t 无定义。**这不是「等价」,是「测不出」**,必须如实报 INCONCLUSIVE。
+        return {"pair": f"{a}-{b}", "n": n, "mean_diff": float(m), "equivalent": None,
+                "verdict": "INCONCLUSIVE",
+                "note": "配对差零方差(DV 触顶/触底 → 该 DV 无区分力,不得解读为等价)"}
     se = sd / np.sqrt(n)
     p_lower = stats.t.sf((m + bound) / se, n - 1)   # H1: 差 > −bound
     p_upper = stats.t.cdf((m - bound) / se, n - 1)  # H1: 差 < +bound
+    eq = bool(p_lower < .05 and p_upper < .05)
     return {"pair": f"{a}-{b}", "n": n, "mean_diff": float(m), "bound": float(bound),
             "p_lower": float(p_lower), "p_upper": float(p_upper),
-            "equivalent": bool(p_lower < .05 and p_upper < .05)}
+            "equivalent": eq,
+            # 冻结的三分支(prereg.DECISION_BRANCHES)。⛔ INCONCLUSIVE 不得写成「不劣/非劣」。
+            "verdict": "equivalent" if eq else "INCONCLUSIVE"}
 
 
 def dose_response(df: pd.DataFrame, dv: str, dose: str = "dose_composite") -> dict:
@@ -399,6 +420,10 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="A6 v3 推断统计")
     ap.add_argument("--csv", type=Path, default=CSV)
     ap.add_argument("--demo", action="store_true")
+    # 2026-09-01 拍板 2.1:主分析人群 = novice 子集(B1),故**默认就是 novice**。
+    # 此前没有这个参数,主分析实际跑的是全样本,与 04/幻灯片/答辩口径全部对不上。
+    ap.add_argument("--population", choices=("novice", "all"), default="novice",
+                    help="分析人群:novice=事前冻结的主分析人群(默认) / all=全样本(稳健性)")
     args = ap.parse_args()
 
     if args.demo or not args.csv.exists():
@@ -408,20 +433,43 @@ def main() -> None:
         return
 
     df = build_quality(build_dose(build_composites(pd.read_csv(args.csv))))
+
+    # ---- 人群筛选 + 抬头声明(2026-09-01 拍板 2.1)----
+    n_all = df["participant_id"].nunique() if "participant_id" in df else 0
+    if args.population == "novice":
+        if "novice" not in df.columns:
+            print("⛔ CSV 里没有 `novice` 列 —— 请先用当前版本的 analysis/v3.py 重新生成"
+                  "(旧 CSV 不含人群列)。拒绝以全样本冒充主分析。")
+            sys.exit(1)
+        df = df[df["novice"].astype(bool)]
+    n_used = df["participant_id"].nunique() if "participant_id" in df else 0
+    print("=" * 78)
+    print(f"分析人群 = {args.population}"
+          + ("(事前冻结的主分析人群,B1)" if args.population == "novice" else "(全样本,稳健性)"))
+    print(f"  被试 {n_used} 人 / 全样本 {n_all} 人;trial {len(df)} 行")
+    print(f"  novice 定义:{prereg.NOVICE_DEF}(需满足 {prereg.NOVICE_MIN_CRITERIA}/5)")
+    print(f"  等价界 SESOI:{prereg.SESOI_BY_ENDPOINT}")
+    print(f"  判定分支:{' | '.join(prereg.DECISION_BRANCHES)}")
+    print("=" * 78)
+    if n_used == 0:
+        print("⛔ 该人群下没有任何 trial,无可分析。")
+        return
+
     failed = {}
     for dv in prereg.PRIMARY_ENDPOINTS + prereg.SECONDARY_ENDPOINTS:  # 终点层级单一真源
         err = analyze_endpoint(df, dv)
         if err:
             failed[dv] = err
 
-    print("\n########## H4 质量非劣(TOST,E vs D)##########")
+    print("\n########## H4 质量(描述性;2026-09-01 拍板 2.4 起不作确证性非劣主张)##########")
+    print(f"  ⚠️ {prereg.H4_NOTE}")
     print(f"  DV = 结构完整度 {_H4_QUALITY_DV} = mean(parse_ok, 分镜四字段齐全率, 15s且3镜达标),")
     print("       docs/paper/03 §4 定义的**单一**复合(0-1 比例,与 SESOI 同单位)→ 只做一次检验,无多重性。")
     if _H4_QUALITY_DV in df:
         print(f"  {tost(df, _H4_QUALITY_DV, ('E', 'D'))}")
     else:
         print(f"  ⛔ {_H4_QUALITY_DV} 未构建(CSV 缺 {list(_H4_LEGS)} 里的列),H4 无 DV 可测。")
-    print("  ——以下三个成分仅**描述性**,不是 H4 的检验对象(勿单独下非劣结论):")
+    print("  ——三个成分的分条件均值(spec_ok 贴天花板正是 H4 降描述性的原因):")
     print(df.groupby("condition")[[c for c in _H4_LEGS if c in df]].mean().round(3).to_string())
 
     print("\n########## H5 剂量-反应(E 内,被试间 OLS;事前声明的确认性次分析)##########")

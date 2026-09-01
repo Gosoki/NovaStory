@@ -108,13 +108,61 @@ def power_lmm(delta: float, n: int = 36, nsims: int = 200, alpha: float = 0.05) 
     return hits / nsims
 
 
+# ---- novice 子集功效(2026-09-01 拍板 2.2;B1/B2 明写的连带动作,至今未做)----
+# 主分析人群 = novice 子集(B1),它的 N 远小于全样本 —— 招 36 人、novice 占比 50% 就只剩 18。
+# 此前整个 power_sim 只按 N=36 报,于是对外宣传的「N=36 可检出 dz≈0.48」说的是**全样本**,
+# 而主分析根本不在全样本上跑。下面这条曲线才是决定「要招多少人」的那条。
+SUBSET_NS = (15, 18, 22, 27, 36)
+
+# 全样本招募量 → novice 子集 N 的换算(用于倒推超招募量)。
+# 占比取自 prereg 的 pilot go/no-go 阈值:0.60 = 🟢 线,0.40 = 🟡/🔴 线。
+SUBSET_SHARES = (0.60, 0.50, 0.40)
+
+
+def subset_power_table(nsims: int) -> None:
+    """按 novice 子集 N 报功效曲线 + MDES,并倒推达标所需的全样本招募量。"""
+    print("\n=== 【主分析人群】novice 子集 · 先验功效(α=.05,配对 t)===")
+    print("    B1:主分析跑 novice 子集,全样本只作稳健性 → 决定招募量的是这张表,不是上面那张。")
+    header = f"{'子集 N':<8}" + "".join(f"{f'dz={dz}':>9}" for dz in (0.3, 0.4, 0.5, 0.6, 0.7))
+    print(header)
+    for n in SUBSET_NS:
+        row = "".join(f"{power_paired(dz, n, nsims):>9.3f}" for dz in (0.3, 0.4, 0.5, 0.6, 0.7))
+        print(f"{n:<8}{row}")
+
+    print(f"\n{'子集 N':<8}{'MDES(80%)':>12}{'MDES(90%)':>12}")
+    mdes80 = {}
+    for n in SUBSET_NS:
+        m80 = mdes(n, 0.80, nsims=nsims)
+        mdes80[n] = m80
+        print(f"{n:<8}{m80:>12}{mdes(n, 0.90, nsims=nsims):>12}")
+
+    print("\n=== 倒推:要让 novice 子集达到某个 N,全样本得招多少人 ===")
+    print("    (再按流失率上浮;11 rank3 按 20% 流失估算过,故最后一列 = 招募目标)")
+    print(f"{'子集 N':<8}{'MDES(80%)':>11}" + "".join(f"{f'占比{int(p*100)}%':>12}" for p in SUBSET_SHARES))
+    for n in SUBSET_NS:
+        cells = "".join(f"{int(-(-n // p)):>7} → {int(-(-(-(-n // p)) // 0.8)):>3}"
+                        for p in SUBSET_SHARES)
+        print(f"{n:<8}{mdes80[n]:>11}{cells}")
+    print("    读法:『子集N → 全样本N → 含20%流失的招募目标』。")
+    print("    ⚠️ 这张表出来之后必须做两件事:①把选定的子集目标 N 写进 prereg;")
+    print("       ②若倒推出的招募目标不现实,**现在**就改成 4-of-5"
+          "(prereg.NOVICE_MIN_CRITERIA=4)或改『novice 为主体 + 经验作调节』——不能看了数据再改。")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="A6 模拟功效 + 合成自测")
     ap.add_argument("--n", type=int, default=36)
     ap.add_argument("--nsims", type=int, default=3000)
+    ap.add_argument("--subset-only", action="store_true",
+                    help="只跑 novice 子集功效表(跳过全样本与 LMM 同构自测,快)")
     args = ap.parse_args()
 
-    print(f"=== 被试内 E−D 主对比 · 先验功效(N={args.n},α=.05,配对 t)===")
+    if args.subset_only:
+        subset_power_table(args.nsims)
+        return
+
+    print(f"=== 全样本 · 被试内 E−D 主对比 · 先验功效(N={args.n},α=.05,配对 t)===")
+    print("    ⚠️ 这是**稳健性**人群的数字。主分析人群见下方 novice 子集表(B1)。")
     print(f"{'配对 dz(SESOI)':<18}{'功效':>8}")
     for dz in (0.3, 0.4, 0.45, 0.5, 0.55, 0.6, 0.7):
         print(f"{dz:<20}{power_paired(dz, args.n, args.nsims):>8.3f}")
@@ -127,7 +175,10 @@ def main() -> None:
         dz0 = _empirical_dz(d0)
         print(f"注入 E−D delta={d0}(≈配对 dz={dz0:.2f}) → LMM E−D 主对比功效 "
               f"= {power_lmm(d0, args.n, nsims=150):.3f}")
-    print("\n解读:配对 t 近似与 LMM 同构估计一致——N=36 约在 80% 功效检出 dz≈0.48-0.5。"
+    subset_power_table(args.nsims)
+
+    print("\n解读:配对 t 近似与 LMM 同构估计一致——全样本 N=36 约在 80% 功效检出 dz≈0.48-0.5;"
+          "\n     **主分析的 novice 子集 N 更小,需要更大的 dz** —— 以上方子集表为准。"
           "\n⚠️ SESOI 须用本域(创作 HCI)可辩护的最小实质效应,勿直接搬 Maier/APE 的"
           " between-d(跨设计跨域);between-d→within-dz 需条件间相关 ρ 作敏感性。无 pilot,"
           "以上为先验设定,写入预注册。")
