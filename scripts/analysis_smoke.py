@@ -157,7 +157,7 @@ def run(tmp: Path) -> None:
         assert np.isfinite(vals).all(), f"{dv}: 计划对比出现非有限值\n{con}"
         assert ((con["p_holm"] >= con["p_raw"] - 1e-12).all()
                 and (con["p_holm"] <= 1.0).all()), f"{dv}: Holm 校正值不合法\n{con}"
-        err, _log = quiet(lambda dv=dv: A_stats.analyze_endpoint(df, dv))
+        (err, _ed), _log = quiet(lambda dv=dv: A_stats.analyze_endpoint(df, dv))
         assert err is None, f"{dv}: 确证分析缺失(退回 Wilcoxon)← {err}"
     ok(f"{len(endpoints)} 个终点全部拿到 LMM + 3 个计划对比 + Holm:{', '.join(endpoints)}")
 
@@ -181,7 +181,7 @@ def run(tmp: Path) -> None:
     # 零方差 DV 必须大声失败,不能"拟合成功"后打印 p=0(A1 的洞)
     df_flat = df.copy()
     df_flat["flat_dv"] = 1.0
-    err, _log = quiet(lambda: A_stats.analyze_endpoint(df_flat, "flat_dv"))
+    (err, _ed), _log = quiet(lambda: A_stats.analyze_endpoint(df_flat, "flat_dv"))
     assert err, "零方差 DV 竟然产出了确证结论(Holm 把 NaN 排成了 0)"
     assert A_stats._holm([float("nan")] * 3) == [1.0, 1.0, 1.0], "NaN 的 p 被 Holm 排成了 0"
     ok(f"零方差 DV 被拦下:{err[:60]}…")
@@ -208,13 +208,50 @@ def run(tmp: Path) -> None:
     ok(f"锁定的 SESOI={locked} → {h4_dv} 出结论 equivalent={r2['equivalent']}"
        f"/verdict={r2['verdict']}(mean_diff={r2['mean_diff']:.3f}、n={r2['n']})")
 
-    # 两个主终点也必须各自登记了界(此前它们的「≈(不劣)」格在统计上是空的)
+    # 两个主终点必须各自有等价界(此前它们的「≈(不劣)」格在统计上是空的),
+    # 且界要经 prereg.EQUIV_DV 落到**正确量纲**的 DV 上。
     for dv in prereg.PRIMARY_ENDPOINTS:
-        b = prereg.SESOI_BY_ENDPOINT.get(dv)
+        eq = prereg.EQUIV_DV.get(dv, dv)
+        b = prereg.SESOI_BY_ENDPOINT.get(eq)
         assert isinstance(b, (int, float)) and b > 0, \
-            f"主终点 {dv} 没有冻结的等价界 → 四象限的「≈」格无检验支撑"
-    ok(f"两个主终点各自登记了等价界: "
-       f"{ {k: prereg.SESOI_BY_ENDPOINT[k] for k in prereg.PRIMARY_ENDPOINTS} }")
+            f"主终点 {dv}(等价 DV={eq})没有冻结的等价界 → 四象限的「≈」格无检验支撑"
+        # ⚠️ 量纲守门(2026-09-01 自查):等价界是**原始单位**的绝对值,不能落在 z 合成的
+        # 复合上 —— 在那种列上写 0.5 实际是「0.5 个标准差」,宽到几乎必然判「等价」。
+        # 判别量只能用 **mean**:z 合成的列恒中心在 0,而任何原始单位的 DV 都不会
+        # (7 点量表 1-7、比例 0-1、占比 0-1)。
+        # ⛔ 别再拿 sd≈1 当判据 —— 复合是若干 z 列**取均值**再加权,方差被缩掉了
+        #    (实测 fidelity_composite sd≈0.62),那条判据恒为假,整个断言会被 and 短路成空。
+        assert eq in df.columns, f"等价 DV {eq} 不在数据里"
+        col = pd.to_numeric(df[eq], errors="coerce").dropna()
+        if len(col) > 5:
+            m, sd = float(col.mean()), float(col.std(ddof=0))
+            assert abs(m) >= 0.2, (
+                f"等价界落在了 z 合成的列上:{eq} 的 mean={m:.3f}(≈0 = 已 z 化), sd={sd:.3f} —— "
+                f"界 {b} 会被当成 {b / sd:.2f} 个标准差,量纲错配。等价检验须在原始单位的 DV 上做。")
+    ok("两个主终点各自登记了等价界且量纲正确: "
+       f"{ {dv: (prereg.EQUIV_DV.get(dv, dv), prereg.SESOI_BY_ENDPOINT[prereg.EQUIV_DV.get(dv, dv)]) for dv in prereg.PRIMARY_ENDPOINTS} }")
+
+    # 冻结的三分支必须**真的被执行**,不能只是 prereg 里的一串字符串
+    # (NOVICE_DEF「写了但从不执行」的同一种病;2026-09-01 自查)。
+    d_sup = A_stats.decide(df, "ownership_composite", {"p_holm": 0.001, "estimate": +0.8})
+    assert d_sup["verdict"] == "superior", d_sup
+    # ⚠️ 显著性是**双侧**的:E 显著劣于 D 时 p 同样 <.05。只看 p 会把结论写反。
+    d_inf = A_stats.decide(df, "ownership_composite", {"p_holm": 0.001, "estimate": -0.8})
+    assert d_inf["verdict"] == "inferior", ("显著但方向为负,必须判 inferior 而不是 superior", d_inf)
+    d_ns, _log = quiet(lambda: A_stats.decide(
+        df, "fidelity_composite", {"p_holm": 0.9, "estimate": 0.01}))
+    assert d_ns["verdict"] in ("equivalent", "INCONCLUSIVE") and "tost" in d_ns, d_ns
+    assert d_ns["equiv_dv"] == prereg.EQUIV_DV["fidelity_composite"], d_ns
+    d_none = A_stats.decide(df, "ownership_composite", None)
+    assert d_none["verdict"] == "INCONCLUSIVE", d_none
+    try:
+        A_stats.decide(df, "effort_composite", {"p_holm": 0.01, "estimate": 1.0})
+        raise AssertionError("decide() 对非主终点应拒绝(方向约定不成立)")
+    except ValueError:
+        pass
+    ok(f"判定分支真的执行且带方向:显著+→{d_sup['verdict']} · 显著−→{d_inf['verdict']} · "
+       f"不显著→TOST({d_ns['verdict']},在 {d_ns['equiv_dv']} 上)· 无对比→{d_none['verdict']} · "
+       f"非主终点→拒绝")
 
     orig = dict(prereg.SESOI_BY_ENDPOINT)
     try:
@@ -351,7 +388,7 @@ def run(tmp: Path) -> None:
     # 整条终点全 NaN(试测常见:某量表还没接上)→ 必须报"数据不足",不能硬拟合
     d_nan = A_stats.build_composites(pd.read_csv(p_csv))
     d_nan["satisfaction"] = np.nan
-    err, _log = quiet(lambda: A_stats.analyze_endpoint(d_nan, "satisfaction"))
+    (err, _ed), _log = quiet(lambda: A_stats.analyze_endpoint(d_nan, "satisfaction"))
     assert err and "数据不足" in err, f"整列 NaN 的终点竟然出了结论: {err}"
     ok(f"整列 NaN 的终点被拦下:{err}")
 

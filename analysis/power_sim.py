@@ -11,6 +11,8 @@
 """
 from __future__ import annotations
 
+import math
+
 import argparse
 import sys
 from pathlib import Path
@@ -140,8 +142,13 @@ def subset_power_table(nsims: int) -> None:
     print("    (再按流失率上浮;11 rank3 按 20% 流失估算过,故最后一列 = 招募目标)")
     print(f"{'子集 N':<8}{'MDES(80%)':>11}" + "".join(f"{f'占比{int(p*100)}%':>12}" for p in SUBSET_SHARES))
     for n in SUBSET_NS:
-        cells = "".join(f"{int(-(-n // p)):>7} → {int(-(-(-(-n // p)) // 0.8)):>3}"
-                        for p in SUBSET_SHARES)
+        # ⚠️ 别用 -(-n // p) 当 ceil:p 是浮点,n/p 在二进制里往往差一个 ulp
+        # (实测 15/0.6 → 我算 26、正确 25,60% 那一列整列偏 1)。用 math.ceil。
+        cells = ""
+        for p in SUBSET_SHARES:
+            full = math.ceil(n / p)              # 子集 N → 需要的全样本 N
+            target = math.ceil(full / 0.8)       # 再按 20% 流失上浮 → 招募目标
+            cells += f"{full:>7} → {target:>3}"
         print(f"{n:<8}{mdes80[n]:>11}{cells}")
     print("    读法:『子集N → 全样本N → 含20%流失的招募目标』。")
     print("    ⚠️ 这张表出来之后必须做两件事:①把选定的子集目标 N 写进 prereg;")

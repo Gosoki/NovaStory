@@ -290,9 +290,9 @@ def wilcoxon_pairs(df: pd.DataFrame, dv: str) -> pd.DataFrame:
 
 def tost(df: pd.DataFrame, dv: str, pair=("E", "D"), bound: float | None = None) -> dict:
     """等价/非劣检验:E 与 D 在 dv 上是否等价(|差| < bound)。
-    **bound 必须是采数前冻结的 a priori SESOI**(dv 原始/z 单位的绝对值),与观测数据无关;
-    默认取 prereg.SESOI(单一真源)。切勿用样本自身配对差 SD 现算 bound——那会让等价界
-    随抽样噪声漂移、Type I 失控(代码审查 + 统计专家一致指正)。
+    **bound 必须是采数前冻结的 a priori SESOI**(dv **原始单位**的绝对值),与观测数据无关;
+    默认按终点取 `prereg.SESOI_BY_ENDPOINT[dv]`(单一真源)。切勿用样本自身配对差 SD
+    现算 bound——那会让等价界随抽样噪声漂移、Type I 失控(代码审查 + 统计专家一致指正)。
     SESOI 无效(None / 非正 / 非有限)时**拒绝执行**,不退回任何默认值。
 
     2026-09-01 拍板 2.3 起,界按**终点**从 `prereg.SESOI_BY_ENDPOINT` 取
@@ -314,7 +314,8 @@ def tost(df: pd.DataFrame, dv: str, pair=("E", "D"), bound: float | None = None)
         print("!" * 78)
         print(f"⛔ TOST 拒绝执行(H4 非劣,dv={dv},{pair[0]}−{pair[1]}):{why}。")
         print(f"   采数前研究员必须拍板:{dv} 上多大的 {pair[0]}−{pair[1]} 差异才算「实质劣于」")
-        print("   (即等价界 SESOI,用 DV 原始单位:结构完整度是 0-1 比例,0.10 = 10 个百分点),")
+        print("   (即等价界 SESOI,用**该 DV 的原始单位**:7 点量表用「分」、0-1 比例用「百分点」。")
+        print("    ⛔ 不要把界写在 z 合成的复合上 —— 那里的 1 个单位是 1 个标准差,量纲不同。)")
         print(f"   并把该数值写入 analysis/prereg.py 的 SESOI_BY_ENDPOINT['{dv}']。")
         print("   在此之前该终点无等价结论 —— ⛔ 不得用别的终点的界代替,也不得写成「不劣」。")
         print("!" * 78)
@@ -365,16 +366,23 @@ def dose_response(df: pd.DataFrame, dv: str, dose: str = "dose_composite") -> di
 
 # ---------------- 端点分析 + CLI ----------------
 
-def analyze_endpoint(df: pd.DataFrame, dv: str) -> str | None:
-    """跑完一个终点;返回 None 表示确证分析(LMM+计划对比+Holm)已产出,否则返回失败原因。
-    LMM 失败不中断整轮,但必须在输出里大声报错并被 main 汇总——否则确证分析悄悄消失。"""
+def analyze_endpoint(df: pd.DataFrame, dv: str) -> tuple[str | None, dict | None]:
+    """跑完一个终点。返回 (失败原因或 None, {"p_holm", "estimate"} 或 None)。
+
+    **estimate 是 E−D 的点估计,必须一起带回来** —— 只凭 p 走判定分支会把
+    「E 显著**劣于** D」误判成「判优」(显著性检验是双侧的,p 不含方向)。
+
+    p 是给 main() 走冻结判定三分支(prereg.DECISION_BRANCHES)用的:显著→判优、
+    不显著→TOST。此前本函数只返回错误字符串,于是三分支在代码里根本没有执行路径
+    ——那正是 NOVICE_DEF「写了但从不执行」的同一种病(2026-09-01 自查抓到)。
+    LMM 失败不中断整轮,但必须在输出里大声报错并被 main 汇总。"""
     print(f"\n########## 端点: {dv} ##########")
     if dv not in df or df[dv].notna().sum() < 6:
         print("  (数据不足,跳过)")
-        return "数据不足(该列缺失或非空 < 6)"
+        return "数据不足(该列缺失或非空 < 6)", None
     means = df.groupby("condition")[dv].agg(["mean", "std", "count"])
     print("按条件:\n", means.round(3).to_string())
-    err = None
+    err, ed_stat = None, None
     try:
         fit = fit_lmm(df, dv)
         con = contrasts(fit)
@@ -383,6 +391,10 @@ def analyze_endpoint(df: pd.DataFrame, dv: str) -> str | None:
             raise RuntimeError(f"{dv}: LMM 退化,计划对比 se/p 非有限值(DV 无方差或与设计共线)")
         print("\nLMM 计划对比(Holm;E−D 为主):")
         print(con.round(4).to_string(index=False))
+        row = con[con["contrast"] == "E-D"]
+        if len(row):
+            ed_stat = {"p_holm": float(row.iloc[0]["p_holm"]),
+                       "estimate": float(row.iloc[0]["estimate"])}
     except Exception as e:  # noqa: BLE001
         err = f"{type(e).__name__}: {e}"
         print("!" * 78)
@@ -393,7 +405,45 @@ def analyze_endpoint(df: pd.DataFrame, dv: str) -> str | None:
     wp = wilcoxon_pairs(df, dv)
     if len(wp):
         print("\nWilcoxon 配对(稳健):\n", wp.round(4).to_string(index=False))
-    return err
+    return err, ed_stat
+
+
+def decide(df: pd.DataFrame, dv: str, ed: dict | None, alpha: float = 0.05) -> dict:
+    """冻结的判定分支(prereg.DECISION_BRANCHES),写死、不允许临场解释。
+    `ed` = analyze_endpoint 返回的 {"p_holm", "estimate"}(E−D 的校正 p 与点估计)。
+
+        ① 校正后显著 且 estimate > 0 → **superior**(E 优于 D)
+        ①' 校正后显著 但 estimate < 0 → **inferior**(E 显著**劣于** D)
+        ② 不显著                      → 走 TOST(界取 prereg.SESOI_BY_ENDPOINT[等价 DV])
+        ③ TOST 通过 → equivalent;不通过 → **INCONCLUSIVE**
+
+    ⚠️ ①' 这一支是 2026-09-01 自查补的:此前只判 `p < alpha` 就写 superior,
+    而显著性检验是**双侧**的 —— E 显著劣于 D 时同样 p<.05,会被这套逻辑
+    宣布成「判优」。这是能把结论写反的那类 bug。
+    ⛔ INCONCLUSIVE 不得在论文里写成「不劣 / 非劣 / no worse」。
+
+    **方向约定**:只对 `prereg.PRIMARY_ENDPOINTS` 调用,它们都是「越高越好」
+    (ownership / fidelity)。用到「越低越好」的终点上必须先反号,否则 ①/①' 会颠倒。
+
+    等价检验用的 DV 由 prereg.EQUIV_DV 指定,可能**不是**主效应那个 DV:
+    保真复合是 z 合成的(单位=标准差),在它上面写「0.5 分」是量纲错配,
+    故保真的「≈」判在原始锚题 imagine(7 点量表原始分)上。"""
+    if dv not in prereg.PRIMARY_ENDPOINTS:
+        raise ValueError(f"decide() 的方向约定只对主终点成立,收到 {dv}")
+    if not ed or ed.get("p_holm") is None:
+        return {"dv": dv, "verdict": "INCONCLUSIVE",
+                "note": "无 E−D 计划对比(LMM 失败/数据不足)"}
+    p_ed, est = float(ed["p_holm"]), float(ed.get("estimate", 0.0))
+    if p_ed < alpha:
+        better = est > 0
+        return {"dv": dv, "verdict": "superior" if better else "inferior",
+                "p_holm": p_ed, "estimate": est,
+                "note": ("校正后显著且 E−D>0 → 判优" if better
+                         else "校正后显著但 E−D<0 → **E 劣于 D**,不是判优")}
+    eq_dv = prereg.EQUIV_DV.get(dv, dv)
+    r = tost(df, eq_dv, ("E", "D"))
+    return {"dv": dv, "equiv_dv": eq_dv, "p_holm": p_ed, "estimate": est,
+            "verdict": r.get("verdict", "INCONCLUSIVE"), "tost": r}
 
 
 def _demo() -> None:
@@ -452,14 +502,33 @@ def main() -> None:
     print(f"  判定分支:{' | '.join(prereg.DECISION_BRANCHES)}")
     print("=" * 78)
     if n_used == 0:
-        print("⛔ 该人群下没有任何 trial,无可分析。")
-        return
+        print(f"⛔ 人群 `{args.population}` 下没有任何 trial —— 主分析无法进行。")
+        if args.population == "novice":
+            print("   试测早期若还没招到 novice,用 `--population all` 看全样本(那是**稳健性**,"
+                  "不是主分析,结论里必须写明)。")
+        # exit 1 而不是 return:`make analysis` 是一条链,静默 return 会让 figures 接着跑,
+        # 产出一套「看着正常」的全样本图,而 stats 刚说过主分析没数据。
+        sys.exit(1)
 
-    failed = {}
+    failed, p_by_dv = {}, {}
     for dv in prereg.PRIMARY_ENDPOINTS + prereg.SECONDARY_ENDPOINTS:  # 终点层级单一真源
-        err = analyze_endpoint(df, dv)
+        err, ed_stat = analyze_endpoint(df, dv)
+        p_by_dv[dv] = ed_stat
         if err:
             failed[dv] = err
+
+    # ---- 冻结的判定三分支,只对**主终点**执行(次要终点不做等价声明)----
+    print("\n########## 主终点判定(冻结三分支;prereg.DECISION_BRANCHES)##########")
+    for br in prereg.DECISION_BRANCHES:
+        print(f"    {br}")
+    for dv in prereg.PRIMARY_ENDPOINTS:
+        d = decide(df, dv, p_by_dv.get(dv))
+        mark = {"superior": "✅ 判优(E>D)", "inferior": "❌ E 显著劣于 D",
+                "equivalent": "≈ 判等价",
+                "INCONCLUSIVE": "⛔ INCONCLUSIVE(不得写「不劣」)"}.get(d["verdict"], d["verdict"])
+        extra = f" · 等价检验在 {d['equiv_dv']} 上" if d.get("equiv_dv") != dv and d.get("equiv_dv") else ""
+        print(f"  {dv}: {mark}{extra}")
+        print(f"      {d}")
 
     print("\n########## H4 质量(描述性;2026-09-01 拍板 2.4 起不作确证性非劣主张)##########")
     print(f"  ⚠️ {prereg.H4_NOTE}")

@@ -119,8 +119,7 @@
     "step_questionnaire": "Answer questions",
     "step_guidance": "Answer the AI's questions",
     "step_polish": "Polish the script",
-    "retry": "Retry",
-    "step_snapshot": "Your must-haves"
+    "retry": "Retry"
   },
   "q": {
     "title": "A few questions about this round",
@@ -132,7 +131,7 @@
     "soa2": "I was able to control the process of making this storyboard myself.",
     "tlx1": "This round of the task was very mentally demanding.",
     "attention": "This is an attention check; please select \"2\".",
-    "violation": "To what extent did the final script go against **your original intent** (your notes above)?",
+    "violation": "To what extent did the final script go against **your original intent**?",
     "shots_title": "Shot-by-shot annotation",
     "shots_hint": "For each shot, choose the description that fits best.",
     "shot_label": "Shot {i}:",
@@ -142,7 +141,7 @@
     "tag_ai_ok": "Mostly the AI's, but I approve of it",
     "tag_ai_against": "Against my original intent",
     "submit": "Submit this round's questionnaire",
-    "imagine": "How close is the final script to **what you pictured at the start** (your notes above)?",
+    "imagine": "How close is the final script to **what you pictured at the start**?",
     "satisfaction": "Overall, I am satisfied with the final result of this round",
     "ai_q_quality": "The questions the AI asked were on-point and helped me develop my ideas.",
     "ai_q_amount": "How was the number of questions the AI asked you?",
@@ -190,10 +189,6 @@
   },
   "researcher": {
     "title": "Experiment Data Dashboard",
-    "n_participants": "Total participants",
-    "n_passed": "Passed screening",
-    "n_done": "Completed",
-    "n_trials": "Trials",
     "table_label": "Select data table",
     "filter_participant": "Filter by participant ID",
     "row_count": "{n} rows",
@@ -208,13 +203,11 @@
     "no_api_key": "The system API is not configured. Please contact the researcher.",
     "llm_failed": "AI request failed: {error}. Please click any button to retry in a moment, or contact the researcher.",
     "intent_too_short": "Please make your idea more specific (at least {n} characters).",
-    "answer_all": "Some questions are still unanswered. Please answer all of them before submitting.",
     "unanswered": "Unanswered items → {items}",
     "answer_or_skip": "Please pick an option, write your own, or leave it to the AI.",
     "revision_empty": "Please tell the AI what you want changed first.",
     "llm_empty": "The AI returned nothing this time (the service may be busy). Please try again.",
-    "not_ready": "The system is not ready. Please contact the researcher.",
-    "snapshot_empty": "Please write at least {n} must-have(s)."
+    "not_ready": "The system is not ready. Please contact the researcher."
   },
   "postgen": {
     "title": "Current script (version {v}, directly editable)",
@@ -320,14 +313,5 @@
     "note": "Note: the embedding fidelity Δ needs OpenAI + a machine baseline and is wired up after collection; this panel first gives structural / diversity / shot-level / subjective / effort metrics + stats + figures.",
     "no_output": "(no output — there may be no completed participant data yet)",
     "captured_err": "[error] {err}"
-  },
-  "snapshot": {
-    "lead": "Before handing this to the AI — write down up to 3 things this story **must** have.",
-    "why": "Later we'll ask how close the result came to what you had in mind; these are your own notes to look back at then. Any order, any length — one is fine if that's all you have.",
-    "item": "Must have {i}",
-    "placeholder": "e.g. the ending has to get one laugh",
-    "optional": "Write at least {n} (the rest can stay empty).",
-    "submit": "Done — hand it to the AI",
-    "recall": "📌 What you said this must have, before you started:"
   }
 }

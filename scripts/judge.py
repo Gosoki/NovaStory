@@ -5,7 +5,7 @@
 不给条件信息、不评创意质量(TTCW:LLM 评创意与专家不相关)。judge 全用 OpenAI 同一型号
 ×3 次(B5,异家族协议作废);无真人评审(B5:不引入人评效度锚),以重复评分间的自一致性
 ICC(1) 作可靠性代理。**定位:次要终点/收敛证据,不进主复合**
-(保真主复合的四条腿 = imagine / violation / mine_ratio / embed_fidelity,见
+(保真主复合的四条腿 = imagine / violation / not_against / embed_fidelity,见
 docs/paper/04 §2.1)。被试是日本人、脚本是日语,故提示为日语(JP3)。
 
 ❌ **专业质量四维 rubric(A1)已弃**(2026-08-03,B5):四维全是审美判断,正落在 TTCW 证明

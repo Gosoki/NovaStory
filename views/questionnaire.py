@@ -6,7 +6,7 @@ import streamlit as st
 
 from core import db, imagegen, shots, state
 from i18n import get_lang, t
-from views import _scale, _snapshot, _storyboard
+from views import _scale, _storyboard
 
 _OWN_ITEMS = 3          # q.own1..own3 (trimmed for session length)
 _SOA_ITEMS = 2          # q.soa1..soa2
@@ -392,9 +392,6 @@ def render() -> None:
         likert("attention", t("q.attention"), anchors=None)
     for i in range(1, _TLX_ITEMS + 1):
         likert(f"tlx{i}", t(f"q.tlx{i}"))
-    # 保真两题必须锚在**AI 介入之前**写下的东西上,否则 E 条件的参照系已被 E 自己
-    # 塑造过(2026-09-01 拍板 2.5)。把快照原样摆在题目上方,比对的是字不是回忆。
-    _snapshot.render_reference()
     likert("violation", t("q.violation"), anchors="violation")
     likert("imagine", t("q.imagine"), anchors="imagine")
     likert("sat", t("q.satisfaction"))

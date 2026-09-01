@@ -4,7 +4,7 @@
 PY := .venv/bin/python
 .DEFAULT_GOAL := help
 
-.PHONY: help baseline norming v3 events pilot embed judge stats power figures analysis smoke robust smoke-e2e
+.PHONY: help baseline norming v3 events pilot embed judge stats stats-all power figures analysis smoke robust smoke-e2e freeze freeze-check
 
 help:       ## 列出所有命令(直接敲 `make` 就看这个)
 	@grep -hE '^[a-z][a-zA-Z0-9_-]*:.*##' $(MAKEFILE_LIST) | sed -E 's/:.*## / — /' | sort
@@ -21,6 +21,12 @@ v3:         ## 确定性指标(结构/多样性/逐镜头保真/版本演化/努
 events:     ## 事件流指标(问卷时长/LLM 次数/token/最长等待/续接)合入 CSV(须先 make v3)
 	$(PY) analysis/events.py
 
+freeze:     ## 【采数前】生成分析计划冻结产物(prereg + 管线旋钮 + 源文件 sha256 + 依赖版本)
+	$(PY) scripts/freeze_prereg.py --write
+
+freeze-check: ## 校验「冻结值 == 当前代码实际值」;改过分析代码后必跑,不一致=协议偏离
+	$(PY) scripts/freeze_prereg.py --check
+
 pilot:      ## 试测健康检查(4 生死问题:D地板/C天花板/novice占比/量表信度)→ 🟢🟡🔴 + 后手(docs/paper/05)
 	$(PY) analysis/pilot_check.py
 
@@ -30,8 +36,11 @@ embed:      ## embedding 相对基线保真 Δ,合入 CSV(需 OpenAI + baseline)
 judge:      ## 盲评保真 LLM-judge(OpenAI×3+ICC),judge_fidelity 合入 CSV(次要证据,不在 analysis 链)
 	$(PY) scripts/judge.py
 
-stats:      ## LMM / E−D 主对比(Holm)/ TOST 非劣 / Wilcoxon / 剂量-反应(无 CSV 则合成自测)
+stats:      ## LMM / E−D 主对比(Holm)/ 三分支判定 / Wilcoxon / 剂量-反应【默认只跑 novice 子集】
 	$(PY) analysis/stats.py
+
+stats-all:  ## 同上但跑**全样本**(稳健性;主分析人群是 novice,结论里必须写明用的是哪个)
+	$(PY) analysis/stats.py --population all
 
 power:      ## 模拟功效 + MDES(SESOI 先验,无 pilot;docs/paper/05 §1.5)
 	$(PY) analysis/power_sim.py

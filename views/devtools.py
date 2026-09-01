@@ -40,18 +40,13 @@ REVISION_SAMPLE = {
     "ja": "（テスト）全体をもっとコミカルに。最後のカットに小さなどんでん返しを足して。",
     "zh": "(测试)整体更搞笑一点,最后一镜加个反转",
 }
-_SNAPSHOT = {
-    "ja": ["（テスト）ラストで一度だけ笑わせる", "（テスト）主人公は最後まで走っている", ""],
-    "zh": ["(测试)结尾一定要让人笑一下", "(测试)主角从头跑到尾", ""],
-}
 _G_CUSTOM = {"ja": "（テスト）自分で書いた方向性", "zh": "(测试)我自己写的方向"}
 _G_OPEN = {"ja": "（テスト）自由回答", "zh": "(测试)开放回答"}
 
 
-def _loc(d: dict):
-    """Pick the session-language variant of a test string/list (default ja)."""
-    v = d.get(get_lang())
-    return v if v is not None else (d.get("ja") or "")
+def _loc(d: dict) -> str:
+    """Pick the session-language variant of a test string (default ja)."""
+    return d.get(get_lang()) or d.get("ja") or ""
 
 
 def render() -> None:
@@ -132,10 +127,7 @@ def _fill_current() -> None:
     phase = st.session_state["r_phase"]
     rd = state.current_round()
     cond = rd["condition"]
-    if phase == "snapshot":
-        for i, txt in enumerate(_loc(_SNAPSHOT)):
-            st.session_state[f"_snap_{i}"] = txt
-    elif phase == "intent":
+    if phase == "intent":
         # Key by the ja title (topic's stable identity); inject in the session
         # language so a ja test drives the real Japanese pipeline.
         key = state.topic_text(rd["topic"], "title", "ja")

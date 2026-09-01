@@ -289,7 +289,11 @@ def per_trial(df: pd.DataFrame) -> pd.DataFrame:
             "novice": bool(r.get("novice")),
             "status": r.get("status"),
             "seq": r.get("seq"),
-            **{f"nv_{k}": bool(r.get(f"nv_{k}")) for k in prereg.NOVICE_CRITERIA},
+            # ⚠️ 不能写 bool(r.get(...)):merge 没匹配上的孤儿 trial(participants 里
+            # 没有该 id)这些列是 NaN,而 **bool(nan) 恒为 True** —— 会把 5 个子项
+            # 全报成「满足」,与同一行 novice=False 直接矛盾。缺就记 NaN。
+            **{f"nv_{k}": (np.nan if pd.isna(r.get(f"nv_{k}")) else bool(r.get(f"nv_{k}")))
+               for k in prereg.NOVICE_CRITERIA},
         }
         m.update(structural(r.get("final_output"), _topic_seconds(r.get("topic_json"))))
         m.update(shot_fidelity(r.get("shot_annotations_json")))

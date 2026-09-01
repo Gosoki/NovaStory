@@ -119,15 +119,6 @@ def safe_run(at):
     at.run()
 
 
-def submit_snapshot(at, items=("测试:结尾要让人笑一下", "测试:主角一直在跑")):
-    """事前意图快照(2026-09-01 拍板 2.5):三条件同文,在任何 AI 介入之前。"""
-    assert at.session_state["r_phase"] == "snapshot", at.session_state["r_phase"]
-    for i, txt in enumerate(items):
-        inject(at, f"_snap_{i}", txt)
-    safe_run(at)
-    btn_click(at, "写好了,交给 AI")
-
-
 def btn_click(at, label):
     hits = [b for b in at.button if b.label == label]
     assert hits, f"button not found: {label!r} (have: {[b.label for b in at.button]})"
@@ -169,14 +160,12 @@ def run() -> None:
     # --- R1: C — one-shot ---
     at.text_area(key="_intent_input").set_value("主角发现卷子上的题目昨晚全梦到过")
     btn_click(at, "确定,开始创作")
-    submit_snapshot(at)          # auto-generates, lands in postgen (readonly)
     btn_click(at, "满意了,提交这一版")
     _answer_questionnaire(at, round_idx=1)
 
     # --- R2: D — revise via chat + hand-edit (attention round) ---
     at.text_area(key="_intent_input").set_value("末班车开走后他跟着夜跑团回家")
     btn_click(at, "确定,开始创作")
-    submit_snapshot(at)
     inject(at, "_revision_input", "更搞笑一点")
     btn_click(at, "告诉 AI")                # → v2 (ai)
     assert at.session_state["r_n_ai_rounds"] == 1
@@ -187,7 +176,6 @@ def run() -> None:
     # --- R3: E — guidance round-1 → script → follow-up → hand-edit ---
     at.text_area(key="_intent_input").set_value("告白的话写在毕业帽内侧被风吹走")
     btn_click(at, "确定,开始创作")
-    submit_snapshot(at)          # → guidance Q1 shown
     _answer_guidance(at, rnd=1, n=6, custom_idx=1, ai_idx=2)
     assert at.session_state["r_phase"] == "postgen"
     btn_click(at, "让 AI 继续引导")          # → follow-up questions
@@ -277,17 +265,6 @@ def _assert_db() -> None:
     assert fs["pref_round"] == 3 and fs["reuse_round"] == 3 and fs["overall_sat"] == 6, fs
 
     assert list(tr["condition"]) == ["C", "D", "E"]
-    # 事前意图快照(2.5):三条件都必须有,且在 AI 介入之前落下 —— 它是保真度的参照点,
-    # 缺了 q.imagine/q.violation 就退回「拿被重塑过的想象跟自己比」的循环。
-    for _, row in tr.iterrows():
-        snap = json.loads(row["intent_snapshot_json"])
-        assert isinstance(snap, list) and len(snap) >= 1, (row["condition"], snap)
-    for ridx in (1, 2, 3):
-        types = list(ev[(ev["round_idx"] == ridx)].sort_values("id")["type"])
-        assert "snapshot_submit" in types, f"round {ridx} 缺 snapshot_submit"
-        # 顺序硬约束:快照必须在任何 llm_start 之前
-        assert types.index("snapshot_submit") < types.index("llm_start"), \
-            f"round {ridx}:快照落在 AI 调用之后,参照点已被污染"
     assert tr["model"].notna().all() and tr["t_total"].notna().all()
 
     c, d, e = tr.iloc[0], tr.iloc[1], tr.iloc[2]

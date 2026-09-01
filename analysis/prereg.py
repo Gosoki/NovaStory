@@ -77,15 +77,26 @@ def is_novice(screening: dict) -> bool:
 # 是空的 —— 实际会发生「N 不足 → 不显著 → 写成不劣」,而且是**事先计划**的,
 # 比事后 HARKing 更难辩解(11 致命级 #5)。
 SESOI_BY_ENDPOINT: dict[str, float | None] = {
-    # own1-3 均值,7 点量表原始分。0.5 分 = 半个刻度 —— 7 点量表上可辩护的最小实质差:
-    # 小于半格的差异,被试自己都分辨不出选 5 还是 5.5。
+    # own1-3 的**原始均值**(stats: ownership_composite = own_mean,未 z 化),7 点量表分。
+    # 0.5 分 = 半个刻度 —— 7 点量表上可辩护的最小实质差:小于半格的差异,
+    # 被试自己都分辨不出选 5 还是 5.5。
     "ownership_composite": 0.5,
-    # 保真复合是 z 合成的,没有可解释的原始单位 → 用它的**主观锚**
-    # imagine_match(z 化前的 7 点量表)定界,同样取 0.5 分,并在报告里写明
-    # 「等价检验在 imagine_match 原始分上做,复合分只作主效应」。
-    "fidelity_composite": 0.5,
+    # 保真的等价检验在**原始锚题 imagine(7 点量表)**上做,同样 0.5 分。
+    # ⚠️ 不是在 fidelity_composite 上做 —— 那个复合是 z 合成的
+    # (0.5*mean z(imagine, -violation, not_against) + 0.5*z(embed)),单位是**标准差**,
+    # 在它上面写 0.5 就等于把等价界设成 0.5 SD(约中等效应),宽到几乎必然判"等价"。
+    # 这正是 2026-09-01 自查抓到的单位错配:界的数值对,量纲错。
+    "imagine": 0.5,
     # 结构完整度 0-1 比例 → 0.10 = 10 个百分点(B2 已锁,理由见下)。
     "structural_completeness": 0.10,
+}
+
+# 主终点 → 做等价检验时实际使用的 DV。z 合成的复合没有可解释的原始单位,
+# 故保真的「≈」判在原始锚题上;所有权复合本身就是原始分,用自己。
+# ⛔ 报告里必须写明:「保真的等价检验在 imagine 原始分上进行,复合分只用于主效应」。
+EQUIV_DV = {
+    "ownership_composite": "ownership_composite",
+    "fidelity_composite": "imagine",
 }
 
 # 向后兼容:老代码/文档里的标量 SESOI 仍指 H4 的结构完整度界。
@@ -179,6 +190,7 @@ def as_dict() -> dict:
         "novice_min_criteria": NOVICE_MIN_CRITERIA,
         "sesoi": SESOI,
         "sesoi_by_endpoint": dict(SESOI_BY_ENDPOINT),
+        "equiv_dv": dict(EQUIV_DV),
         "decision_branches": list(DECISION_BRANCHES),
         "h4_is_confirmatory": H4_IS_CONFIRMATORY,
         "h4_note": H4_NOTE,

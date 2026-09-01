@@ -160,17 +160,8 @@ def seed_round(cond: str) -> AppTest:
 
 
 def write_intent(at: AppTest) -> None:
-    """写创意 → 事前意图快照(2.5,三条件同文)→ 进入条件流水线。"""
     at.text_area(key="_intent_input").set_value("测试用的故事创意,长度肯定够")
     click(at, "确定,开始创作")
-    assert at.session_state["r_phase"] == "snapshot", at.session_state["r_phase"]
-    # 走真实 widget accessor:三个输入框都要 set_value —— 直接塞 session_state 时,
-    # 未被赋值的那两个 key 在下一次 rerun 序列化 widget 树时会 KeyError。
-    for i in range(3):
-        at.text_input(key=f"_snap_{i}").set_value(
-            "测试:结尾要让人笑一下" if i == 0 else "")
-    safe_run(at)
-    click(at, "写好了,交给 AI")
 
 
 def answer_guidance(at: AppTest) -> None:

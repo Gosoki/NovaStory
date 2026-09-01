@@ -142,8 +142,13 @@ def render() -> None:
         # 同意书版本存证(2026-09-01 拍板 0.5):记下这位被试实际看到的同意文的
         # 指纹 + 语言 + 时刻。采数期间同意书改动一个字(哪怕是修错别字),事后就无法
         # 证明每位被试同意的是哪一版 —— 而这是审查时会被直接问到的。
+        # 指纹要盖住被试**实际看到并勾选**的全部同意文字:正文 + 勾选项措辞 +
+        # 不刷新提示。只盖 body 的话,改了 agree 那句(「我已阅读并同意参与本研究」)
+        # 事后照样说不清他同意的是哪一版。
         "consent_sha1": hashlib.sha1(
-            t("consent.body").encode("utf-8")).hexdigest()[:16],
+            "\x1f".join(t(k) for k in
+                        ("consent.body", "consent.agree", "consent.no_refresh")
+                        ).encode("utf-8")).hexdigest()[:16],
         "consent_lang": st.session_state.get("lang", "ja"),
         "consent_at": datetime.now().isoformat(timespec="seconds"),
         "published_idx": published_idx,

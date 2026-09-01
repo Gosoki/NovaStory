@@ -32,8 +32,6 @@ def submit_trial(final_text: str) -> None:
         condition=cond,
         topic_json=json.dumps(topic, ensure_ascii=False),
         intent_statement=st.session_state["r_intent"],
-        intent_snapshot_json=json.dumps(st.session_state.get("r_snapshot") or [],
-                                        ensure_ascii=False),
         final_output=final_text,
         parse_ok=int(bool(parsed)),
         guidance_json=guidance_json,
