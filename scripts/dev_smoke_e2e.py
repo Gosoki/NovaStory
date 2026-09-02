@@ -158,6 +158,7 @@ def run() -> None:
     at.radio[3].set_value("我不知道")
     at.radio[4].set_value("我不知道")
     set_sc(at, "_scr_self", 1)
+    set_sc(at, "_scr_conf", 2)                # 自我效能:能不能写出短视频脚本的把握
     set_sc(at, "_scr_trust", 4)               # baseline trait: AI trust
     set_sc(at, "_scr_own", 5)                 # baseline trait: ownership disposition
     btn_click(at, "提交并继续")
@@ -231,10 +232,12 @@ def _answer_guidance(at, rnd: int, n: int, custom_idx: int = -1, ai_idx: int = -
 
 
 def _answer_final_survey(at) -> None:
-    for i in (0, 1):  # pref + reuse radios → 3rd option (round 3), language-agnostic
+    # 4 个跨轮单选:最喜欢 / 以后想用 / 最接近一开始想的 / 最费劲
+    for i in (0, 1, 2, 3):
         bg = at.radio[i]
-        bg.set_value(bg.options[2])
+        bg.set_value(bg.options[2])           # 都选第 3 轮,便于断言
     set_sc(at, "_fs_sat", 6)
+    inject(at, "_fs_noticed", "3回目だけ先に質問された")
     btn_click(at, "提交并完成")
 
 
@@ -274,6 +277,11 @@ def _assert_db() -> None:
     assert json.loads(p.iloc[0]["screening_json"])["is_novice"] is True
     fs = json.loads(p.iloc[0]["final_survey_json"])
     assert fs["pref_round"] == 3 and fs["reuse_round"] == 3 and fs["overall_sat"] == 6, fs
+    # 2026-09-02 新增的三条(跨轮保真 / 跨轮努力 / 操纵察觉开放题)
+    assert fs["closest_round"] == 3 and fs["effort_round"] == 3, fs
+    assert fs["noticed_diff"], "操纵察觉开放题没落库"
+    scr = json.loads(p.iloc[0]["screening_json"])
+    assert scr.get("script_confidence") == 2, scr.get("script_confidence")
 
     assert list(tr["condition"]) == ["C", "D", "E"]
     assert tr["model"].notna().all() and tr["t_total"].notna().all()

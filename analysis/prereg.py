@@ -43,6 +43,15 @@ NOVICE_CRITERIA = ("published_idx", "background", "written", "self_rating", "qui
 # ⚠️ 这个数字必须在**冻结时**定死,不能看了数据再改。
 NOVICE_MIN_CRITERIA = 5
 
+# 纳入规则:只分析**走完全部 N_ROUNDS 轮**的被试(以问卷提交数为准,不看 status ——
+# 三轮问卷都交了、只是没点最后那份总问卷的人,任务数据是完整的,不该丢)。
+#
+# 这条以前只存在于 `analysis/v3.py` 的一句注释里(「status 用于纳入规则(离脱者不进
+# 分析)」),但**从来没有被执行过** —— 和文档批过两次的 `NOVICE_DEF` / `DECISION_BRANCHES`
+# 是同一种病:写下来了,管线里没有。2026-09-02 补上,理由不只是洁癖:同意书现在
+# 明写「途中で中止された場合、そこまでのデータは分析に使用しません」,这句话必须是真的。
+ANALYSIS_REQUIRES_ALL_ROUNDS = True
+
 
 def novice_criteria(screening: dict) -> dict:
     """5 个操作化子项各自的真假(便于分报「哪一项把人筛掉了」)。
@@ -188,6 +197,7 @@ def as_dict() -> dict:
         "novice_def": NOVICE_DEF,
         "novice_criteria": list(NOVICE_CRITERIA),
         "novice_min_criteria": NOVICE_MIN_CRITERIA,
+        "analysis_requires_all_rounds": ANALYSIS_REQUIRES_ALL_ROUNDS,
         "sesoi": SESOI,
         "sesoi_by_endpoint": dict(SESOI_BY_ENDPOINT),
         "equiv_dv": dict(EQUIV_DV),

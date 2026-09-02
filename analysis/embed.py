@@ -103,7 +103,7 @@ def _baseline_texts(topic_idx: int, topics: list) -> list[str]:
         raise SystemExit(f"{p} 内记录的 topic_idx={bad} 与文件名不符 —— 基线与题目错配,"
                          "删掉 data/baseline/ 重跑 make baseline")
     from core import prompts as _prompts  # noqa: PLC0415 — avoid a UI import at module load
-    scen = [_prompts.scenario_text(t, "ja") for t in topics]
+    scen = [_prompts.scenario_text(t, "ja", with_note=False) for t in topics]
     seed = (recs[0].get("seed") or "").strip()
     if seed and seed != scen[topic_idx]:
         if seed in scen:

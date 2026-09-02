@@ -307,23 +307,11 @@ def start_rounds() -> None:
 
 
 def begin_rounds(participant_id: int, seq: int, token: str = "") -> None:
-    topics = load_topics()
-    if len(topics) < config.N_ROUNDS:
-        raise RuntimeError(f"topics.json needs >= {config.N_ROUNDS} topics")
-    st.session_state["participant_id"] = participant_id
-    st.session_state["seq"] = seq
-    st.session_state["stage"] = "rounds"
-    st.session_state["round_idx"] = 1
-    st.session_state["round_plan"] = plan_for_seq(seq, topics[: config.N_ROUNDS])
-    # Put the resume handle in the URL so a refresh/reconnect restores this
-    # session instead of re-screening (AUD6). Best-effort: never break the flow.
-    if token:
-        try:
-            st.query_params["t"] = token
-        except Exception:
-            pass
-    reset_round_payload()
-    log_event("round_start")
+    """身份 + 计划 + 开跑,一步到位。只剩 devtools 的「跳过同意+筛查」还在用它 ——
+    正式流程走的是 enter_intro(筛查提交)→ start_rounds(说明页的按钮)两步,
+    好让说明页的停留不被算进第 1 轮的 t_read_intent。"""
+    enter_intro(participant_id, seq, token)
+    start_rounds()
 
 
 def current_round() -> dict:

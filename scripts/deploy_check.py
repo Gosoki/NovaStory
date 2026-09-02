@@ -206,6 +206,33 @@ def check_topics() -> None:
                                    f"镜数/秒数合法。⚠️ 采数期间禁止再改(会静默重配在跑被试的题目)。")
 
 
+def check_consent() -> None:
+    """同意书里的〔…〕占位符必须在发链接之前填掉。
+
+    2026-09-02 重写同意书时补齐了 13 §0.1 列的必备项,但有两处只有你能填:
+    研究者姓名·所属·指导教员·联络先,以及数据保存年限。它们以〔…〕留在正文里 ——
+    这是**被试会逐字读到**的文字,漏填就等于把「〔填写保存年限〕」印在同意书上,
+    而同意书的指纹(screening_json.consent_sha1)还会把这一版记下来。所以是红灯。"""
+    import json as _json
+    bad = []
+    for lg in ("ja", "zh", "en"):
+        try:
+            d = _json.loads((ROOT / "i18n" / "locales" / f"{lg}.json").read_text(encoding="utf-8"))
+            body = d.get("consent", {}).get("body", "")
+        except Exception as e:  # noqa: BLE001
+            add(R, "同意书", f"{lg}.json 读不出来({type(e).__name__})。")
+            return
+        if "〔" in body or "〕" in body:
+            n = body.count("〔")
+            bad.append(f"{lg}({n} 处)")
+    if bad:
+        add(R, "同意书占位符", f"{' · '.join(bad)} 仍含〔…〕未填 —— 被试会逐字读到,"
+                              f"且这一版会被写进 consent_sha1 存证。填掉研究者信息与保存年限再发链接。")
+    else:
+        add(G, "同意书", "三语正文无未填占位符;⚠️ 采数期间禁止再改(改一个字,"
+                         "事后就无法证明每位被试同意的是哪一版)。")
+
+
 def check_backup() -> None:
     if (ROOT / "scripts" / "backup_db.sh").exists():
         add(G, "备份脚本", "scripts/backup_db.sh 就位;确认已进 cron(每日 + 每场后)、异地一份。")
@@ -226,6 +253,7 @@ def main() -> None:
     check_gitignore()
     check_baseline(sec)
     check_topics()
+    check_consent()
     check_backup()
     check_analysis_deps()
 

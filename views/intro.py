@@ -91,10 +91,11 @@ _EX_CSS = """
 .nsx-lead{margin:.9rem 0 .75rem;font-weight:700;font-size:1.02rem;color:var(--ns-accent,#2563eb);
   display:inline-block;border-bottom:2px solid currentColor;padding-bottom:2px}
 .nsx-wrap{margin:0 0 1.05rem}
-.nsx-label{font-size:.82rem;color:var(--ns-dim,#6e6e6e);margin:0 0 5px 2px}
+.nsx-label{font-size:var(--ns-fs-note,.82rem);color:var(--ns-dim,#6e6e6e);margin:0 0 5px 2px}
 .nsx-no{font-weight:700;color:var(--ns-accent,#2563eb);margin-right:.5em}
-.nsx-field{border:1px solid rgba(128,128,128,.45);border-radius:8px;
-  background:rgba(128,128,128,.12);padding:9px 12px;
+.nsx-field{border:1px solid var(--ns-line,rgba(128,128,128,.45));
+  border-radius:var(--ns-radius,8px);
+  background:var(--ns-soft,rgba(128,128,128,.12));padding:9px 12px;
   font-size:.9rem;line-height:1.55;white-space:pre-wrap}
 </style>
 """

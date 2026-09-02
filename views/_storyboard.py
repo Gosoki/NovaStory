@@ -7,6 +7,11 @@ import streamlit as st
 from core import shots
 from i18n import t
 
+# ⚠️ 这张纸有**自己的一套配色**(奶白纸 #fbfaf3 / 墨线 #3f3f3f / 格线 #9a958c),
+# 刻意不走 app.py 的 --ns-* 令牌:它模拟的是一张真实的絵コンテ用纸,底色固定、不随
+# 明暗主题翻转。所以这里出现的颜色字面量是**子主题**,不是漏网的散落值 —— 改它之前
+# 先确认你要改的是「纸」而不是「界面」。
+#
 # Storyboard preview sheet, styled like a real 絵コンテ / 分镜纸: circled cut
 # numbers, a 16:9 empty picture frame per shot (the 画面 column — a generated
 # sketch there is future work, "coming soon"), then action / dialogue columns on
@@ -131,6 +136,38 @@ tr.sb-blank .sb-frame .lbl{display:none}
     width:auto!important;filter:none!important;cursor:auto!important;
     box-shadow:0 1px 7px rgba(0,0,0,.13)!important;
     pointer-events:auto;margin:.2rem 0 .9rem!important}}
+/* ── 窄屏:表格 → 每镜一张卡 ────────────────────────────────────────────
+   5 列的固定百分比(7/14/33/28/18%)是给 ~900px 宽的桌面表调的。放到 390px 的手机上
+   就成了 27/55/129/109/70 px —— 实测截图里「No.」的表头竖排成 N / o / .,
+   「クローズアップ」在 55px 里折成四行并压住镜号圆圈,「セリフ・音」整列变成一列
+   单字带子(静 / か / な / 寝 / 室)。那是完全读不了的,而问卷页正要求被试**对照着
+   这张表**回答所有权与保真 —— 读不了表,答的就不是同一道题。
+   所以窄屏不再是表:每一镜变成一张卡,画框整宽,文字列带回自己的列名。 */
+@media (max-width:700px){
+  table.sb-tbl{display:block;table-layout:auto;font-size:.9rem}
+  table.sb-tbl thead{display:none}
+  table.sb-tbl tbody{display:block}
+  table.sb-tbl tr{display:grid;grid-template-columns:auto 1fr;gap:0 10px;
+    border:1px solid #9a958c;border-radius:4px;margin:0 0 10px;padding:8px 10px;
+    background:rgba(255,255,255,.5)}
+  table.sb-tbl td{display:block;border:0!important;padding:3px 0!important;width:auto!important}
+  table.sb-tbl td.sb-no{grid-column:1;grid-row:1;align-self:center}
+  table.sb-tbl td:nth-child(2){grid-column:2;grid-row:1;align-self:center;font-weight:600}
+  table.sb-tbl td.sb-pic{grid-column:1/-1;padding:6px 0 2px!important}
+  table.sb-tbl td:nth-child(4),table.sb-tbl td:nth-child(5){grid-column:1/-1}
+  table.sb-tbl td:nth-child(4)::before,table.sb-tbl td:nth-child(5)::before{
+    content:attr(data-col);display:block;font-size:.72rem;font-weight:700;
+    /* #6a6a6a 在这张固定奶白纸(#fbfaf3)上是 5.3:1 过 AA;这里**不能**用 --ns-dim ——
+       深色主题下它会解析成 #a3a3a3,而纸色是固定的,对比度掉到 ~2.2:1。 */
+    letter-spacing:.04em;color:#6a6a6a;margin-top:4px}
+  /* 画框在卡片模式下会独占整宽:3 镜里通常两三格是空占位(未开 OpenAI 时全是空),
+     16:9 撑开就是三倍的纸高,被试要多滚两屏才看得完自己那 3 镜。限个宽。 */
+  table.sb-tbl td.sb-pic .sb-frame{max-width:320px}
+  /* 装饰用的空白第 4 行在手机上只是一张空卡,收起来 */
+  table.sb-tbl tr.sb-blank{display:none}
+  .sb-sheet{padding:10px 10px 12px}
+  .sb-sheet .sb-ttl{font-size:.98rem;letter-spacing:.12em}
+}
 </style>
 """
 
@@ -172,12 +209,16 @@ def render(script: str, subtitle: str, sketches: list[str] | None = None,
     body = ""
     for i, s in enumerate(parsed, 1):
         sketch = sketches[i - 1] if sketches and i - 1 < len(sketches) else ""
+        # data-col:窄屏堆叠成卡片后,用 ::before 把列名显回来(见 _SB_CSS 的 700px 段)
         body += (
             f'<tr><td class="sb-no"><span class="cut">{i}</span></td>'
             f'<td><div class="cell">{html.escape(s.get("shot_type") or "—")}</div></td>'
-            f'<td class="sb-pic">{_frame(todo, (s.get("duration") or "").strip(), sketch)}</td>'
-            f'<td><div class="cell">{html.escape(s.get("visual") or "")}</div></td>'
-            f'<td><div class="cell">{html.escape(s.get("audio") or "")}</div></td></tr>'
+            f'<td class="sb-pic">'
+            f'{_frame(todo, (s.get("duration") or "").strip(), sketch)}</td>'
+            f'<td data-col="{html.escape(t("storyboard.col_plot"))}">'
+            f'<div class="cell">{html.escape(s.get("visual") or "")}</div></td>'
+            f'<td data-col="{html.escape(t("storyboard.col_line"))}">'
+            f'<div class="cell">{html.escape(s.get("audio") or "")}</div></td></tr>'
         )
     # Blank row after the numbered shots (row 4): an empty picture cell.
     body += (

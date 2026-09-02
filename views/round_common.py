@@ -100,10 +100,11 @@ def _topic_card(topic: dict) -> None:
     lang = get_lang()
     st.subheader(t("round.topic_heading"))
     with st.container(border=True):
-        st.markdown(f"**{state.topic_text(topic, 'title', lang)}**")
         # 情境的两半必须同语言解析(prompts.situation_lang),否则半译的题库会让
         # 被试看到「英文设定 + 日文选择」,而模型拿到的也是同一份混语前提。
+        # 题名一并用它 —— 否则会出现「日文题名 + 英文情境」的另一种混语。
         slang = prompts.situation_lang(topic, lang)
+        st.markdown(f"**{state.topic_text(topic, 'title', slang)}**")
         st.write(state.topic_text(topic, "scenario", slang))
         choices = state.topic_text(topic, "choices", slang)
         if choices:
@@ -114,7 +115,8 @@ def _topic_card(topic: dict) -> None:
             # whose intent we partly wrote for them — which is exactly what the
             # fidelity measure is supposed to be measuring.
             st.markdown(
-                "<div style='color:var(--ns-dim,#6e6e6e);font-size:.88rem;"
+                "<div style='color:var(--ns-dim,#6e6e6e);"
+                "font-size:var(--ns-fs-note,.82rem);"
                 "line-height:1.5;margin:-.35rem 0 .35rem'>"
                 + html.escape(t("round.topic_choices",
                                 choices=_TAIL_RE.sub("", choices),

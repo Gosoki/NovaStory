@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import html
+
 import streamlit as st
 
 from i18n import t
@@ -27,25 +29,28 @@ _ANCHOR_SETS = {
 }
 
 
-def _anchor_html(text: str, align: str) -> str:
-    return (
-        f"<div style='text-align:{align};color:rgba(140,140,140,0.95);"
-        f"font-size:0.78rem;line-height:1.15'>{text}</div>"
-    )
-
-
 def _render_anchors(kind: str | None) -> None:
-    """Anchor labels aligned under the scale: left / (center) / right, inside a
-    container the same width as the button row so they line up with 1 / mid / 7."""
+    """Anchor labels under the scale: left / (center) / right, in ONE row whose
+    width matches the button row so they line up with 1 / mid / 7.
+
+    Deliberately a single flex row (styled by `.ns-anchor` in app.py), not
+    `st.columns(3)`: Streamlit stacks columns vertically below ~640px, which on a
+    phone turned every scale's three anchors into a diagonal staircase of three
+    separate lines — and once 「非常にそう思う」 sits on its own line far under the
+    buttons, the participant can no longer tell which END of the scale it labels.
+    On a 7-point item whose meaning IS its anchors, that is the instrument losing
+    its calibration, not a cosmetic issue. (Verified on a 390px viewport.)"""
     if not kind:
         return
     left, mid, right = _ANCHOR_SETS[kind]
-    with st.container(width=WIDTH):
-        c1, c2, c3 = st.columns(3)
-        c1.markdown(_anchor_html(t(f"q.{left}"), "left"), unsafe_allow_html=True)
-        if mid:
-            c2.markdown(_anchor_html(t(f"q.{mid}"), "center"), unsafe_allow_html=True)
-        c3.markdown(_anchor_html(t(f"q.{right}"), "right"), unsafe_allow_html=True)
+    cells = [f'<span class="a-l">{html.escape(t(f"q.{left}"))}</span>']
+    if mid:
+        cells.append(f'<span class="a-m">{html.escape(t(f"q.{mid}"))}</span>')
+    cells.append(f'<span class="a-r">{html.escape(t(f"q.{right}"))}</span>')
+    st.markdown(
+        f'<div class="ns-anchor" style="max-width:{WIDTH}px">{"".join(cells)}</div>',
+        unsafe_allow_html=True,
+    )
 
 
 def likert(label: str, key: str, *, anchors: str | None = "agree"):

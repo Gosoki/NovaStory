@@ -68,6 +68,13 @@ def render() -> None:
         self_rating = _scale.likert(
             t("screening.self_rating"), "_scr_self", anchors="skill"
         )
+        # 自我效能:「我有把握写出来」。与 self_rating(自评熟练度)是两回事 ——
+        # 熟练度问的是既有技能,把握问的是**面对这个任务时的信心**,后者才是
+        # 所有权/主导感这类结果变量的经典调节量。和其它基线特质一样在**前测**,
+        # 免得被体验本身污染。不进 novice 定义(那是冻结的)。
+        script_conf = _scale.likert(
+            t("screening.script_confidence"), "_scr_conf"
+        )
 
         # Baseline traits (7-point), measured pre-task so they aren't contaminated
         # by the experience — covariates/moderators for paper/10 H1 (ownership)
@@ -103,6 +110,7 @@ def render() -> None:
         (t("screening.ai_freq"), ai_freq), (t("screening.aiexp"), aiexp),
         (t("screening.published"), published), (t("screening.background"), background),
         (t("screening.written"), written), (t("screening.self_rating"), self_rating),
+        (t("screening.script_confidence"), script_conf),
         (t("screening.trust"), trust), (t("screening.own_trait"), own_trait),
         (t("screening.quiz1"), quiz1), (t("screening.quiz2"), quiz2),
     ]
@@ -155,6 +163,7 @@ def render() -> None:
         "background": "no" if background == is_no else "yes",
         "written": "no" if written == is_no else "yes",
         "self_rating": int(self_rating),
+        "script_confidence": int(script_conf),
         "aiexp_idx": aiexp_idx,
         "trust": int(trust),
         "own_trait": int(own_trait),

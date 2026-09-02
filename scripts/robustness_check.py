@@ -17,6 +17,7 @@
 """
 from __future__ import annotations
 
+import json
 import sys
 import tempfile
 import threading
@@ -146,7 +147,7 @@ def run_intake(at: AppTest) -> None:
     at.radio[2].set_value("否")
     at.radio[3].set_value("我不知道")
     at.radio[4].set_value("我不知道")
-    for key, val in (("_scr_self", 1), ("_scr_trust", 4), ("_scr_own", 5)):
+    for key, val in (("_scr_self", 1), ("_scr_conf", 3), ("_scr_trust", 4), ("_scr_own", 5)):
         [b for b in at.get("button_group") if b.key == key][0].set_value(val)
     safe_run(at)
     click(at, "提交并继续")     # → 说明页(身份/续接 token 此时已就位)
@@ -558,6 +559,57 @@ def section_e() -> None:
 
 # ---------------------------------------------------------------- main
 
+# ------------------------------------------------------- F. 研究员后台真的渲染得出来
+
+def section_f() -> None:
+    """研究员后台是采数期唯一的仪表盘,却从来没有任何测试**渲染**过它。
+
+    代价已经付过一次:2026-09-02 的审计发现 `_dup_contacts` 抽出来时把 `st.progress`
+    与语言构成块一起吞进了新函数的 `if dup:` 分支 —— 平时招募进度条与 zh/en 混语告警
+    **静默消失**,而一旦真出现重复邮箱(正是那条告警存在的场景)整个后台 `NameError`
+    白屏。两条链当时全绿,因为谁都没渲染过这一页。"""
+    head("F. 研究员后台(监控 + 数据浏览 + 分析面板)渲染")
+    db.DB_PATH = Path(tempfile.mkdtemp()) / "panel.db"
+    db.init_db()
+
+    def open_panel(tag: str) -> AppTest:
+        at = boot_app()
+        at.session_state["researcher_ok"] = True
+        at.session_state["researcher_mode"] = True
+        safe_run(at)
+        ck(at.exception == [], f"后台在「{tag}」下渲染无异常",
+           str(at.exception[:1]) if at.exception else "")
+        return at
+
+    at = open_panel("空库")
+    ck(any("参加者" in i.value or "被试" in i.value or "participant" in i.value.lower()
+           for i in at.info) or len(at.metric) >= 4,
+       "空库时给出「还没有数据」而不是空白页", f"{len(at.metric)} 张卡 / {len(at.info)} 条提示")
+
+    # 正常数据:一个 ja 完成者 + 一个 zh 完成者(应触发语言构成告警)
+    for lang, mail in (("ja", None), ("zh", None)):
+        pid, _, _ = db.insert_participant(lang, {"age_idx": 1}, {"is_novice": True}, passed=True)
+        db.make_completion_code(pid)
+    at = open_panel("有数据 · 含 zh 会话")
+    prog = at.get("progress")
+    ck(len(prog) >= 1, "招募进度条在正常路径下渲染得出来(不是只在异常分支里)",
+       f"{len(prog)} 个 progress")
+    warns = " ".join(w.value for w in at.warning)
+    ck("zh" in warns, "混入 zh 会话时语言构成告警出现", warns[:70])
+
+    # 重复邮箱:那条告警存在的场景,也是曾经把整页打崩的场景
+    rows = db.load_table("participants")
+    for pid in list(rows["id"])[:2]:
+        db.set_contact(int(pid), json.dumps({"email": "Same@Example.com"}))
+    at = open_panel("两位被试留了同一个邮箱")
+    warns = " ".join(w.value for w in at.warning)
+    ck(any(ch.isdigit() for ch in warns) and ("メール" in warns or "邮箱" in warns
+                                              or "email" in warns.lower()),
+       "重复邮箱触发计数告警,且整页仍然渲染得出来", warns[:80])
+    ck(len(at.get("progress")) >= 1, "重复邮箱时进度条仍在(没被吞进异常分支)")
+    ck(not any("@" in w.value for w in at.warning), "告警只报计数,不把邮箱地址显示出来")
+
+
 def main() -> None:
     llm.generate_stream = _stub_stream
     llm.generate_json = _stub_json
@@ -568,6 +620,7 @@ def main() -> None:
     section_c()
     section_d()
     section_e()
+    section_f()
 
     print(f"\n{'=' * 68}")
     if _FAILS:
@@ -576,7 +629,7 @@ def main() -> None:
             print(f"   · {f}")
         print("=" * 68)
         sys.exit(1)
-    print("ROBUSTNESS CHECK PASSED —— 并发 / 断网 / 刷新 / 脏数据 / 后台线程 全绿")
+    print("ROBUSTNESS CHECK PASSED —— 并发 / 断网 / 刷新 / 脏数据 / 后台线程 / 研究员后台 全绿")
     print("=" * 68)
 
 

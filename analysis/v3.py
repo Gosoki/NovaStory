@@ -29,6 +29,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from analysis import prereg, textstats  # noqa: E402
+from core import config  # noqa: E402
 from core.shots import parse_shots, strip_format  # noqa: E402
 
 DEFAULT_DB = ROOT / "data" / "novastory.db"
@@ -82,6 +83,20 @@ def load(db_path: Path) -> pd.DataFrame:
     df = df.merge(pmeta[keep], on="participant_id", how="left")
     df["lang"] = df["lang"].fillna("ja")
     df["novice"] = df["novice"].fillna(False).astype(bool)
+
+    # 纳入规则(prereg.ANALYSIS_REQUIRES_ALL_ROUNDS):离脱者不进分析。
+    # 以**问卷提交数**为准而不是 participants.status —— 三轮都答完、只差最后那份
+    # 总问卷没交的人,任务数据是完整的,status 却还停在 in_progress,丢掉可惜。
+    # 同意书里写着「中止した場合、そこまでのデータは分析に使用しません」,这一句
+    # 的真假就落在这几行上。
+    if prereg.ANALYSIS_REQUIRES_ALL_ROUNDS and len(df):
+        n_done = quest.groupby("participant_id").size()
+        keep_ids = set(int(i) for i in n_done[n_done >= config.N_ROUNDS].index)
+        dropped = sorted(set(int(i) for i in df["participant_id"]) - keep_ids)
+        if dropped:
+            print(f"    纳入规则:排除 {len(dropped)} 名未走完 {config.N_ROUNDS} 轮的被试 "
+                  f"(id={dropped[:8]}{'…' if len(dropped) > 8 else ''})")
+        df = df[df["participant_id"].isin(keep_ids)].reset_index(drop=True)
     return df
 
 
@@ -384,7 +399,12 @@ def main() -> None:
         print(f"    ⚠️ novice 占比 <{prereg.NOVICE_SHARE_YELLOW:.0%} = pilot_check ③ 🔴"
               f" —— 需收紧招募或启用 4-of-5 退路(B1)")
     # 哪一项把人筛掉了 —— 试测时据此判断该改招募还是该放宽定义
-    fails = {k: int((~pt.drop_duplicates("participant_id")[f"nv_{k}"]).sum())
+    # 用 == False 而不是 ~:nv_* 是「np.nan if 缺项 else bool」生成的(为了避开
+    # bool(NaN) 恒 True),只要有一位被试缺了任一子项,整列就退成 object dtype,
+    # 而 ~ 对 object 列会抛 TypeError —— 一条残缺的 screening 行就能让整条分析链崩掉。
+    # == False 天然把 NaN 排除在外,正是「未满足」应有的语义(缺项 ≠ 不满足)。
+    sub = pt.drop_duplicates("participant_id")
+    fails = {k: int((sub[f"nv_{k}"] == False).sum())  # noqa: E712 — NaN 安全,不能改 `not`
              for k in prereg.NOVICE_CRITERIA}
     print(f"    未满足人数(按子项): {fails}\n")
     if "lang" in pt.columns:

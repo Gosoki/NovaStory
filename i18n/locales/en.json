@@ -1,7 +1,8 @@
 {
   "app": {
     "title": "NovaStory · Short-Video Storyboard Creation",
-    "subtitle": "An online study on human–AI co-creation"
+    "subtitle": "An online study on human–AI co-creation",
+    "contact": "Questions about this study: g2550005@stu.musashino-u.ac.jp"
   },
   "common": {
     "loading": "The AI is generating… please wait a moment."
@@ -25,7 +26,7 @@
   },
   "consent": {
     "title": "Study Information and Informed Consent",
-    "body": "Thank you for taking part in this study!\n\n**What you will do**: You will create 3 short-video storyboard scripts on given topics, each with a different form of AI assistance, and answer a few short questions after each one. The whole session takes about **10-15 minutes**.\n\n**Data**: We record the text you enter, your interactions with the system, and your questionnaire answers. Data are used for academic research only, analyzed anonymously, and nothing that could identify you will be published.\n\n**External AI service**: The text you enter (your idea, revision instructions, free-text answers) is sent to the **OpenAI API (United States)** in order to generate the storyboard. Data sent via the API is not used to train models by default; it is retained for at most 30 days for abuse monitoring and then deleted. **Please do not enter names, school names, or anything that could identify a real person.**\n\n**Voluntary**: You may leave at any time by closing the page, with no negative consequences.\n\nIf you agree, please tick the box below and begin.",
+    "body": "Thank you for taking part in this study!\n\n**What you will do**: You will create 3 short-video storyboard scripts on given topics, each with a different form of AI assistance, and answer a few short questions after each one. The whole session takes about **10-15 minutes**.\n\n**Data**: We record the text you enter, your interactions with the system, and your questionnaire answers. Data are used for academic research only, analyzed anonymously, and nothing that could identify you will be published.\n\n**External AI service**: The text you enter (your idea, revision instructions, free-text answers) is sent to the **OpenAI API (United States)** both to **generate** the storyboard and for **analysis** (automatic evaluation and semantic-similarity computation). Data sent via the API is not used to train models by default; it is retained for at most 30 days for abuse monitoring and then deleted. **Please do not write names, school names, or anything identifying a real person into the idea and storyboard fields.**\n\n**Publication**: The storyboards you create and the text you write may be quoted, anonymized, in the resulting paper, conference presentations and slides.\n\n**Retention**: Research data are kept until 〔fill in the retention period〕 and then destroyed irrecoverably. Because collection is anonymous, we cannot locate and delete your individual record after it has been submitted.\n\n**Voluntary participation**: Participation is entirely voluntary. You may stop at any time by closing the page, with no negative consequences, and neither taking part nor stopping will affect any grade or evaluation. **If you stop partway, the data recorded up to that point will not be used in the analysis** (only participants who complete all 3 rounds are analyzed).\n\n**Contact**: g2550005@stu.musashino-u.ac.jp 〔fill in researcher name, affiliation, supervisor〕\n\n**Providing an email address is optional**: On the final screen we ask for an email address only from those who want one. It is used solely to deliver the AI-generated short film or to get in touch, and **leaving it blank is completely fine and changes nothing about your participation**. Only if you provide it is the address stored linked to your answers (without it, the record stays anonymous).\n\nIf you agree, please tick the box below and begin.",
     "agree": "I have read the above and agree to take part in this study",
     "start": "Agree and begin",
     "no_refresh": "⚠️ Please try not to refresh or use the browser's Back button. If you do refresh, you'll automatically resume where you left off as long as you stay in the same tab (please don't close the tab)."
@@ -81,6 +82,7 @@
     "background": "Do you have a degree or professional experience in film, media, graphic design, or a related field?",
     "written": "Have you ever written a storyboard script or screenplay before?",
     "self_rating": "How would you rate your own skill at storyboard scriptwriting?",
+    "script_confidence": "I feel confident I could write a short-video script (storyboard) myself.",
     "aiexp": "Have you used AI for any creative task (writing, storyboards, scripts, illustration prompts, etc.)?",
     "aiexp_opt1": "Never",
     "aiexp_opt2": "Tried a few times",
@@ -178,7 +180,8 @@
   "done": {
     "title": "All done — thank you for participating! 🎉",
     "message": "All of your data has been recorded successfully. Here is your completion code:",
-    "code_hint": "Seeing this screen means you are done — you can simply close the page. The completion code is only used if you want to get in touch with the author — in that case, add it to the form below (if you don't, feel free to ignore it).",
+    "code_use": "The completion code is only used if you want to get in touch with the author — in that case, add it to the form below (if you don't, feel free to ignore it).",
+    "code_hint": "Seeing this screen means you are done — you can simply close the page.",
     "no_repeat": "⚠️ Please do not take part in this creation study more than once. If you would like a similar service, leave your contact details and what you are after in the form below.",
     "contact_title": "🎬 Would you like a real short film?",
     "contact_body": "We can turn the storyboard you just wrote into a **real short film**.\n\n- The film is **generated entirely by AI** (visuals, editing and sound alike).\n- It is still in development, so it may take **up to a year** to reach your inbox — and it may not arrive at all.\n- You are also welcome to leave contact details without asking for the film.\n\nYour email will only be used to send the film or to get in touch — nothing else.",
@@ -186,8 +189,7 @@
     "contact_email": "Email address",
     "contact_note": "What you are after / anything to add (optional)",
     "contact_note_ph": "e.g. make it vertical / I'd like to talk about working together",
-    "contact_privacy": "※ This box is stored together with your responses — please don't include names, school names or phone numbers.",
-    "contact_closed": "This link was opened elsewhere — the contact form is only available in the session that finished the study.",
+    "contact_closed": "This form is only open in the session that just finished (reloading the page closes it). If you'd like to get in touch, quote the completion code above.",
     "contact_submit": "Confirm email (leave my contact details)",
     "contact_saved": "✅ Saved — thank you! We'll email you when there is news.",
     "reset": "Reset all records",
@@ -198,7 +200,11 @@
     "hint": "Now that you've finished all three rounds, please share your overall impressions.",
     "q_pref": "Which round's way of creating did you like best?",
     "q_reuse": "If you use AI to create something in the future, which round's approach would you want to use?",
+    "q_closest": "Which round's result came closest to **what you first pictured**?",
+    "q_effort": "Which round felt like the most effort?",
     "q_overall": "Overall, how satisfied are you with this creative experience?",
+    "q_noticed": "Did you notice any difference between the three rounds? If so, how did they differ? (optional)",
+    "q_noticed_ph": "e.g. in round 2 I could ask the AI to revise it; in round 3 it asked me questions first…",
     "round_n": "Round {i}",
     "comment": "Anything else you'd like to add (optional)",
     "submit": "Submit and finish"

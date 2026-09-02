@@ -62,7 +62,7 @@ def situation_lang(topic: dict, lang: str) -> str:
     return _norm(lang)
 
 
-def scenario_text(topic: dict, lang: str) -> str:
+def scenario_text(topic: dict, lang: str, *, with_note: bool = True) -> str:
     """Full situation text = the setup sentence + the "which will you do?" list.
 
     They are two fields in topics.json since 2026-09-01 (§15) so the UI can grey
@@ -77,8 +77,14 @@ def scenario_text(topic: dict, lang: str) -> str:
     # 「别的展开也可以」,而 prompt 这边原样断言,两边就不一致了:被试写了列表之外的
     # 走向,模型仍被锚在列表上,生成结果会往回拉。这个偏差还与条件相关 —— D/E 能把稿子
     # 改回来,C 不能 —— 于是会**系统性地压低 C 的保真**,而保真恰好是 H1 的主终点。
-    note = _CHOICE_NOTE[key if key in _CHOICE_NOTE else "ja"]
     sep = " " if key == "en" else ""
+    if not with_note:
+        # with_note=False 给的是「这道题的情境本身」,不含那句写给模型看的元指令。
+        # 机器基线用它当**假装的用户创意**(scripts/baseline_gen.py 的 seed),
+        # embed 又靠这个字符串反查基线属于哪道题 —— 把「以上的分支只是例子」当成
+        # 用户的创意喂进去,基线质心量的就不是「纯 AI 会写成什么样」了。
+        return f"{scenario}{sep}{choices}"
+    note = _CHOICE_NOTE[key if key in _CHOICE_NOTE else "ja"]
     return f"{scenario}{sep}{choices}{sep}{note}"
 
 
