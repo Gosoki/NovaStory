@@ -109,6 +109,14 @@ def _baseline_texts(topic_idx: int, topics: list) -> list[str]:
         if seed in scen:
             raise SystemExit(f"{p} 是用第 {scen.index(seed)} 题的情境生成的 —— topics.json 已被"
                              "重排/改写,基线与题目错配,删掉 data/baseline/ 重跑 make baseline")
+        # 2026-09-02 之前生成的基线,seed 里带着那句写给模型看的元指令
+        # (「以上の分岐はあくまで例です…」)。那批基线的「假装的用户创意」被污染过,
+        # Δ 的零点量的不是「纯 AI 会写成什么样」——必须硬失败,不能只警告一句。
+        old_style = [_prompts.scenario_text(t, "ja", with_note=True) for t in topics]
+        if seed in old_style:
+            raise SystemExit(
+                f"{p.name} 是 2026-09-02 seed 变更**之前**生成的(seed 里含元指令),"
+                "Δ 的零点被污染 —— 删掉 data/baseline/ 重跑 make baseline")
         print(f"⚠️ {p.name} 的 seed 不是任何题的情境(可能用了 --seeds-file):题目身份只能按"
               "文件序号信任,请确认 topics.json 自生成基线以来未改动。")
     return [r["text"] for r in recs]
@@ -148,6 +156,17 @@ def compute() -> None:
     trials = pd.read_sql("SELECT participant_id, round_idx, intent_statement, final_output, "
                          "topic_json, model FROM trials", con)
     con.close()
+
+    # 纳入规则(同 analysis/v3):此前 embed **连 dev 过滤都没有** —— 研究员的测试稿会
+    # 进质心、也会被送去 OpenAI 算 embedding。而同意书写着中止者的回答不用于分析,
+    # embedding 正是「分析」里最实打实的那一步(还要把原文外发一次)。
+    from analysis import v3 as _v3  # noqa: PLC0415 — 避免模块级循环依赖
+    keep = _v3.included_participants(DB)
+    n0 = trials["participant_id"].nunique()
+    trials = trials[trials["participant_id"].isin(keep)]
+    if trials["participant_id"].nunique() < n0:
+        print(f"  纳入规则:{n0} 人中排除 "
+              f"{n0 - trials['participant_id'].nunique()} 人(dev / 未走完全部轮次)")
 
     # topic title → baseline index(按 topics.json 顺序,由 _baseline_texts 复核身份)
     topics = json.loads((DATA / "topics.json").read_text(encoding="utf-8"))

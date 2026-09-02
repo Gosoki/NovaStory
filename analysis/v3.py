@@ -39,6 +39,38 @@ _TAGS = ("mine", "ai_ok", "ai_against")
 
 # ---------------- load ----------------
 
+def included_participants(db_path) -> set[int]:
+    """分析纳入的被试 id —— **每一个取数口都必须用它**,不能各写各的。
+
+    两条规则:
+      ① 研究员注入的 dev 被试(`screening_json.dev`)不算;
+      ② `prereg.ANALYSIS_REQUIRES_ALL_ROUNDS` 为真时,只留**走完全部 N_ROUNDS 轮**的人,
+         以**问卷提交数**为准(不看 `participants.status` —— 三轮问卷都交了、只差最后
+         那份总问卷没点的人,任务数据是完整的)。
+
+    ⚠️ 抽出来不是为了整洁。同意书里写着「中止された場合、そこまでの回答は分析には
+    使用しません」,而此前这条规则**只在 v3.load() 里生效**;`events` / `pilot_check` /
+    `embed` / `judge` 各自直接读库,其中 **`embed` 与 `judge` 会把被试原文再送一次给
+    OpenAI** —— 也就是说离脱者的文字照样被外发,那句承诺当场就是假的。
+    (`pilot_check` 更是用了第三种口径 `status=='done'`,同一份报告里两个分母。)"""
+    con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    try:
+        parts = pd.read_sql("SELECT id, screening_json FROM participants", con)
+        quest = pd.read_sql("SELECT participant_id, round_idx FROM questionnaires", con)
+    finally:
+        con.close()
+    ids = {int(r.id) for r in parts.itertuples()
+           if not _loads(r.screening_json, {}).get("dev")}
+    if prereg.ANALYSIS_REQUIRES_ALL_ROUNDS:
+        if len(quest):
+            n = (quest.drop_duplicates(["participant_id", "round_idx"])
+                      .groupby("participant_id").size())
+            ids &= {int(i) for i in n[n >= config.N_ROUNDS].index}
+        else:
+            ids = set()
+    return ids
+
+
 def load(db_path: Path) -> pd.DataFrame:
     """trials ⟕ questionnaires,按 (participant_id, round_idx);容忍缺列。
 
@@ -51,13 +83,21 @@ def load(db_path: Path) -> pd.DataFrame:
         trials = pd.read_sql("SELECT * FROM trials", con)
         quest = pd.read_sql("SELECT * FROM questionnaires", con)
         parts = pd.read_sql(
-            "SELECT id, lang, seq, status, screening_json FROM participants", con)
+            "SELECT id, lang, seq, status, screening_json, final_survey_json"
+            " FROM participants", con)
     finally:
         con.close()
-    dev_ids = {int(r.id) for r in parts.itertuples()
-               if _loads(r.screening_json, {}).get("dev")}
-    if dev_ids:
-        trials = trials[~trials["participant_id"].isin(dev_ids)]
+    keep_ids = included_participants(db_path)
+    n_before = trials["participant_id"].nunique()
+    trials = trials[trials["participant_id"].isin(keep_ids)]
+    n_after = trials["participant_id"].nunique()
+    if n_after < n_before:
+        # 试测早期没人走完 3 轮时会一个不剩 —— 那时的空结果必须与「库里本来就没数据」
+        # 区分开,否则看到「N=0」的人会以为埋点坏了,而其实是纳入规则在正常工作。
+        print(f"    纳入规则:{n_before} 人中排除 {n_before - n_after} 人"
+              f"(dev 测试被试,或未走完 {config.N_ROUNDS} 轮)"
+              + ("  ⚠️ 全部被排除 —— 库里有数据,但还没有人走完全部轮次"
+                 if n_after == 0 else ""))
     # avoid column collisions on merge (id/created_at exist in both)
     quest = quest.drop(columns=[c for c in ("id", "created_at") if c in quest], errors="ignore")
     df = trials.merge(quest, on=["participant_id", "round_idx"], how="left",
@@ -78,25 +118,32 @@ def load(db_path: Path) -> pd.DataFrame:
     pmeta["novice"] = scr.map(prereg.is_novice)
     for k in prereg.NOVICE_CRITERIA:      # 5 个原始子项,便于分报「哪一项筛掉了人」
         pmeta[f"nv_{k}"] = scr.map(lambda d, _k=k: prereg.novice_criteria(d)[_k])
-    keep = ["participant_id", "lang", "seq", "status", "novice"] + \
+    # 2026-09-02 新增的四项测量必须进得了管线,否则就是「收了但没人读」——
+    # 这个项目已经因为同一种病吃过三次亏(NOVICE_DEF / DECISION_BRANCHES / 纳入规则)。
+    # script_confidence 是自我效能(所有权/主导感的调节量);总问卷的三条是跨轮的
+    # 收敛证据与操纵察觉。全部**探索性**,要当确证得先写进 prereg 与 04。
+    pmeta["script_confidence"] = scr.map(lambda d: d.get("script_confidence"))
+    fs = pmeta["final_survey_json"].map(lambda x: _loads(x, {}))
+    for src, dst in (("pref_round", "fs_pref_round"), ("reuse_round", "fs_reuse_round"),
+                     ("closest_round", "fs_closest_round"), ("effort_round", "fs_effort_round"),
+                     ("overall_sat", "fs_overall_sat"), ("noticed_diff", "fs_noticed_diff")):
+        pmeta[dst] = fs.map(lambda d, _k=src: d.get(_k))
+    keep = ["participant_id", "lang", "seq", "status", "novice", "script_confidence",
+            "fs_pref_round", "fs_reuse_round", "fs_closest_round", "fs_effort_round",
+            "fs_overall_sat", "fs_noticed_diff"] + \
            [f"nv_{k}" for k in prereg.NOVICE_CRITERIA]
     df = df.merge(pmeta[keep], on="participant_id", how="left")
     df["lang"] = df["lang"].fillna("ja")
     df["novice"] = df["novice"].fillna(False).astype(bool)
 
-    # 纳入规则(prereg.ANALYSIS_REQUIRES_ALL_ROUNDS):离脱者不进分析。
-    # 以**问卷提交数**为准而不是 participants.status —— 三轮都答完、只差最后那份
-    # 总问卷没交的人,任务数据是完整的,status 却还停在 in_progress,丢掉可惜。
-    # 同意书里写着「中止した場合、そこまでのデータは分析に使用しません」,这一句
-    # 的真假就落在这几行上。
-    if prereg.ANALYSIS_REQUIRES_ALL_ROUNDS and len(df):
-        n_done = quest.groupby("participant_id").size()
-        keep_ids = set(int(i) for i in n_done[n_done >= config.N_ROUNDS].index)
-        dropped = sorted(set(int(i) for i in df["participant_id"]) - keep_ids)
-        if dropped:
-            print(f"    纳入规则:排除 {len(dropped)} 名未走完 {config.N_ROUNDS} 轮的被试 "
-                  f"(id={dropped[:8]}{'…' if len(dropped) > 8 else ''})")
-        df = df[df["participant_id"].isin(keep_ids)].reset_index(drop=True)
+    # 跨轮强制选择问的是「哪一轮」,但分析要的是「哪个条件」—— 轮次↔条件的映射
+    # 每个被试都不同(拉丁方),所以在这里就地翻译好,免得每个用它的人各写一遍。
+    cond_by = {(int(r.participant_id), int(r.round_idx)): r.condition
+               for r in df.itertuples() if pd.notna(r.condition)}
+    for src, dst in (("fs_pref_round", "fs_pref_cond"), ("fs_reuse_round", "fs_reuse_cond"),
+                     ("fs_closest_round", "fs_closest_cond"), ("fs_effort_round", "fs_effort_cond")):
+        df[dst] = [cond_by.get((int(pid), int(rd))) if pd.notna(rd) else None
+                   for pid, rd in zip(df["participant_id"], df[src])]
     return df
 
 
@@ -309,6 +356,14 @@ def per_trial(df: pd.DataFrame) -> pd.DataFrame:
             # 全报成「满足」,与同一行 novice=False 直接矛盾。缺就记 NaN。
             **{f"nv_{k}": (np.nan if pd.isna(r.get(f"nv_{k}")) else bool(r.get(f"nv_{k}")))
                for k in prereg.NOVICE_CRITERIA},
+            # 2026-09-02 新增的四项测量。它们是**逐被试**的量,在逐 trial 表里会重复
+            # 三行 —— 分析时按 participant_id 去重即可;放在这里是为了让它们真的
+            # 出现在 CSV 里,而不是止步于 load()(「收了但没人读」已经栽过三次)。
+            "script_confidence": r.get("script_confidence"),
+            **{k: r.get(k) for k in ("fs_pref_round", "fs_reuse_round", "fs_closest_round",
+                                     "fs_effort_round", "fs_overall_sat", "fs_noticed_diff",
+                                     "fs_pref_cond", "fs_reuse_cond", "fs_closest_cond",
+                                     "fs_effort_cond")},
         }
         m.update(structural(r.get("final_output"), _topic_seconds(r.get("topic_json"))))
         m.update(shot_fidelity(r.get("shot_annotations_json")))

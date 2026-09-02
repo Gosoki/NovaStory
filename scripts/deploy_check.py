@@ -221,7 +221,7 @@ def check_consent() -> None:
             body = d.get("consent", {}).get("body", "")
         except Exception as e:  # noqa: BLE001
             add(R, "同意书", f"{lg}.json 读不出来({type(e).__name__})。")
-            return
+            continue          # 别因为一个 locale 坏了就漏检其余两个
         if "〔" in body or "〕" in body:
             n = body.count("〔")
             bad.append(f"{lg}({n} 处)")

@@ -96,7 +96,11 @@ _CHOICE_NOTE = {
 
 
 def _topic_block(topic: dict, intent: str, lang: str) -> str:
-    title = _loc(topic.get("title", ""), lang).strip()
+    # 题名与情境必须解析成同一种语言。情境走 situation_lang(两半同语言),题名若还用
+    # 会话语言,半译的题库就会给模型一个「日文题名 + 英文情境」的混语前提 ——
+    # 题目卡那边已经这么修过一次,这里是同一个坑的另一半。
+    key = situation_lang(topic, lang)
+    title = _loc(topic.get("title", ""), key).strip()
     scenario = scenario_text(topic, lang)
     intent = (intent or "").strip()
     if _norm(lang) == "zh":

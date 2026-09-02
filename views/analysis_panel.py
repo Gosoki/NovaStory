@@ -114,6 +114,19 @@ def render() -> None:
             comp, warns = _warned(lambda: A_stats.build_composites(pt))
             for w in warns:  # 例:保真复合缺 embed_fidelity 这条腿
                 st.warning(f"⚠️ {w}")
+            # 人群必须与 `make stats` 一致(默认 novice,B1),并且**写在脸上**。
+            # 此前面板拿未过滤的 comp 直接跑,还一个字都不说人群 —— 而它渲染的是
+            # 和 CLI 同款的 LMM 对比表,看上去更权威。采数期研究员点的是这个面板,
+            # 最后进幻灯片的就会是那个没标人群的全样本数字。
+            pop_all = st.checkbox(t("analysis.pop_all"), key="_an_pop_all")
+            if not pop_all:
+                if "novice" in comp.columns:
+                    comp = comp[comp["novice"].astype(bool)]
+                else:
+                    st.warning(t("analysis.pop_missing"))
+            n_p = comp["participant_id"].nunique() if "participant_id" in comp else 0
+            st.caption(t("analysis.pop_line",
+                         pop=("all" if pop_all else "novice"), n=n_p, rows=len(comp)))
             for dv in ("ownership_composite", "fidelity_composite", "satisfaction",
                        "post_investment", "total_investment", "effort_composite"):
                 if dv in comp and comp[dv].notna().sum() >= 6:

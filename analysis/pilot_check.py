@@ -95,15 +95,20 @@ def check_c_ceiling(df: pd.DataFrame) -> None:
                   "主张改「E 在保真不劣于 C、但所有权/努力再分配更优」(与灵魂句一致)。")
 
 
-def check_novice(con: sqlite3.Connection) -> None:
-    p = pd.read_sql("SELECT screening_json, status FROM participants", con)
-    # exclude dev/test participants (#20): they are not real subjects
-    p = p[~p["screening_json"].map(lambda x: bool(v3._loads(x, {}).get("dev")))]
-    p = p[p["status"] == "done"] if "status" in p and (p["status"] == "done").any() else p
-    print(f"\n③ novice 占比  N(完成)={len(p)}")
+def check_novice(con: sqlite3.Connection, db_path=None) -> None:
+    # 口径必须与 ①②④ 一致:统一走 v3.included_participants(问卷 3 件基准)。
+    # 此前这里单独用 `status == "done"`,于是同一份报告里 ③ 的分母与其余三项不同 ——
+    # 而 ③ 是决策闸门(🟢🟡🔴 → 后手 C),分母错了会改掉一条事前声明的分支。
+    p = pd.read_sql("SELECT id, screening_json FROM participants", con)
+    if db_path is not None:
+        p = p[p["id"].isin(v3.included_participants(db_path))]
+    else:
+        p = p[~p["screening_json"].map(lambda x: bool(v3._loads(x, {}).get("dev")))]
+    print(f"\n③ novice 占比  N(纳入)={len(p)}")
     if not len(p):
         print(f"   {Y} 无完成被试"); return
-    isnov = p["screening_json"].map(lambda x: bool(v3._loads(x, {}).get("is_novice")))
+    # 与 v3.load 一致:从原始 5 项**重算**,不信任入库时写下的布尔
+    isnov = p["screening_json"].map(lambda x: prereg.is_novice(v3._loads(x, {})))
     share = isnov.mean()
     fl = _flag(share, prereg.NOVICE_SHARE_GREEN, prereg.NOVICE_SHARE_YELLOW)
     print(f"   达标 novice = {isnov.sum()}/{len(p)} = {share:.0%}   {fl}")
@@ -144,7 +149,7 @@ def run(db_path: Path = DEFAULT_DB) -> None:
         print("=" * 56)
         check_d_floor(df)
         check_c_ceiling(df)
-        check_novice(con)
+        check_novice(con, db_path)
         check_reliability(df)
     finally:
         con.close()

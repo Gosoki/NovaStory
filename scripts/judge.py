@@ -98,7 +98,12 @@ def load_trials(db_path: Path) -> list[tuple]:
         ).fetchall()
     finally:
         con.close()
-    dev = {i for i, s in parts if _loads(s).get("dev")}
+    # 纳入规则(同 analysis/v3):dev 被试 + 未走完 N_ROUNDS 轮的离脱者都不发。
+    # 这里尤其要紧 —— judge 会把被试原文**再送一次给 OpenAI**,而同意书写着
+    # 中止者的回答不用于分析。共用 v3.included_participants,不再各写一份 dev 过滤。
+    from analysis import v3 as _v3  # noqa: PLC0415 — 避免模块级循环依赖
+    keep = _v3.included_participants(db_path)
+    dev = {i for i, s in parts if _loads(s).get("dev")} | {i for i, _ in parts if i not in keep}
     if dev:
         print(f"排除 dev 测试被试 {len(dev)} 人")
     return [r for r in rows if r[0] not in dev]

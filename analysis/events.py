@@ -111,8 +111,10 @@ def per_trial(ev: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=["participant_id", "round_idx", *_COLS])
 
 
+from core.config import N_ROUNDS as _N_ROUNDS  # noqa: E402
+
 _PCOLS = ["t_consent", "t_intro", "t_screening", "t_intake_total",
-          "t_final_survey", "t_session_total"]
+          "t_final_survey", "t_session_total", "completed"]
 
 
 def _gap(g: pd.DataFrame, a: str, b: str, *, last_pass: bool = False) -> float:
@@ -136,6 +138,15 @@ def _gap(g: pd.DataFrame, a: str, b: str, *, last_pass: bool = False) -> float:
     else:
         d = (tb.min() - ta.min()).total_seconds()
     return d if d >= 0 else np.nan
+
+
+def _completed_ids(ev: pd.DataFrame) -> set:
+    """走完全部 N_ROUNDS 轮的被试(以 questionnaire_submit 事件计,与 v3 的问卷件数同义)。"""
+    q = ev[ev["type"] == "questionnaire_submit"]
+    if not len(q):
+        return set()
+    n = q.drop_duplicates(["participant_id", "round_idx"]).groupby("participant_id").size()
+    return {int(i) for i in n[n >= _N_ROUNDS].index}
 
 
 def per_participant(ev: pd.DataFrame, parts: pd.DataFrame) -> pd.DataFrame:
@@ -177,6 +188,13 @@ def per_participant(ev: pd.DataFrame, parts: pd.DataFrame) -> pd.DataFrame:
             "t_final_survey": _gap(g, "final_survey_shown", "final_survey_submit"),
         })
     out = pd.DataFrame(rows, columns=["participant_id", *_PCOLS])
+    # 这张表**故意不做**纳入过滤:半途离场的人正是流失分析的对象(几人走到哪一步、
+    # intake 花了多久),而同意书的措辞也只承诺「回答不用于分析」,并明写这类**匿名的
+    # 进度集计**仍会包含他们。给一列 completed 让分析侧能随手切开,避免有人把离脱者
+    # 的时长混进 v3 的口径里 —— v3 / embed / judge / pilot_check 四处都是过滤过的。
+    if len(out):
+        done_ids = _completed_ids(ev)
+        out["completed"] = out["participant_id"].isin(done_ids)
     if parts.empty:
         return out
     p = parts.rename(columns={"id": "participant_id"}).copy()
