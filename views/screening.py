@@ -26,7 +26,7 @@ def render() -> None:
         st.subheader(t("screening.demo_section"))
         age = st.selectbox(
             t("screening.age"),
-            [t(f"screening.age_opt{i}") for i in range(1, 6)],
+            [t(f"screening.age_opt{i}") for i in range(1, 7)],
             index=None,
         )
         gender = st.selectbox(
@@ -114,7 +114,7 @@ def render() -> None:
     # Store categorical answers as language-invariant option indices (not the
     # localized display string), so ja-subject and zh-researcher rows align in
     # analysis. `lang` is on the participant row to recover labels if needed.
-    age_idx = [t(f"screening.age_opt{i}") for i in range(1, 6)].index(age)
+    age_idx = [t(f"screening.age_opt{i}") for i in range(1, 7)].index(age)
     gender_idx = [t(f"screening.gender_opt{i}") for i in range(1, 5)].index(gender)
     ai_freq_idx = [t(f"screening.ai_freq_opt{i}") for i in range(1, 5)].index(ai_freq)
     aiexp_idx = [t(f"screening.aiexp_opt{i}") for i in range(1, 4)].index(aiexp)
@@ -177,5 +177,6 @@ def render() -> None:
     )
     # Now that the id exists, claim this browser session's intake events for it.
     db.attach_intake_events(pid, st.session_state.get("session_id", ""))
-    state.begin_rounds(pid, seq, token)
+    # → the how-it-works briefing; the round clock starts when they leave it.
+    state.enter_intro(pid, seq, token)
     st.rerun()

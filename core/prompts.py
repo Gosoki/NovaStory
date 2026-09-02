@@ -37,9 +37,61 @@ def _total(topic: dict) -> int:
     return _int_or(topic.get("total_seconds"), 15)
 
 
+def _raw(value, lang: str) -> str:
+    """The value actually present for `lang`, with NO fallback (legacy plain-str
+    fields count as present in every language — they are all there is)."""
+    if isinstance(value, dict):
+        return (value.get(lang) or "").strip()
+    return (value or "").strip()
+
+
+def situation_lang(topic: dict, lang: str) -> str:
+    """The one language BOTH halves of the situation exist in.
+
+    `scenario` and `choices` are separate fields since 2026-09-01 (§15), so
+    `_loc`'s ja/zh fallback applies to each of them independently — a topic
+    translated only halfway would otherwise glue an English setup to a Japanese
+    choice list, both on the topic card and inside the model prompt (「any pick
+    yields a single-language session」, views/_lang.py, would silently stop being
+    true at field granularity). Resolve once, use everywhere."""
+    sc, ch = topic.get("scenario", ""), topic.get("choices", "")
+    has_choices = any(_raw(ch, c) for c in ("ja", "zh", "en"))
+    for cand in (_norm(lang), "ja", "zh", "en"):
+        if _raw(sc, cand) and (not has_choices or _raw(ch, cand)):
+            return cand
+    return _norm(lang)
+
+
+def scenario_text(topic: dict, lang: str) -> str:
+    """Full situation text = the setup sentence + the "which will you do?" list.
+
+    They are two fields in topics.json since 2026-09-01 (§15) so the UI can grey
+    the choice list out and mark it as non-binding; the model still sees the same
+    sentence sequence it saw before, so generation is unchanged."""
+    key = situation_lang(topic, lang)
+    scenario = _loc(topic.get("scenario", ""), key).strip()
+    choices = _loc(topic.get("choices", ""), key).strip()
+    if not choices:
+        return scenario
+    # 选择列表要**明确标成例子**。题目卡自 2026-09-01(§15)起把它括进浅色括号并注明
+    # 「别的展开也可以」,而 prompt 这边原样断言,两边就不一致了:被试写了列表之外的
+    # 走向,模型仍被锚在列表上,生成结果会往回拉。这个偏差还与条件相关 —— D/E 能把稿子
+    # 改回来,C 不能 —— 于是会**系统性地压低 C 的保真**,而保真恰好是 H1 的主终点。
+    note = _CHOICE_NOTE[key if key in _CHOICE_NOTE else "ja"]
+    sep = " " if key == "en" else ""
+    return f"{scenario}{sep}{choices}{sep}{note}"
+
+
+_CHOICE_NOTE = {
+    "zh": "(以上的分支只是例子;若用户的创意走向别处,以用户的创意为准。)",
+    "en": "(Those branches are only examples; if the user's idea goes somewhere else, follow the user's idea.)",
+    "ja": "(上の分岐はあくまで例です。ユーザーのアイデアが別の展開なら、そちらを優先してください。)",
+}
+
+
 def _topic_block(topic: dict, intent: str, lang: str) -> str:
     title = _loc(topic.get("title", ""), lang).strip()
-    scenario = _loc(topic.get("scenario", ""), lang).strip()
+    scenario = scenario_text(topic, lang)
     intent = (intent or "").strip()
     if _norm(lang) == "zh":
         return f"主题:{title}\n情境:{scenario}\n用户的核心创意:{intent}"
@@ -59,9 +111,18 @@ def build_system_script(topic: dict, lang: str = _DEFAULT_LANG) -> str:
             "每个镜头的时长由你按内容节奏自主分配(特写/插入镜头可短至 1–2 秒,"
             "动作/对白镜头可长至 6–8 秒甚至更长),但所有镜头的时长之和**必须严格等于** "
             f"{total} 秒。\n"
-            "每个镜头**必须以序号开头**(`1.`、`2.`、`3.` …),后接 4 个字段(按此顺序):"
-            "【时长】X 秒(X 是你为该镜分配的具体秒数)、【拍法】(推/拉/远近等)、【画面描写】、【台词/音效】。\n"
-            "格式示例:`1. 【时长】3 秒 【拍法】特写 【画面描写】… 【台词/音效】…`\n"
+            "排版必须严格照下面来:序号**单独占一行**(`1.`、`2.`、`3.` …),序号下面**分两行**写"
+            "—— 第一行只写【画面描写】;第二行写【时长】X 秒(X 是你为该镜分配的具体秒数)、"
+            "【拍法】(推/拉/远近等)、【台词/音效】。镜头与镜头之间空一行。\n"
+            "格式示例:\n"
+            "1.\n"
+            "【画面描写】…\n"
+            "【时长】3 秒 【拍法】特写 【台词/音效】…\n"
+            "\n"
+            "2.\n"
+            "【画面描写】…\n"
+            "【时长】5 秒 【拍法】中景 【台词/音效】…\n"
+            "\n"
             "只输出这个编号列表,禁止添加解释、前言或总结。\n"
             "输出语言:中文。"
         )
@@ -73,11 +134,20 @@ def build_system_script(topic: dict, lang: str = _DEFAULT_LANG) -> str:
             "insert can be as short as 1–2 seconds; an action/dialogue shot can run "
             "6–8 seconds or longer), but the durations of all shots MUST sum to "
             f"**exactly {total} seconds**.\n"
-            "Every shot **must begin with its number** (`1.`, `2.`, `3.` …), followed "
-            "by 4 fields (in this order): 【Duration】X s (X is the number of seconds "
-            "you assigned to that shot), 【Shot】(push/pull, wide/tight, etc.), "
-            "【Visual】, 【Audio】.\n"
-            "Format example: `1. 【Duration】3 s 【Shot】close-up 【Visual】… 【Audio】…`\n"
+            "Follow this layout exactly: the shot number sits **alone on its own line** "
+            "(`1.`, `2.`, `3.` …), and beneath it the shot is written **over two lines** — "
+            "the first line carries only 【Visual】; the second carries 【Duration】X s (X is "
+            "the number of seconds you assigned to that shot), 【Shot】(push/pull, "
+            "wide/tight, etc.) and 【Audio】. Leave a blank line between shots.\n"
+            "Format example:\n"
+            "1.\n"
+            "【Visual】…\n"
+            "【Duration】3 s 【Shot】close-up 【Audio】…\n"
+            "\n"
+            "2.\n"
+            "【Visual】…\n"
+            "【Duration】5 s 【Shot】wide 【Audio】…\n"
+            "\n"
             "Output only this numbered list; add no explanation, preamble, or summary.\n"
             "Output language: English."
         )
@@ -87,9 +157,19 @@ def build_system_script(topic: dict, lang: str = _DEFAULT_LANG) -> str:
         "各カットの長さは内容のテンポに応じて自由に配分してください"
         "(クローズアップ/インサートは1〜2秒、アクション/セリフは6〜8秒以上でも可)。"
         f"ただし全カットの長さの合計は必ず {total} 秒ちょうどにしてください。\n"
-        "各カットは**必ず番号で始め**(`1.`、`2.`、`3.` …)、続けて4項目(この順番):【秒数】X秒"
-        "(Xはそのカットに割り当てた具体的な秒数)、【カメラ】(寄り・引き・動きなど)、【画面】、【セリフ・音】。\n"
-        "形式の例:`1. 【秒数】3秒 【カメラ】クローズアップ 【画面】… 【セリフ・音】…`\n"
+        "レイアウトは必ず次のとおりにしてください。番号は**それだけで1行**(`1.`、`2.`、`3.` …)、"
+        "その下を**2行に分けて**書きます —— 1行目は【画面】だけ、2行目に【秒数】X秒"
+        "(Xはそのカットに割り当てた具体的な秒数)、【カメラ】(寄り・引き・動きなど)、【セリフ・音】。"
+        "カットとカットのあいだは1行空けてください。\n"
+        "形式の例:\n"
+        "1.\n"
+        "【画面】…\n"
+        "【秒数】3秒 【カメラ】クローズアップ 【セリフ・音】…\n"
+        "\n"
+        "2.\n"
+        "【画面】…\n"
+        "【秒数】5秒 【カメラ】引き 【セリフ・音】…\n"
+        "\n"
         "この番号付きリストのみを出力し、説明・前置き・まとめは一切加えないでください。\n"
         "出力言語:日本語。"
     )
@@ -182,9 +262,13 @@ def build_system_revision(topic: dict, lang: str = _DEFAULT_LANG) -> str:
             "1. 严格按用户的要求修改;**没有被要求修改的部分尽量保持原样**(包括用户自己改过的措辞)。\n"
             "2. 修改要求可能很抽象(如『更搞笑』『更炸裂』),请把它落实为具体的画面/台词改动。\n"
             f"3. 输出完整的修订后脚本:{n} 个镜头,总时长严格等于 {total} 秒。"
-            "**每个镜头必须以序号开头**(`1.`、`2.`、`3.` …,即使原稿没有编号也要补上),"
-            "后接【时长】X 秒【拍法】【画面描写】【台词/音效】四个字段(此顺序),"
-            "例:`1. 【时长】3 秒 【拍法】… 【画面描写】… 【台词/音效】…`。\n"
+            "排版必须是:序号**单独占一行**(`1.`、`2.`、`3.` …,即使原稿没有编号也要补上),"
+            "序号下面第一行只写【画面描写】,第二行写【时长】X 秒 【拍法】 【台词/音效】,镜头之间空一行,"
+            "例:\n"
+            "1.\n"
+            "【画面描写】…\n"
+            "【时长】3 秒 【拍法】特写 【台词/音效】…\n"
+            "\n"
             "4. 只输出脚本本身,禁止解释或前言。输出语言:中文。"
         )
     if _norm(lang) == "en":
@@ -197,10 +281,14 @@ def build_system_revision(topic: dict, lang: str = _DEFAULT_LANG) -> str:
             "2. The request may be abstract (e.g. 'make it funnier', 'make it more "
             "explosive'); turn it into concrete changes to the visuals/dialogue.\n"
             f"3. Output the complete revised script: {n} shots, totaling exactly {total} "
-            "seconds. **Every shot must begin with its number** (`1.`, `2.`, `3.` …, add "
-            "numbering even if the original lacked it), followed by the 4 fields "
-            "【Duration】X s 【Shot】【Visual】【Audio】 (in this order), e.g. "
-            "`1. 【Duration】3 s 【Shot】… 【Visual】… 【Audio】…`.\n"
+            "seconds. The layout must be: the shot number alone on its own line (`1.`, "
+            "`2.`, `3.` …, add numbering even if the original lacked it), then a line "
+            "carrying only 【Visual】, then a line carrying 【Duration】X s 【Shot】"
+            "【Audio】, with a blank line between shots, e.g.\n"
+            "1.\n"
+            "【Visual】…\n"
+            "【Duration】3 s 【Shot】close-up 【Audio】…\n"
+            "\n"
             "4. Output only the script itself, no explanation or preamble. Output "
             "language: English."
         )
@@ -213,9 +301,13 @@ def build_system_revision(topic: dict, lang: str = _DEFAULT_LANG) -> str:
         "2. 修正の要望は抽象的(「もっと面白く」「もっと派手に」など)なこともあります。"
         "それを具体的な映像/セリフの変更に落とし込んでください。\n"
         f"3. 修正後の完成版を出力してください:{n} カット、合計はちょうど {total} 秒。"
-        "**各カットは必ず番号で始め**(`1.`、`2.`、`3.` …、元の原稿に番号が無くても付けること)、"
-        "続けて【秒数】X秒【カメラ】【画面】【セリフ・音】の4項目(この順番)、"
-        "例:`1. 【秒数】3秒 【カメラ】… 【画面】… 【セリフ・音】…`。\n"
+        "レイアウトは、番号を**それだけで1行**にし(`1.`、`2.`、`3.` …、元の原稿に番号が無くても付けること)、"
+        "次の行に【画面】だけ、その次の行に【秒数】X秒 【カメラ】 【セリフ・音】、"
+        "カットのあいだは1行空ける。例:\n"
+        "1.\n"
+        "【画面】…\n"
+        "【秒数】3秒 【カメラ】クローズアップ 【セリフ・音】…\n"
+        "\n"
         "4. 脚本本体のみを出力し、説明や前置きは禁止。出力言語:日本語。"
     )
 

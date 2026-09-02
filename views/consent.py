@@ -28,6 +28,9 @@ def render() -> None:
         width="stretch",
     ):
         state.log_intake_event("consent_agree", {"lang": st.session_state.get("lang")})
-        # The "how it works" page (flow + input-freedom) comes next, before screening.
-        st.session_state["stage"] = "intro"
+        # Background questionnaire first; the "how it works" briefing (flow +
+        # input-freedom + storyboard sample) comes after it, so the briefing is
+        # the last thing read before round 1 rather than being pushed out of
+        # memory by a 12-item form (2026-09-01 §4).
+        st.session_state["stage"] = "screening"
         st.rerun()

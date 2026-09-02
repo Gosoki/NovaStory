@@ -15,9 +15,16 @@ def render() -> None:
     analysis_panel.render()     # 📊 数据分析(一键出结果/图)
 
 
+# 自愿留下的联系方式是全库唯一一列直接个人数据。`participants` 又恰好是表选择器的
+# 默认项,所以「打开后台 → 点导出」这条最短路径会把邮箱和人口学、筛查、自由留言一起
+# 装进 novastory_participants.csv 发出去。靠「导出前记得删掉这一列」的人工纪律扛不住
+# 截稿日,代码里去掉它是一行的事。
+_HIDDEN_COLS = ("contact_json",)
+
+
 def _data_browser() -> None:
     table = st.selectbox(t("researcher.table_label"), db.TABLES)
-    df = db.load_table(table)
+    df = db.load_table(table).drop(columns=list(_HIDDEN_COLS), errors="ignore")
     if df.empty:
         st.info(t("researcher.empty"))
         return

@@ -88,9 +88,11 @@ def main() -> None:
         system = prompts.build_system_script(topic, args.lang)
         with out_path.open("a", encoding="utf-8") as f:
             for j in range(done, args.n):
-                # scenario is a {ja, zh} dict since 6-24 — localize before use
+                # scenario/choices are {ja, zh, en} dicts — localize and rejoin;
+                # embed._baseline_texts reverse-looks-up topic identity by this
+                # exact string, so both sides must build it the same way.
                 seed = (seeds[j % len(seeds)] if seeds
-                        else prompts._loc(topic.get("scenario", ""), args.lang))
+                        else prompts.scenario_text(topic, args.lang))
                 text = client.generate(
                     system, prompts.build_user_script(topic, seed, args.lang)
                 )[0]

@@ -47,6 +47,10 @@ def _researcher_section() -> None:
         if st.button(t("sidebar.reset_subject"), width="stretch"):
             state.reset_for_next()
             st.rerun()
+        # 按钮名叫「初始化所有记录」,但 reset_for_next 只清当前浏览器会话 —— 说清楚,
+        # 否则采数前用它「清掉试测数据」的人会以为库空了,而试测行还在监控面板的
+        # 完成数、novice 占比、seq 平衡格里跟真被试混在一起。
+        st.caption(t("done.reset_hint"))
         if st.button(t("sidebar.researcher_logout"), width="stretch"):
             st.session_state["researcher_ok"] = False
             st.session_state["researcher_mode"] = False

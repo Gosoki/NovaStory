@@ -68,6 +68,27 @@ def _overview(parts: pd.DataFrame) -> None:
         c[1].metric(t("monitor.inprog"), inprog)
         c[2].metric(t("monitor.out"), out)
         c[3].metric(t("monitor.novice_share"), "—" if nov != nov else f"{nov:.0%}")
+    _dup_contacts(parts)
+
+
+def _dup_contacts(parts: pd.DataFrame) -> None:
+    """同一个邮箱出现在多行 = 很可能是同一个人重复参加。
+
+    完成页在「请勿重复参加」的正下方摆了一支免费短片作为回报,而代码里**没有任何去重**
+    (`insert_participant` 无条件 passed=True)。重复参加会吃掉多个 Williams seq、
+    破坏被试内 LMM 的独立性假设,还会让同一个人在主分析人群(novice 子集)里算好几次。
+    邮箱是唯一能照出这件事的信号,所以在这里**只报计数、不显示地址** —— 既让研究员
+    看得见,又不把那一列重新暴露到界面上。"""
+    if "contact_json" not in parts.columns:
+        return
+    mails = (parts["contact_json"].dropna().map(lambda x: _loads(x).get("email", ""))
+             .map(lambda x: x.strip().lower()))
+    mails = mails[mails != ""]
+    if mails.empty:
+        return
+    dup = int((mails.value_counts() > 1).sum())
+    if dup:
+        st.warning(t("monitor.dup_contact", n=dup))
         st.progress(min(done / _TARGET_N, 1.0),
                     text=t("monitor.progress", n=_TARGET_N, done=done,
                            remain=max(_TARGET_N - done, 0)))

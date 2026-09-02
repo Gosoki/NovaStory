@@ -174,19 +174,31 @@ def check_topics() -> None:
                                    f" 被试提交筛查后才崩,且已消耗一个 seq。")
         return
     used = topics[: config.N_ROUNDS]
-    bad = []
+    bad, gone = [], []
     for i, t in enumerate(used):
-        for field in ("title", "scenario"):
+        # choices 与 scenario 同等重要:它既进被试看到的题目卡(§15 的浅色括号行),
+        # 又被 prompts.scenario_text 拼进模型 prompt。缺了不会报错,只会让这道题
+        # 的情境**悄悄少半句** —— 而那半句正是「你可以这样,也可以不这样」。
+        for field in ("title", "scenario", "choices"):
             v = t.get(field)
             missing = [lg for lg in ("ja", "zh", "en")
                        if not (v.get(lg) if isinstance(v, dict) else (v if lg == "ja" else None))]
-            if missing:
+            if len(missing) == 3:
+                # 整个字段缺失:没有任何语言可回退。scenario/choices 缺一个,
+                # 这道题的**模型 prompt 与题目卡都会少半句情境**(prompts.scenario_text
+                # 直接短路),被试看到的题面与你以为的不是同一个。这是红,不是黄。
+                gone.append(f"#{i + 1}.{field}")
+            elif missing:
                 bad.append(f"#{i + 1}.{field} 缺 {'/'.join(missing)}")
         if not (1 <= t.get("shot_count", 0) <= 12):
             bad.append(f"#{i + 1}.shot_count={t.get('shot_count')}")
         if not (3 <= t.get("total_seconds", 0) <= 300):
             bad.append(f"#{i + 1}.total_seconds={t.get('total_seconds')}")
-    if bad:
+    if gone:
+        add(R, "题库 topics.json", f"字段整个缺失:{' · '.join(gone[:4])} —— 无语言可回退,"
+                                   f"该题的情境在**模型 prompt 与题目卡上都会少半句**"
+                                   f"(题目卡的浅色括号行直接消失),被试跑的不是你以为的题面。")
+    elif bad:
         add(Y, "题库 topics.json", f"{len(topics)} 题可用,但:{' · '.join(bad[:4])}"
                                    f"(缺的语言会回退到 ja/zh,被试可能看到混语)。")
     else:

@@ -34,14 +34,22 @@ assert len(_COND_ORDERS) * len(_TOPIC_ORDERS) == config.LATIN_SQUARE_N
 
 # Seed topics written to data/topics.json on first launch when the file is
 # missing. Live session always reads from topics.json via load_topics().
-# title/scenario carry {"ja": ..., "zh": ...} — ja is the formal-study language,
-# zh is for the researcher's testing (paper/8 i18n).
+# title/scenario/choices carry {"ja": ..., "zh": ...} — ja is the formal-study
+# language, zh is for the researcher's testing (paper/8 i18n).
+# `scenario` is the setup; `choices` is the "which will you do?" list, kept
+# separate since 2026-09-01 (§15) so the UI can grey it out and mark it as one
+# suggestion among many rather than a required direction. The model still gets
+# both, joined (prompts.scenario_text).
 _SEED_TOPICS = [
     {
         "title": {"ja": "拾った切符（誰かの落とし物）", "zh": "捡到的失物（别人掉的东西）"},
         "scenario": {
-            "ja": "道で、誰かが落とした小さな物を拾う。中を見るか、届けるか、それとも——。",
-            "zh": "在路上捡到别人掉落的小东西。是打开看看、拿去归还,还是——。",
+            "ja": "道で、誰かが落とした小さな物を拾う。",
+            "zh": "在路上捡到别人掉落的小东西。",
+        },
+        "choices": {
+            "ja": "中を見るか、届けるか、それとも——。",
+            "zh": "是打开看看、拿去归还,还是——。",
         },
         "shot_count": 3,
         "total_seconds": 15,
@@ -49,8 +57,12 @@ _SEED_TOPICS = [
     {
         "title": {"ja": "最後のひと口（分け合う/独り占め）", "zh": "最后一口（分享还是独享）"},
         "scenario": {
-            "ja": "目の前に、好きなものがたったひとつだけ残っている。誰かと分けるか、自分で食べるか。ほんの数秒の攻防。",
-            "zh": "眼前只剩最后一口喜欢的东西。是分给别人,还是自己吃掉——短短几秒的拉锯。",
+            "ja": "目の前に、好きなものがたったひとつだけ残っている。ほんの数秒の攻防。",
+            "zh": "眼前只剩最后一口喜欢的东西——短短几秒的拉锯。",
+        },
+        "choices": {
+            "ja": "誰かと分けるか、自分で食べるか。",
+            "zh": "是分给别人,还是自己吃掉。",
         },
         "shot_count": 3,
         "total_seconds": 15,
@@ -58,8 +70,12 @@ _SEED_TOPICS = [
     {
         "title": {"ja": "はじめての街の、最初の一歩", "zh": "陌生街道的第一步"},
         "scenario": {
-            "ja": "見慣れない街に降り立った、最初の一歩。地図を見るか、匂いをたどるか、誰かに声をかけるか。",
-            "zh": "降落在陌生的街道,迈出第一步。是看地图、循着气味走,还是开口问路。",
+            "ja": "見慣れない街に降り立った、最初の一歩。",
+            "zh": "降落在陌生的街道,迈出第一步。",
+        },
+        "choices": {
+            "ja": "地図を見るか、匂いをたどるか、誰かに声をかけるか。",
+            "zh": "是看地图、循着气味走,还是开口问路。",
         },
         "shot_count": 3,
         "total_seconds": 15,
@@ -113,7 +129,7 @@ DEFAULTS: dict[str, Any] = {
     "researcher_ok": False,
     "participant_id": None,
     "seq": None,
-    "stage": "consent",        # consent → intro → screening → rounds → final_survey → done
+    "stage": "consent",        # consent → screening → intro → rounds → final_survey → done
     "round_idx": 1,
     "round_plan": [],          # [{"condition": str, "topic": dict}] × 3
     "attention_value": None,
@@ -205,6 +221,20 @@ def _attempt_resume() -> None:
         log_event("session_resumed", {"stage": "final_survey"})
         return
     st.session_state["round_idx"] = done_rounds + 1
+    if done_rounds == 0:
+        # Round 1 isn't finished, so they were either still on the briefing page
+        # or partway through round 1 — and a resume wipes the round payload
+        # either way, i.e. round 1 restarts from the intent step regardless.
+        # Land on the briefing rather than in the round: someone who refreshed
+        # ON the briefing would otherwise silently lose the standardized
+        # onboarding, and its button is what starts the round clock (§4).
+        st.session_state["stage"] = "intro"
+        # Mint a fresh attempt segment here too, not only in begin_rounds: two
+        # tabs resumed from the same token must be tellable apart in the event
+        # log from their very first event (LOG4), and `session_resumed` is it.
+        reset_round_payload()
+        log_event("session_resumed", {"stage": "intro"})
+        return
     st.session_state["stage"] = "rounds"
     reset_round_payload()
     log_event("session_resumed", {"round_idx": done_rounds + 1})
@@ -237,6 +267,43 @@ def plan_for_seq(seq: int, topics: list[dict]) -> list[dict]:
     conds = _COND_ORDERS[seq // 3]
     topic_idx = _TOPIC_ORDERS[seq % 3]
     return [{"condition": c, "topic": dict(topics[i])} for c, i in zip(conds, topic_idx)]
+
+
+def enter_intro(participant_id: int, seq: int, token: str = "") -> None:
+    """Screening is in; park the participant on the how-it-works page (§4).
+
+    Identity and the resume token are installed NOW — a refresh on the briefing
+    page must resume, not re-screen (which would insert a second passed row and
+    burn a second Latin-square seq). What is deliberately NOT done here is
+    `round_start`: t_read_intent is measured from it, so starting the clock
+    before the briefing would fold the whole briefing into round 1's reading
+    time. begin_rounds (called by the intro page's button) starts it."""
+    topics = load_topics()
+    if len(topics) < config.N_ROUNDS:
+        raise RuntimeError(f"topics.json needs >= {config.N_ROUNDS} topics")
+    st.session_state["participant_id"] = participant_id
+    st.session_state["seq"] = seq
+    st.session_state["stage"] = "intro"
+    st.session_state["round_idx"] = 1
+    st.session_state["round_plan"] = plan_for_seq(seq, topics[: config.N_ROUNDS])
+    if token:
+        try:
+            st.query_params["t"] = token
+        except Exception:
+            pass
+
+
+def start_rounds() -> None:
+    """离开说明页,进入第 1 轮。
+
+    刻意**不**重建 round_plan:计划在 `enter_intro` 里就装好了,而这颗按钮被按下时
+    被试行与拉丁方 seq 早已落库。若在这里再读一次 topics.json,只要研究员在被试读
+    说明页的这两分钟里动了题库(哪怕只是存了个半截文件),`begin_rounds` 就会抛
+    RuntimeError —— 抛在一个已经吃掉一个 seq、又没有任何出路的被试脸上。"""
+    st.session_state["stage"] = "rounds"
+    st.session_state["round_idx"] = 1
+    reset_round_payload()
+    log_event("round_start")
 
 
 def begin_rounds(participant_id: int, seq: int, token: str = "") -> None:

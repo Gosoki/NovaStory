@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 
 import streamlit as st
 
@@ -12,6 +13,16 @@ from views import _scale
 # the completion code. Captures cross-condition preference + behavioral intent +
 # overall satisfaction (paper/10 H7). Rounds are referred to by number + topic
 # title (a neutral memory aid); analysis maps round_idx → condition via trials.
+
+
+# 「最後のひと口（分け合う/独り占め）」→「最後のひと口」。The parenthetical gloss is a
+# creation-step hint; repeated here as a radio option it reads as if the survey
+# were asking about that choice rather than about the round (§11).
+_PAREN_RE = re.compile(r"[（(][^）)]*[）)]")
+
+
+def _plain_title(topic: dict, lang: str) -> str:
+    return _PAREN_RE.sub("", state.topic_text(topic, "title", lang)).strip()
 
 
 def render() -> None:
@@ -30,7 +41,7 @@ def render() -> None:
     # memory aid); a format_func radio isn't reliably test-drivable. Map back to
     # the round number on read; analysis maps round_idx → condition via trials.
     labels = [
-        f"{t('final_survey.round_n', i=i)}:{state.topic_text(plan[i - 1]['topic'], 'title', lang)}"
+        f"{t('final_survey.round_n', i=i)}:{_plain_title(plan[i - 1]['topic'], lang)}"
         for i in rounds
     ]
     lbl2round = dict(zip(labels, rounds))

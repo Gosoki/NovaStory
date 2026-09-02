@@ -4,7 +4,7 @@
 PY := .venv/bin/python
 .DEFAULT_GOAL := help
 
-.PHONY: help baseline norming v3 events pilot embed judge stats stats-all power figures analysis smoke robust smoke-e2e freeze freeze-check
+.PHONY: help baseline norming v3 events pilot embed judge stats stats-all power figures analysis smoke robust smoke-e2e i18n freeze freeze-check
 
 help:       ## 列出所有命令(直接敲 `make` 就看这个)
 	@grep -hE '^[a-z][a-zA-Z0-9_-]*:.*##' $(MAKEFILE_LIST) | sed -E 's/:.*## / — /' | sort
@@ -56,6 +56,9 @@ smoke-e2e:  ## 被试全流程 E2E(正常路径:consent→3轮→完成码 + int
 
 robust:     ## 实测就绪性验收(出事时扛不扛得住:并发/断网/刷新/脏数据/后台线程)→ docs/paper/12
 	$(PY) scripts/robustness_check.py
+
+i18n:       ## 三语键树 + 占位符一致性(CLAUDE.md §0.3 硬约束①;改完文案必跑)
+	$(PY) scripts/i18n_check.py
 
 # 真数据到手后的完整链路。events 必须排在 v3 之后(它把事件层列合入 v3 写的 CSV);
 # events / embed / judge 互不依赖(三者都是「先删自己的列再 merge」,顺序无关),但都得在 v3

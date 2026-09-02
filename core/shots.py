@@ -4,11 +4,12 @@ import re
 
 """Best-effort parsing of generated storyboard markdown into per-shot dicts.
 
-The system prompt enforces numbered shots with bracketed field labels, in zh
-(【时长】X秒【拍法】【画面描写】【台词/音效】) or ja (【秒数】X秒【カメラ】
-【画面】【セリフ・音】). Labels are kept language-aware so a Japanese
-storyboard parses the same way a Chinese one does (the field LABELS are the
-parse anchor; the field CONTENT is in the participant's language).
+The system prompt enforces numbered shots with bracketed field labels, laid out
+over two lines per shot — 【画面描写】 alone, then 【时长】【拍法】【台词/音效】 —
+in zh, or ja (【画面】 / 【秒数】【カメラ】【セリフ・音】). Labels are kept
+language-aware so a Japanese storyboard parses the same way a Chinese one does
+(the field LABELS are the parse anchor; the field CONTENT is in the
+participant's language).
 Callers must handle an empty result (-> whole-text fallback, parse_ok=0).
 """
 
@@ -53,15 +54,25 @@ _SHOT_SPLIT_RE = re.compile(
     r"(?m)^\s*(?:[#*>\-\s]*)?(?:镜头|カット|ショット|Shot|Cut)?\s*(\d{1,2})\s*[\.、::|]",
     re.IGNORECASE,
 )
-# Every shot leads with its duration field, so it's a reliable fallback boundary
-# when the model omits the numbering _SHOT_SPLIT_RE keys off of.
+# Fallback shot boundaries for when the model omits the numbering _SHOT_SPLIT_RE
+# keys off of: whichever field each shot LEADS with is a reliable cut point.
+# Since 2026-09-01 (§9) that is the visual field; scripts written in the older
+# duration-first order are still parsed by the second pattern, so a hand-edited
+# or resumed script from either era survives.
+_VISUAL_START_RE = re.compile(
+    r"【\s*(?:画面描写|画面|映像|ビジュアル|Visual|Action)[^】]*】", re.IGNORECASE
+)
 _DURATION_START_RE = re.compile(
     r"【\s*(?:时长|秒数|尺|長さ|時間|Duration|Seconds|Sec)[^】]*】", re.IGNORECASE
 )
-# A bare next-shot number dangling at a duration-block tail ("2." alone) —
-# trimmed so it doesn't pollute the previous shot's audio/raw.
+# A bare next-shot number dangling at a field-block tail ("2." alone) — trimmed
+# so it doesn't pollute the previous shot's audio/raw. Anchored to a whole line
+# and requiring the punctuation: without both, it also ate any 1-2 digit number
+# that legitimately ENDS an audio field (「【台词/音效】倒计时 10」→「倒计时」),
+# and since the two-line layout made this fallback the ordinary path for
+# un-numbered scripts, that deletion would land in stored + embedded content.
 _TRAILING_NUM_RE = re.compile(
-    r"[\s\-*#>]*(?:镜头|カット|ショット|Shot|Cut)?\s*\d{1,2}\s*[\.、::|]?\s*$", re.IGNORECASE
+    r"\n[\s\-*#>]*(?:镜头|カット|ショット|Shot|Cut)?\s*\d{1,2}\s*[\.、::|]\s*$", re.IGNORECASE
 )
 
 
@@ -79,22 +90,41 @@ def _split_numbered(text: str) -> list[tuple[int, int, int]]:
     return blocks
 
 
+def _field_keys(seg: str) -> list[str]:
+    return [k for k in (_field_key(m.group(1)) for m in _FIELD_RE.finditer(seg)) if k]
+
+
 def _has_visual(seg: str) -> bool:
-    return any(_field_key(m.group(1)) == "visual" for m in _FIELD_RE.finditer(seg))
+    return "visual" in _field_keys(seg)
 
 
-def _split_by_duration(text: str) -> list[tuple[int, int, int]]:
-    """Fallback boundaries: each shot starts with its duration field. Needs >= 2
+def _split_by_lead(text: str, lead_re: re.Pattern) -> list[tuple[int, int, int]]:
+    """Fallback boundaries: each shot starts with `lead_re`'s field. Needs >= 2
     markers to count as a real multi-shot split.
 
     Two guards keep this fallback from beating a correct split with a wrong one:
-    - any field label BEFORE the first marker means durations trail their shots,
-      so cutting at markers would misalign every field → refuse (an honest
-      parse_ok=0 beats silently wrong per-shot data);
+    - any field label BEFORE the first marker means this field trails its shot
+      rather than leading it, so cutting at the markers would misalign every
+      field → refuse (an honest parse_ok=0 beats silently wrong per-shot data).
+      This is also what makes trying both lead patterns safe: on a given script
+      at most one of them can lead, the other is vetoed here;
     - a marker block with no visual field (a 合計 line, a stray label) is folded
       into the previous block instead of becoming a bogus extra shot.
+
+    Two further guards exist because the lead field is now the VISUAL one, which
+    (unlike duration) is content-bearing and may legitimately appear twice — the
+    script textarea is freely editable and says nothing about keeping the 【】
+    labels intact:
+    - a span carrying ONLY the lead field is a continuation line, not a shot.
+      It must NOT be folded into the previous span either: it belongs to the
+      shot that FOLLOWS it, so folding backwards would attribute one shot's
+      words to its predecessor. Refuse, and let the numbered split win;
+    - a span carrying two duration fields is two shots glued together by a lost
+      lead label (duration is the one field that is exactly once per shot —
+      audio and shot_type each have several aliases that can co-occur).
+      Cutting it anywhere is guesswork, so refuse.
     """
-    marks = [m.start() for m in _DURATION_START_RE.finditer(text)]
+    marks = [m.start() for m in lead_re.finditer(text)]
     if len(marks) < 2:
         return []
     if _FIELD_RE.search(text[: marks[0]]):
@@ -106,8 +136,18 @@ def _split_by_duration(text: str) -> list[tuple[int, int, int]]:
             spans[-1][1] = e
         else:
             spans.append([s, e])
-    if not all(_has_visual(text[s:e]) for s, e in spans):
-        return []
+    for s, e in spans:
+        keys = _field_keys(text[s:e])
+        others = [k for k in keys if k != "visual"]
+        if "visual" not in keys or not others:
+            return []      # no visual at all / lead-only continuation line
+        # A shot glued to the next one repeats the WHOLE trailing field set
+        # (duration + shot type + audio). One repeated field is ordinary: a
+        # 合計 line adds a second duration, and 【台词】+【音效】 or 【景别】+【拍法】
+        # both fold onto one key. So require >= 2 distinct repeats before
+        # calling it two shots — and then refuse rather than cut it wrong.
+        if sum(1 for k in set(others) if others.count(k) > 1) >= 2:
+            return []
     return [(s, e, i + 1) for i, (s, e) in enumerate(spans)]
 
 
@@ -121,17 +161,18 @@ def parse_shots(text: str) -> list[dict]:
     # boundaries when numbering is missing or only partial — more shots wins, so a
     # script that dropped its "1. 2. 3." still splits instead of collapsing to one.
     blocks = _split_numbered(text)
-    dur_blocks = _split_by_duration(text)
-    from_duration = len(dur_blocks) > len(blocks)
-    if from_duration:
-        blocks = dur_blocks
+    from_field = False
+    for lead_re in (_VISUAL_START_RE, _DURATION_START_RE):
+        alt = _split_by_lead(text, lead_re)
+        if len(alt) > len(blocks):
+            blocks, from_field = alt, True
     if not blocks:
         return []
 
     shots = []
     for start, end, idx in blocks:
         raw = text[start:end].strip()
-        if from_duration:
+        if from_field:
             # a dangling next-shot number at the tail belongs to the next block
             raw = _TRAILING_NUM_RE.sub("", raw)
         shot: dict = {"idx": idx, "raw": raw}

@@ -115,13 +115,26 @@ _PCOLS = ["t_consent", "t_intro", "t_screening", "t_intake_total",
           "t_final_survey", "t_session_total"]
 
 
-def _gap(g: pd.DataFrame, a: str, b: str) -> float:
-    """b 的首次 − a 的首次(秒);任一缺失或倒序 → NaN。"""
+def _gap(g: pd.DataFrame, a: str, b: str, *, last_pass: bool = False) -> float:
+    """b 的首次 − a 的首次(秒);任一缺失或倒序 → NaN。
+
+    `last_pass=True` 改成「**最后一次** b − 紧邻它之前的那次 a」。说明页在 2026-09-01
+    之后会因为续接被重看(`state._attempt_resume` 把未完成第 1 轮的人送回说明页),
+    于是同一位被试可能有多对 intro_shown/intro_continue。首对配首对会把整段离开时间
+    算进停留时长 —— 而这一列存在的意义恰恰是「说明页只停了 2 秒 = 没读」的质量信号,
+    配错了会把最不认真的那一位报成最认真的。"""
     ta = g.loc[g["type"] == a, "ts"]
     tb = g.loc[g["type"] == b, "ts"]
     if not len(ta) or not len(tb):
         return np.nan
-    d = (tb.min() - ta.min()).total_seconds()
+    if last_pass:
+        end = tb.max()
+        before = ta[ta <= end]
+        if not len(before):
+            return np.nan
+        d = (end - before.max()).total_seconds()
+    else:
+        d = (tb.min() - ta.min()).total_seconds()
     return d if d >= 0 else np.nan
 
 
@@ -134,9 +147,27 @@ def per_participant(ev: pd.DataFrame, parts: pd.DataFrame) -> pd.DataFrame:
     rows = []
     for pid, g in ev.groupby("participant_id", sort=True):
         t_consent = _gap(g, "consent_shown", "consent_agree")
-        t_intro = _gap(g, "intro_shown", "intro_continue")
+        t_intro = _gap(g, "intro_shown", "intro_continue", last_pass=True)
         t_screening = _gap(g, "screening_shown", "screening_submit")
-        intake = _gap(g, "consent_shown", "screening_submit")
+        # intake 到哪里为止,取决于这一行是换序前还是换序后落的:
+        # 2026-09-01(§4)之前是 同意→说明→筛查(收尾 = screening_submit),
+        # 之后是 同意→筛查→说明(收尾 = intro_continue)。取两者中**较晚**的那个
+        # 端点,两种排序下都对;若按新口径一刀切,旧库的行会漏掉整份背景问卷
+        # (实测:98 秒 vs 真实 1436 秒)—— 而且不是 NaN,是一个看着挺像的错数。
+        base = _gap(g, "consent_shown", "screening_submit")
+        ts_i = g.loc[g["type"] == "intro_shown", "ts"]
+        ts_s = g.loc[g["type"] == "screening_submit", "ts"]
+        post_swap = bool(len(ts_i) and len(ts_s) and ts_i.max() > ts_s.min())
+        if pd.isna(base):
+            intake = _gap(g, "consent_shown", "intro_continue")
+        elif post_swap:
+            # 换序后:同意+背景问卷 的整段 **加上** 说明页那一趟的净停留。
+            # 不能直接用 consent_shown→intro_continue 的跨度 —— 在说明页刷新过的人
+            # (续接会把他送回说明页)会把中间离开的几十分钟整段折进 intake,
+            # 而这一列正是用来对照同意书「約 10〜15 分」承诺的。
+            intake = base + (t_intro if not pd.isna(t_intro) else 0.0)
+        else:
+            intake = base   # 换序前:说明页本来就在这段跨度之内
         rows.append({
             "participant_id": int(pid),
             "t_consent": t_consent,

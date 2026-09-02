@@ -23,10 +23,18 @@ from core import db, llm  # noqa: E402
 
 # ---------- stub LLM ----------
 
+# 两行排版(2026-09-01 §9)—— prompts 现在要的就是这个,E2E 必须跑它,否则
+# 全链路只证明了「解析器还认得旧格式」。旧的一行排版仍由 robustness_check 的桩覆盖。
 _SCRIPT = (
-    "1. 【景别】特写 【画面描写】闹钟显示23:00,主角猛地抬头 【台词/音效】\"完了完了\" 【时长 3 秒】\n"
-    "2. 【景别】中景 【画面描写】书页快速翻动,荧光笔乱涂 【台词/音效】纸张哗哗声 【时长 8 秒】\n"
-    "3. 【景别】远景 【画面描写】天亮,主角趴在书堆里睡着 【台词/音效】鸟叫 【时长 4 秒】"
+    "1.\n"
+    "【画面描写】闹钟显示23:00,主角猛地抬头\n"
+    "【时长】3 秒 【拍法】特写 【台词/音效】\"完了完了\"\n"
+    "2.\n"
+    "【画面描写】书页快速翻动,荧光笔乱涂\n"
+    "【时长】8 秒 【拍法】中景 【台词/音效】纸张哗哗声\n"
+    "3.\n"
+    "【画面描写】天亮,主角趴在书堆里睡着\n"
+    "【时长】4 秒 【拍法】远景 【台词/音效】鸟叫"
 )
 _SCRIPT_REV = _SCRIPT.replace("完了完了", "哈哈哈,有意思")
 
@@ -136,12 +144,11 @@ def run() -> None:
     at.run()
     assert at.session_state["lang"] == "zh", at.session_state["lang"]
 
-    # --- consent → intro (how-it-works page) → screening ---
+    # --- consent → screening → intro (how-it-works page) → rounds ---
     at.checkbox(key="_consent_agree").check().run()
     btn_click(at, "同意并开始")
-    assert at.session_state["stage"] == "intro", at.session_state["stage"]
-    btn_click(at, "开始")                          # intro "start" button
-    at.selectbox[0].select("18-24")
+    assert at.session_state["stage"] == "screening", at.session_state["stage"]
+    at.selectbox[0].select("21-30 岁")
     at.selectbox[1].select("不愿透露")
     at.selectbox[2].select("偶尔(每月几次)")
     at.selectbox[3].select("从未用过")          # aiexp (AI creative experience)
@@ -154,13 +161,17 @@ def run() -> None:
     set_sc(at, "_scr_trust", 4)               # baseline trait: AI trust
     set_sc(at, "_scr_own", 5)                 # baseline trait: ownership disposition
     btn_click(at, "提交并继续")
+    # Screening lands on the briefing page; the round clock starts on its button.
+    assert at.session_state["stage"] == "intro", at.session_state["stage"]
+    assert at.session_state["participant_id"], "说明页必须已经有被试身份(刷新才能续接)"
+    btn_click(at, "开始")                          # intro "start" button
     assert at.session_state["stage"] == "rounds" and at.session_state["seq"] == 0
 
     # seq 0 → conditions C, D, E with topics 1, 2, 3
     # --- R1: C — one-shot ---
     at.text_area(key="_intent_input").set_value("主角发现卷子上的题目昨晚全梦到过")
     btn_click(at, "确定,开始创作")
-    btn_click(at, "满意了,提交这一版")
+    btn_click(at, "提交这一版,进入问卷")      # C 只生成一次,提交文案是中性的
     _answer_questionnaire(at, round_idx=1)
 
     # --- R2: D — revise via chat + hand-edit (attention round) ---
@@ -297,6 +308,7 @@ def _assert_db() -> None:
     assert e["n_ai_rounds"] == 1 and e["n_hand_edits"] == 1
     assert e["t_pregen"] is not None and e["t_postgen"] is not None
 
+    assert (tr["parse_ok"] == 1).all(), "两行排版没能 100% 解析"
     assert len(q) == 3 and q["imagine_match"].notna().all()
     assert q["satisfaction"].notna().all()
     aqq = q.set_index("round_idx")["ai_q_quality"]  # E-only (round 3); NULL for C/D
@@ -308,6 +320,7 @@ def _assert_db() -> None:
     # keyed by session_id) and backfilled with the id at screening — that
     # backfill is what makes consent/intro/screening dwell times attributable.
     intake = ev[ev["round_idx"] == 0]
+    # 顺序已是 同意 → 背景问卷 → 说明页(§4);类型集合与去重序号不变
     assert set(intake["type"]) == {
         "consent_shown", "consent_agree", "intro_shown", "intro_continue",
         "screening_shown", "screening_submit",

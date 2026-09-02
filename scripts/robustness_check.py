@@ -118,17 +118,26 @@ def has_button(at: AppTest, label: str) -> bool:
     return any(b.label == label for b in at.button)
 
 
+def submit_version(at: AppTest) -> None:
+    """点「提交这一版」。C 的文案与 D/E 不同(§8:C 只生成一次,不能说「满意了」),
+    调用方多半不关心当前是哪个条件,所以在这里认两种。"""
+    for label in ("满意了,提交这一版", "提交这一版,进入问卷"):
+        if has_button(at, label):
+            click(at, label)
+            return
+    raise AssertionError(f"提交按钮不存在,现有:{[b.label for b in at.button]}")
+
+
 def errors_of(at: AppTest) -> list[str]:
     return [e.value for e in at.error]
 
 
 def run_intake(at: AppTest) -> None:
-    """同意 → 说明 → 背景问卷(全部答完并提交)。"""
+    """同意 → 背景问卷 → 说明页(§4 之后的真实顺序);出来时已在第 1 轮。"""
     pick_zh(at)
     at.checkbox(key="_consent_agree").check().run()
     click(at, "同意并开始")
-    click(at, "开始")
-    at.selectbox[0].select("18-24")
+    at.selectbox[0].select("21-30 岁")
     at.selectbox[1].select("不愿透露")
     at.selectbox[2].select("偶尔(每月几次)")
     at.selectbox[3].select("从未用过")
@@ -140,7 +149,8 @@ def run_intake(at: AppTest) -> None:
     for key, val in (("_scr_self", 1), ("_scr_trust", 4), ("_scr_own", 5)):
         [b for b in at.get("button_group") if b.key == key][0].set_value(val)
     safe_run(at)
-    click(at, "提交并继续")
+    click(at, "提交并继续")     # → 说明页(身份/续接 token 此时已就位)
+    click(at, "开始")           # → 第 1 轮,round_start 从这里计时
 
 
 def seed_round(cond: str) -> AppTest:
@@ -360,7 +370,7 @@ def section_c() -> None:
     at = boot_app()
     pick_zh(at)
     at.checkbox(key="_consent_agree").check().run()
-    click(at, "同意并开始")            # 停在说明页
+    click(at, "同意并开始")            # 停在背景问卷页(§4 之后说明页在其之后)
     fresh = boot_app()                 # 刷新 = 全新 session,URL 无 token
     ck(fresh.session_state["stage"] == "consent"
        and len(db.load_table("participants")) == n0,
@@ -377,15 +387,16 @@ def section_c() -> None:
     token = db.load_table("participants").set_index("id").loc[pid, "token"]
 
     r = boot_app(t=token)
-    ck(r.session_state["stage"] == "rounds" and r.session_state["round_idx"] == 1,
-       "写创意阶段刷新:续接回第 1 轮")
+    ck(r.session_state["stage"] == "intro" and r.session_state["round_idx"] == 1
+       and r.session_state["participant_id"] == at.session_state["participant_id"],
+       "写创意阶段刷新:续接回同一被试的第 1 轮(落在说明页,重看一遍简介再开始)")
 
     write_intent(at)                                   # 生成出草稿
     r = boot_app(t=token)
     ck(r.session_state["round_idx"] == 1 and len(r.session_state["r_versions"]) == 0,
        "有草稿时刷新:本轮从头重做(草稿不保留,设计如此)")
 
-    click(at, "满意了,提交这一版")                      # trial 已落库,问卷未答
+    submit_version(at)                                 # trial 已落库,问卷未答
     r = boot_app(t=token)
     ck(r.session_state["round_idx"] == 1,
        "trial 已交/问卷未交时刷新:重做该轮(trial 被 OR REPLACE 覆盖)")
@@ -446,6 +457,37 @@ def section_d() -> None:
     with db._conn() as c:
         tbs = [r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")]
     ck("trials" in tbs, "SQL 注入样输入后表仍在(参数化查询)")
+
+    # 分镜解析守卫(2026-09-01 §9 排版改动引入,当晚审计抓到)。共同点:兜底切分的
+    # 锚点从「时长」换成了「画面描写」——后者是有内容的字段,模型会重复、被试在
+    # 可编辑文本框里也会重复,于是「切得多的赢」这条启发式会拿错误的切法压过正确的。
+    two_line = ("1.\n【画面描写】闹钟黑着\n【时长】3 秒 【拍法】特写 【台词/音效】滴答\n"
+                "2.\n【画面描写】猛地睁眼\n【画面描写】他抓起书包\n"
+                "【时长】5 秒 【拍法】中景 【台词/音效】完了\n"
+                "3.\n【画面描写】冲出家门\n【时长】7 秒 【拍法】远景 【台词/音效】脚步")
+    ck(len(shots.parse_shots(two_line)) == 3,
+       "一个镜头里出现两个【画面描写】:不产生幻影镜头",
+       "否则被试要给 3 镜的稿子标 4 次归属,结构完整度也被拉低")
+
+    glued = ("【画面描写】闹钟黑着\n【时长】3 秒 【拍法】特写 【台词/音效】滴答\n"
+             "猛地睁眼\n【时长】5 秒 【拍法】中景 【台词/音效】完了\n"
+             "【画面描写】冲出家门\n【时长】7 秒 【拍法】远景 【台词/音效】脚步")
+    ck(shots.parse_shots(glued) == [],
+       "手改丢了编号又丢了中间的字段标记:诚实失败,不把两镜粘成一镜",
+       "silently-wrong 的逐镜头数据比 parse_ok=0 更坏")
+
+    tail_num = ("【画面描写】倒计时开始\n【时长】3 秒 【拍法】特写 【台词/音效】倒计时 10\n"
+                "【画面描写】人群\n【时长】5 秒 【拍法】中景 【台词/音效】BGM 90")
+    parsed_tail = shots.parse_shots(tail_num)
+    ck(len(parsed_tail) == 2 and parsed_tail[0]["audio"].endswith("10")
+       and parsed_tail[1]["audio"].endswith("90"),
+       "音效字段以数字结尾时数字不被吞掉",
+       "被吞掉的字会一路进入 strip_format → embedding 保真")
+
+    legacy = ("【时长】3 秒 【拍法】特写 【画面描写】A 【台词/音效】a\n"
+              "【时长】5 秒 【拍法】中景 【画面描写】B 【台词/音效】b\n"
+              "【时长】7 秒 【拍法】远景 【画面描写】C 【台词/音效】c")
+    ck(len(shots.parse_shots(legacy)) == 3, "旧的一行排版(时长在前)仍然解析得出 3 镜")
 
     tmp = Path(tempfile.mkdtemp())
     orig_dir, orig_file = state.DATA_DIR, state.TOPICS_FILE

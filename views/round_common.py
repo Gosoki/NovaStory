@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import html
+import re
+
 import streamlit as st
 
-from core import config, state
+from core import config, prompts, state
 from i18n import get_lang, t
 from views import _postgen, group_c, group_d, group_e, guidance, questionnaire
 
@@ -88,12 +91,37 @@ def _current_step(cond: str, n_steps: int) -> int:
     return 2 if not st.session_state["r_versions"] else 3
 
 
+# 句末标点 + 收尾破折号。choices 本身是完整的一句(「…还是开口问路。」/「…それとも——。」),
+# 直接接上「……」会得到「问路。……或是」这种两种终止符叠在一起的写法 —— 三种语言里都是错的。
+_TAIL_RE = re.compile(r"(?:[。．.?？!！\s]+|[—―─]+)+$")
+
+
 def _topic_card(topic: dict) -> None:
     lang = get_lang()
     st.subheader(t("round.topic_heading"))
     with st.container(border=True):
         st.markdown(f"**{state.topic_text(topic, 'title', lang)}**")
-        st.write(state.topic_text(topic, "scenario", lang))
+        # 情境的两半必须同语言解析(prompts.situation_lang),否则半译的题库会让
+        # 被试看到「英文设定 + 日文选择」,而模型拿到的也是同一份混语前提。
+        slang = prompts.situation_lang(topic, lang)
+        st.write(state.topic_text(topic, "scenario", slang))
+        choices = state.topic_text(topic, "choices", slang)
+        if choices:
+            # Bracketed and greyed out on purpose (§15). Set in the same weight as
+            # the setup sentence, the "map / scent / ask someone" list reads as
+            # the three allowed stories; it is meant as one suggestion among many,
+            # and a participant who narrows their idea to fit it is a participant
+            # whose intent we partly wrote for them — which is exactly what the
+            # fidelity measure is supposed to be measuring.
+            st.markdown(
+                "<div style='color:var(--ns-dim,#6e6e6e);font-size:.88rem;"
+                "line-height:1.5;margin:-.35rem 0 .35rem'>"
+                + html.escape(t("round.topic_choices",
+                                choices=_TAIL_RE.sub("", choices),
+                                free=t("round.topic_free")))
+                + "</div>",
+                unsafe_allow_html=True,
+            )
         st.caption(
             t(
                 "round.topic_spec",

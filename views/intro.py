@@ -10,33 +10,54 @@ from core import state
 from i18n import get_lang, t
 from views import _storyboard
 
-# "How it works" page, shown once after consent and before the background
-# questionnaire. Standardizes onboarding: every participant reads the same short
-# flow overview, sees that their idea can be any form/length (worked example as
-# separate "answer field" mockups), and sees a sample of the storyboard the AI
-# ultimately produces. Kept condition- and content-neutral: the example uses a
-# NON-experimental topic (and says the real topic comes next round), so it
-# teaches form/length, not content, and never adds E-style structured elicitation
-# that would prime the shared intent step.
+# "How it works" page. Shown once, AFTER the background questionnaire and
+# immediately before round 1 (2026-09-01 §4: the two pages were swapped so the
+# briefing is the last thing a participant reads before creating, rather than
+# being pushed out of memory by a 12-item form). Standardizes onboarding: every
+# participant reads the same short flow overview, sees that their idea can be
+# any form/length (worked example as separate "answer field" mockups), and sees
+# a sample of the storyboard the AI ultimately produces. Kept condition- and
+# content-neutral: the example uses a NON-experimental topic (and says the real
+# topic comes next), so it teaches form/length, not content, and never adds
+# E-style structured elicitation that would prime the shared intent step.
 
 # A real gpt-4o-mini storyboard generated from the (rough) oversleeping example,
 # embedded statically so the page needs no live API call. Rendered with the same
-# 絵コンテ sheet participants actually get, so they see the true final output.
+# 絵コンテ sheet participants actually get, so they see the true final output —
+# and in the same two-line-per-shot layout the prompts now ask for (§9).
 _SAMPLE = {
     "ja": (
-        "1. 【秒数】5秒 【カメラ】クローズアップ 【画面】ベッドの中で寝ている主人公、目覚まし時計が止まっている 【セリフ・音】静かな寝室、アラームが鳴らない\n"
-        "2. 【秒数】6秒 【カメラ】引き 【画面】主人公が慌てて起き上がり、時計を見て驚く 【セリフ・音】「えっ、もうこんな時間!?」と焦った声\n"
-        "3. 【秒数】4秒 【カメラ】動き 【画面】外に飛び出して全速力で走る主人公 【セリフ・音】息を切らしながら「間に合わなきゃ！」"
+        "1.\n"
+        "【画面】ベッドで眠っている主人公。枕元の目覚まし時計は止まったまま\n"
+        "【秒数】5秒 【カメラ】クローズアップ 【セリフ・音】静かな寝室。アラームは鳴らない\n"
+        "2.\n"
+        "【画面】主人公が慌てて起き上がり、時計を見て驚く\n"
+        "【秒数】6秒 【カメラ】引き 【セリフ・音】「えっ、もうこんな時間!?」と焦った声\n"
+        "3.\n"
+        "【画面】外へ飛び出して全速力で走る主人公\n"
+        "【秒数】4秒 【カメラ】動き 【セリフ・音】息を切らしながら「間に合わなきゃ！」"
     ),
     "zh": (
-        "1. 【时长】5 秒 【拍法】特写 【画面描写】特写一只静止的闹钟,指针指向 9 点,屏幕没有亮 【台词/音效】安静的房间,随后响起“嘀嗒”的钟声\n"
-        "2. 【时长】6 秒 【拍法】推镜头 【画面描写】镜头推进,一个人头发凌乱、慌忙起床抓起衣服,表情焦急 【台词/音效】自言自语:“怎么会睡过头了！”\n"
-        "3. 【时长】4 秒 【拍法】动镜头 【画面描写】人物匆忙奔出房门,手里提着包,背景模糊成街道 【台词/音效】急促的脚步声与喘息声"
+        "1.\n"
+        "【画面描写】主角在床上睡着,床头的闹钟停着没响\n"
+        "【时长】5 秒 【拍法】特写 【台词/音效】安静的房间,随后响起“嘀嗒”的钟声\n"
+        "2.\n"
+        "【画面描写】镜头推进,一个人头发凌乱、慌忙起床抓起衣服,表情焦急\n"
+        "【时长】6 秒 【拍法】推镜头 【台词/音效】自言自语:“怎么会睡过头了！”\n"
+        "3.\n"
+        "【画面描写】人物匆忙奔出房门,手里提着包,背景模糊成街道\n"
+        "【时长】4 秒 【拍法】动镜头 【台词/音效】急促的脚步声与喘息声"
     ),
     "en": (
-        "1. 【Duration】5 s 【Shot】close-up 【Visual】An alarm clock reading 9:15, its screen dark and silent 【Audio】A faint alarm tone, then silence\n"
-        "2. 【Duration】6 s 【Shot】wide 【Visual】The hero jolts up, throws off the blankets and scrambles to get dressed 【Audio】Hurried footsteps, clothes rustling\n"
-        "3. 【Duration】4 s 【Shot】tight 【Visual】Running down the street, adjusting a tie while glancing at their watch 【Audio】Breathless panting, distant city sounds"
+        "1.\n"
+        "【Visual】The hero asleep in bed; the alarm clock on the nightstand never went off\n"
+        "【Duration】5 s 【Shot】close-up 【Audio】A faint alarm tone, then silence\n"
+        "2.\n"
+        "【Visual】The hero jolts up, throws off the blankets and scrambles to get dressed\n"
+        "【Duration】6 s 【Shot】wide 【Audio】Hurried footsteps, clothes rustling\n"
+        "3.\n"
+        "【Visual】Running down the street, adjusting a tie while glancing at their watch\n"
+        "【Duration】4 s 【Shot】tight 【Audio】Breathless panting, distant city sounds"
     ),
 }
 
@@ -57,12 +78,21 @@ def _img(path: Path) -> str:
 
 _SKETCH = [_img(_ASSET_DIR / f"shot{i}.jpg") for i in (1, 2, 3)]
 
+# `.nsx-lead` is the page's one emphasis style (accent colour + underline) and is
+# shared by both lead-ins so they read as the same kind of sentence (§2, §5).
+# The colours come from --ns-accent / --ns-dim (app.py), which are split by
+# prefers-color-scheme: a single pair of values fails WCAG AA on one of the two
+# themes, and the participant's OS picks the theme, not us.
+# `.nsx-label` carries its dimming in the colour, not in `opacity` — opacity
+# composites onto children, so the "例1" badge could not be brought back to full
+# strength inside a faded parent.
 _EX_CSS = """
 <style>
-.nsx-lead{margin:.2rem 0 .7rem;font-weight:700;font-size:1.02rem;
-  display:inline-block;border-bottom:2px solid rgba(37,99,235,.65);padding-bottom:2px}
-.nsx-wrap{margin:.3rem 0 .7rem}
-.nsx-label{font-size:.8rem;opacity:.6;margin:0 0 4px 3px}
+.nsx-lead{margin:.9rem 0 .75rem;font-weight:700;font-size:1.02rem;color:var(--ns-accent,#2563eb);
+  display:inline-block;border-bottom:2px solid currentColor;padding-bottom:2px}
+.nsx-wrap{margin:0 0 1.05rem}
+.nsx-label{font-size:.82rem;color:var(--ns-dim,#6e6e6e);margin:0 0 5px 2px}
+.nsx-no{font-weight:700;color:var(--ns-accent,#2563eb);margin-right:.5em}
 .nsx-field{border:1px solid rgba(128,128,128,.45);border-radius:8px;
   background:rgba(128,128,128,.12);padding:9px 12px;
   font-size:.9rem;line-height:1.55;white-space:pre-wrap}
@@ -70,11 +100,17 @@ _EX_CSS = """
 """
 
 
-def _example(label: str, text: str) -> str:
+def _example(n: int, label: str, text: str) -> str:
     return (
-        f'<div class="nsx-wrap"><div class="nsx-label">{html.escape(label)}</div>'
+        f'<div class="nsx-wrap"><div class="nsx-label">'
+        f'<span class="nsx-no">{html.escape(t("intro.ex_no", n=n))}</span>'
+        f"{html.escape(label)}</div>"
         f'<div class="nsx-field">{html.escape(text)}</div></div>'
     )
+
+
+def _lead(key: str) -> str:
+    return f'<div class="nsx-lead">{html.escape(t(key))}</div>'
 
 
 def render() -> None:
@@ -87,21 +123,23 @@ def render() -> None:
     st.info(t("intro.freedom"))
 
     boxes = "".join(
-        _example(t(f"intro.ex{i}_label"), t(f"intro.ex{i}_text")) for i in (1, 2, 3, 4, 5)
+        _example(i, t(f"intro.ex{i}_label"), t(f"intro.ex{i}_text")) for i in (1, 2, 3, 4, 5)
     )
-    st.markdown(
-        f'{_EX_CSS}<div class="nsx-lead">{html.escape(t("intro.ex_lead"))}</div>{boxes}',
-        unsafe_allow_html=True,
-    )
+    st.markdown(f'{_EX_CSS}{_lead("intro.ex_lead")}{boxes}', unsafe_allow_html=True)
     st.caption(t("intro.ex_note"))
 
-    # Sample of the final output the AI produces from such an idea.
-    st.markdown(t("intro.sample_lead"))
+    # Sample of the final output the AI produces from such an idea — half size,
+    # so the briefing page isn't dominated by a full-width storyboard table.
+    st.markdown(_lead("intro.sample_lead"), unsafe_allow_html=True)
     _storyboard.render(_SAMPLE.get(get_lang(), _SAMPLE["ja"]), t("intro.sample_title"),
-                       sketches=_SKETCH)
+                       sketches=_SKETCH, mini=True)
 
     st.caption(t("intro.reassure"))
     if st.button(t("intro.start"), type="primary", width="stretch"):
         state.log_intake_event("intro_continue")
-        st.session_state["stage"] = "screening"
+        # The round clock starts HERE, not at screening: start_rounds logs
+        # round_start, and t_read_intent is measured from it. Parking the
+        # participant on this page with the clock already running would fold the
+        # whole briefing into round 1's reading time.
+        state.start_rounds()
         st.rerun()

@@ -55,6 +55,15 @@ HASHED_FILES = [
     "analysis/pilot_check.py", # 试测 go/no-go 判读
     "core/shots.py",           # 分镜解析器 —— 它的宽严直接决定 parse_ok 与所有逐镜头指标
     "core/config.py",          # N_ROUNDS / LATIN_SQUARE_N / MIN_INTENT_CHARS / TEMPERATURE
+    "core/prompts.py",         # 生成/修订/引导指令 —— 镜数·总秒数·字段排版都在这里
+    "data/topics.json",        # **刺激本身**:每位被试读到的题面与模型拿到的前提
+    # 三语文案里住着**条件操纵本身**:`round.instr_C`(C 的「只生成一次」事前告知)、
+    # `round.topic_choices`/`topic_free`(题目松绑到什么程度)。改一句就能改变一个条件
+    # 的框架,而 topics.json 与 prompts.py 都不会因此变动 —— 不盖住它们,冻结校验会
+    # 对着一个已经改过框架的实验说「一致」。
+    "i18n/locales/ja.json",
+    "i18n/locales/zh.json",
+    "i18n/locales/en.json",
 ]
 
 

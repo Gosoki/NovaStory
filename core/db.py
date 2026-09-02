@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS participants (
   token TEXT,                 -- opaque resume handle (URL ?t=), not the row id
   final_survey_json TEXT,     -- whole-study survey, shown after all rounds
   finished_at TEXT,           -- set when the completion code is issued; created_at→here = whole-session time
+  contact_json TEXT,          -- OPT-IN contact left on the done page: {email, want_video, note, at}
   status TEXT NOT NULL DEFAULT 'in_progress'
 );
 CREATE TABLE IF NOT EXISTS trials (
@@ -108,6 +109,7 @@ _MIGRATIONS = [
     "ALTER TABLE participants ADD COLUMN token TEXT",
     "ALTER TABLE participants ADD COLUMN final_survey_json TEXT",
     "ALTER TABLE participants ADD COLUMN finished_at TEXT",
+    "ALTER TABLE participants ADD COLUMN contact_json TEXT",
     # v3 (guided co-creation) trial columns
     "ALTER TABLE trials ADD COLUMN guidance_json TEXT",
     "ALTER TABLE trials ADD COLUMN revision_requests TEXT",
@@ -216,6 +218,28 @@ def count_questionnaires(participant_id: int) -> int:
             "SELECT COUNT(*) FROM questionnaires WHERE participant_id=?",
             (participant_id,),
         ).fetchone()[0]
+
+
+def get_participant(pid: int) -> Optional[dict]:
+    with _conn() as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT * FROM participants WHERE id=?", (pid,)).fetchone()
+        return dict(row) if row else None
+
+
+def set_contact(pid: int, payload: str) -> bool:
+    """写入自愿留下的联系方式;**已有值就拒绝覆盖**,返回是否写成功。
+
+    完成页的 `?t=` 续接 token 会一直留在网址里,`_attempt_resume` 只凭 token 就能恢复
+    一位已完成被试的身份。页面从前是只读的,所以转发/共用机器上的残留网址无害;
+    这个表单会**写**,所以必须做成一次性的 —— 否则后来者的邮箱会把前一位的悄悄顶掉,
+    而记录上写的是前一位同意了被联系。"""
+    with _conn() as conn:
+        cur = conn.execute(
+            "UPDATE participants SET contact_json=? WHERE id=? AND contact_json IS NULL",
+            (payload, pid),
+        )
+        return cur.rowcount > 0
 
 
 def update_participant(pid: int, **fields: Any) -> None:

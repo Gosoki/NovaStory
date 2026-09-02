@@ -49,14 +49,26 @@ _BAD_FIELD_P = {"C": 0.25, "D": 0.15, "E": 0.10}  # 掉一个字段的概率 →
 
 
 def _script(rng: random.Random, n_shots: int = 3, audio: bool = True) -> str:
+    """合成一份分镜稿。**两种排版随机各出一半**:
+
+    2026-09-01(§9)之后 prompts 要的是「编号独占一行 → 【画面】一行 → 【秒数】【カメラ】
+    【セリフ・音】一行」;旧的一行排版仍会出现在手改稿和换版前的历史数据里。分析链
+    (结构完整度 = H4 的终点、逐镜头标注粒度、strip_format → embedding 保真、textstats)
+    必须两种都算过 —— 只喂旧排版的话,新排版上的解析退化要等真数据到手才会暴露。"""
     def w() -> str:
         return " ".join(rng.choice(_WORDS) for _ in range(6))
+    two_line = rng.random() < 0.5
     out = []
     for i in range(1, n_shots + 1):
-        s = (f"{i}.【秒数】{rng.choice([4, 5, 6])}秒【カメラ】{rng.choice(_CAMS)}"
-             f"【画面】{w()}")
-        if audio:
-            s += f"【セリフ・音】{w()}"
+        sec, cam = rng.choice([4, 5, 6]), rng.choice(_CAMS)
+        if two_line:
+            s = f"{i}.\n【画面】{w()}\n【秒数】{sec}秒 【カメラ】{cam}"
+            if audio:
+                s += f" 【セリフ・音】{w()}"
+        else:
+            s = f"{i}.【秒数】{sec}秒【カメラ】{cam}【画面】{w()}"
+            if audio:
+                s += f"【セリフ・音】{w()}"
         out.append(s)
     return "\n".join(out)
 

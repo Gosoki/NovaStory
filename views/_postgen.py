@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import html
+
 import streamlit as st
 
 from core import prompts, state
@@ -45,10 +47,27 @@ def render(topic: dict, cond: str) -> None:
 
 
 def render_readonly(topic: dict) -> None:
-    """Condition C: zero-loop — rendered script + submit only."""
+    """Condition C: zero-loop — own idea, generated script, submit.
+
+    Echoing the idea back matters in C specifically: it is the one condition with
+    no loop, so it never renders the chat history pane, and without this the
+    script the participant is about to judge ("is this what I meant?") sits on
+    screen next to nothing they wrote (§8). The submit label is neutral here too
+    — "I'm happy with it, submit this version" implies a version they could have
+    rejected, and in C there is exactly one."""
+    intent = (st.session_state.get("r_intent") or "").strip()
+    if intent:
+        st.caption(t("postgen.readonly_intent"))
+        with st.container(border=True):
+            # 逐字回显:被试写的「1. 起きる 2. 走る」经 markdown 会变成有序列表,
+            # 排版上与紧邻其下的 AI 稿难以区分 —— 而这段回显存在的意义就是分开两者。
+            st.markdown(
+                f"<div style='white-space:pre-wrap;line-height:1.6'>{html.escape(intent)}</div>",
+                unsafe_allow_html=True,
+            )
     st.subheader(t("postgen.readonly_title"))
     st.markdown(state.current_script())
-    if st.button(t("postgen.submit"), type="primary", width="stretch"):
+    if st.button(t("postgen.submit_c"), type="primary", width="stretch"):
         _trial.submit_trial(state.current_script())
         st.rerun()
 

@@ -117,6 +117,15 @@ tr.sb-blank .sb-frame .lbl{display:none}
    may have written while the window was still wide — inline width, a leftover
    .is-animating opacity, a transform — has to be forced back here, otherwise
    resizing across 900px leaves the sheet stuck at the old width or half faded. */
+/* Half-size sheet — the intro page's static sample only.
+   Implemented as a WIDTH CAP, not `zoom`. `zoom` scales lengths but not an
+   auto-width block's share of its parent: the sheet would have stayed full
+   width while its 0.86rem type shrank to ~6.9px — unreadable CJK, on the one
+   page whose whole job is to show what the AI produces. A max-width halves the
+   footprint (which is what "缩小50%" is asking for) and leaves the type alone,
+   and it degrades correctly on a phone instead of needing its own opt-out. */
+.sb-mini .sb-sheet{max-width:50%}
+@media (max-width:900px){.sb-mini .sb-sheet{max-width:100%}}
 @media (max-width:900px){:root.sb-js .sb-slot.sb-pin{display:contents}
   :root.sb-js .sb-sheet.sb-pin{position:static;transform:none!important;opacity:1!important;
     width:auto!important;filter:none!important;cursor:auto!important;
@@ -135,7 +144,7 @@ def _frame(label: str, secs: str, sketch: str = "") -> str:
 
 
 def render(script: str, subtitle: str, sketches: list[str] | None = None,
-           pin: bool = False) -> None:
+           pin: bool = False, mini: bool = False) -> None:
     """Render a finished script as a 絵コンテ sheet with the given subtitle.
     `sketches` (optional) is a per-shot list of trusted SVG strings drawn into
     the picture frames; without it the frames show the "coming soon" placeholder.
@@ -148,7 +157,10 @@ def render(script: str, subtitle: str, sketches: list[str] | None = None,
     user scrolls past it — pinning it to the top-right as a hover-to-expand
     thumbnail — while keeping the slot exactly as tall as the sheet so the
     questionnaire body never slides up underneath it. Without `pin` the sheet is
-    an ordinary in-flow element (the intro page's static sample)."""
+    an ordinary in-flow element (the intro page's static sample).
+
+    `mini=True` renders the sheet at half size (the intro sample; the real sheet
+    is a wide table that dominated the briefing page)."""
     parsed = shots.parse_shots(script)
     if not parsed:
         st.caption(t("q.script_review"))
@@ -187,4 +199,6 @@ def render(script: str, subtitle: str, sketches: list[str] | None = None,
         f"</div>"
         f"</div>"
     )
+    if mini:
+        sheet = f'<div class="sb-mini">{sheet}</div>'
     st.markdown(f"{_SB_CSS}{sheet}", unsafe_allow_html=True)
