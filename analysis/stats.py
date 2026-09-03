@@ -3,7 +3,7 @@
 
 主分析: 线性混合模型 LMM  DV ~ 条件 + 题目 + 顺序位置 + (1|被试);
 计划对比 E−D(主)/ E−C / D−C,族内 Holm 校正。
-等价:  TOST(质量「不劣于」的非劣主张,DV = 结构完整度复合)。稳健: Wilcoxon 配对符号秩。
+等价:  TOST(主终点不显著时的等价检验,界取 prereg.SESOI_BY_ENDPOINT;H4 结构完整度只作描述性,2026-09-01 拍板 2.4)。稳健: Wilcoxon 配对符号秩。
 剂量-反应: E 内 事前投入 → 保真 / 所有权(被试间,附注局限)。
 
 输入: analysis/v3.py 的 per-trial CSV(缺主复合成分则跳过该复合)。
@@ -28,7 +28,7 @@ sys.path.insert(0, str(ROOT))
 
 from analysis import prereg  # noqa: E402  (冻结分析计划常量的单一真源:终点层级 / SESOI)
 
-CSV = ROOT / "data" / "analysis" / "v3_per_trial.csv"
+DEFAULT_PER_TRIAL_CSV = ROOT / "data" / "analysis" / "v3_per_trial.csv"   # 与 events.DEFAULT_CSV 同一份产物
 _PAIRS = [("E", "D"), ("E", "C"), ("D", "C")]  # E−D 为主
 # 2026-09-01 拍板 2.5:第三腿由 mine_ratio 换成 1−ai_against_ratio(v3 导出 `not_against`)。
 # 理由:mine_ratio =「这一镜主要是我的想法」的占比,量的是**人类贡献量** —— 与 own3
@@ -56,8 +56,9 @@ def _z(s: pd.Series) -> pd.Series:
 
 
 def build_composites(df: pd.DataFrame) -> pd.DataFrame:
-    """保真复合 = z(想象匹配)+z(违背取反)+z(逐镜头 mine 比)+z(embedding Δ,若有) 的均值;
-    所有权复合 = own_mean(docs/paper/04 §2.2)。缺哪项跳哪项。"""
+    """保真复合 = 0.5 × mean z(imagine, −violation, not_against) + 0.5 × z(embedding Δ)
+    (embedding 缺席则退回主观三腿等权并告警;2026-09-01 拍板 2.5 起第三腿是 not_against,不是 mine_ratio);
+    所有权复合 = own_mean(docs/paper/04 §2.2)。缺哪项跳哪项并告警。"""
     df = df.copy()
     # 保真复合(主终点)=「**主观三腿先平均、再与 embedding Δ 各半**」
     # (docs/paper/04 §2.1;用户 2026-08-03 拍板)。此前是四腿等权 → 唯一的客观腿被稀释到
@@ -312,7 +313,7 @@ def tost(df: pd.DataFrame, dv: str, pair=("E", "D"), bound: float | None = None)
         why = (f"prereg.SESOI_BY_ENDPOINT 里没有 {dv} 的界" if bound is None
                else f"SESOI={bound} 不是正的有限数(等价界须为正的绝对值,疑似笔误/符号写反)")
         print("!" * 78)
-        print(f"⛔ TOST 拒绝执行(H4 非劣,dv={dv},{pair[0]}−{pair[1]}):{why}。")
+        print(f"⛔ TOST 拒绝执行(dv={dv},{pair[0]}−{pair[1]}):{why}。")
         print(f"   采数前研究员必须拍板:{dv} 上多大的 {pair[0]}−{pair[1]} 差异才算「实质劣于」")
         print("   (即等价界 SESOI,用**该 DV 的原始单位**:7 点量表用「分」、0-1 比例用「百分点」。")
         print("    ⛔ 不要把界写在 z 合成的复合上 —— 那里的 1 个单位是 1 个标准差,量纲不同。)")
@@ -341,7 +342,7 @@ def tost(df: pd.DataFrame, dv: str, pair=("E", "D"), bound: float | None = None)
     se = sd / np.sqrt(n)
     p_lower = stats.t.sf((m + bound) / se, n - 1)   # H1: 差 > −bound
     p_upper = stats.t.cdf((m - bound) / se, n - 1)  # H1: 差 < +bound
-    eq = bool(p_lower < .05 and p_upper < .05)
+    eq = bool(p_lower < prereg.ALPHA and p_upper < prereg.ALPHA)
     return {"pair": f"{a}-{b}", "n": n, "mean_diff": float(m), "bound": float(bound),
             "p_lower": float(p_lower), "p_upper": float(p_upper),
             "equivalent": eq,
@@ -372,7 +373,7 @@ def analyze_endpoint(df: pd.DataFrame, dv: str) -> tuple[str | None, dict | None
     **estimate 是 E−D 的点估计,必须一起带回来** —— 只凭 p 走判定分支会把
     「E 显著**劣于** D」误判成「判优」(显著性检验是双侧的,p 不含方向)。
 
-    p 是给 main() 走冻结判定三分支(prereg.DECISION_BRANCHES)用的:显著→判优、
+    p 是给 main() 走冻结判定三分支(prereg.DECISION_BRANCHES,primary_verdict)用的:显著→判优、
     不显著→TOST。此前本函数只返回错误字符串,于是三分支在代码里根本没有执行路径
     ——那正是 NOVICE_DEF「写了但从不执行」的同一种病(2026-09-01 自查抓到)。
     LMM 失败不中断整轮,但必须在输出里大声报错并被 main 汇总。"""
@@ -408,7 +409,7 @@ def analyze_endpoint(df: pd.DataFrame, dv: str) -> tuple[str | None, dict | None
     return err, ed_stat
 
 
-def decide(df: pd.DataFrame, dv: str, ed: dict | None, alpha: float = 0.05) -> dict:
+def primary_verdict(df: pd.DataFrame, dv: str, ed: dict | None, alpha: float = prereg.ALPHA) -> dict:
     """冻结的判定分支(prereg.DECISION_BRANCHES),写死、不允许临场解释。
     `ed` = analyze_endpoint 返回的 {"p_holm", "estimate"}(E−D 的校正 p 与点估计)。
 
@@ -425,11 +426,11 @@ def decide(df: pd.DataFrame, dv: str, ed: dict | None, alpha: float = 0.05) -> d
     **方向约定**:只对 `prereg.PRIMARY_ENDPOINTS` 调用,它们都是「越高越好」
     (ownership / fidelity)。用到「越低越好」的终点上必须先反号,否则 ①/①' 会颠倒。
 
-    等价检验用的 DV 由 prereg.EQUIV_DV 指定,可能**不是**主效应那个 DV:
+    等价检验用的 DV 由 prereg.EQUIV_DV_BY_ENDPOINT 指定,可能**不是**主效应那个 DV:
     保真复合是 z 合成的(单位=标准差),在它上面写「0.5 分」是量纲错配,
     故保真的「≈」判在原始锚题 imagine(7 点量表原始分)上。"""
     if dv not in prereg.PRIMARY_ENDPOINTS:
-        raise ValueError(f"decide() 的方向约定只对主终点成立,收到 {dv}")
+        raise ValueError(f"primary_verdict() 的方向约定只对主终点成立,收到 {dv}")
     if not ed or ed.get("p_holm") is None:
         return {"dv": dv, "verdict": "INCONCLUSIVE",
                 "note": "无 E−D 计划对比(LMM 失败/数据不足)"}
@@ -440,7 +441,7 @@ def decide(df: pd.DataFrame, dv: str, ed: dict | None, alpha: float = 0.05) -> d
                 "p_holm": p_ed, "estimate": est,
                 "note": ("校正后显著且 E−D>0 → 判优" if better
                          else "校正后显著但 E−D<0 → **E 劣于 D**,不是判优")}
-    eq_dv = prereg.EQUIV_DV.get(dv, dv)
+    eq_dv = prereg.EQUIV_DV_BY_ENDPOINT.get(dv, dv)
     r = tost(df, eq_dv, ("E", "D"))
     return {"dv": dv, "equiv_dv": eq_dv, "p_holm": p_ed, "estimate": est,
             "verdict": r.get("verdict", "INCONCLUSIVE"), "tost": r}
@@ -468,7 +469,7 @@ def _demo() -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="A6 v3 推断统计")
-    ap.add_argument("--csv", type=Path, default=CSV)
+    ap.add_argument("--csv", type=Path, default=DEFAULT_PER_TRIAL_CSV)
     ap.add_argument("--demo", action="store_true")
     # 2026-09-01 拍板 2.1:主分析人群 = novice 子集(B1),故**默认就是 novice**。
     # 此前没有这个参数,主分析实际跑的是全样本,与 04/幻灯片/答辩口径全部对不上。
@@ -497,7 +498,8 @@ def main() -> None:
     print(f"分析人群 = {args.population}"
           + ("(事前冻结的主分析人群,B1)" if args.population == "novice" else "(全样本,稳健性)"))
     print(f"  被试 {n_used} 人 / 全样本 {n_all} 人;trial {len(df)} 行")
-    print(f"  novice 定义:{prereg.NOVICE_DEF}(需满足 {prereg.NOVICE_MIN_CRITERIA}/5)")
+    # 别打印 NOVICE_DEF:那是给人读的「5 项严格 AND」字符串,退路启用(4/5)后会和真实口径打架
+    print(f"  novice 定义:{list(prereg.NOVICE_CRITERION_FIELDS)} 中满足 ≥{prereg.NOVICE_MIN_CRITERIA} 项(prereg.is_novice)")
     print(f"  等价界 SESOI:{prereg.SESOI_BY_ENDPOINT}")
     print(f"  判定分支:{' | '.join(prereg.DECISION_BRANCHES)}")
     print("=" * 78)
@@ -522,7 +524,7 @@ def main() -> None:
     for br in prereg.DECISION_BRANCHES:
         print(f"    {br}")
     for dv in prereg.PRIMARY_ENDPOINTS:
-        d = decide(df, dv, p_by_dv.get(dv))
+        d = primary_verdict(df, dv, p_by_dv.get(dv))
         mark = {"superior": "✅ 判优(E>D)", "inferior": "❌ E 显著劣于 D",
                 "equivalent": "≈ 判等价",
                 "INCONCLUSIVE": "⛔ INCONCLUSIVE(不得写「不劣」)"}.get(d["verdict"], d["verdict"])

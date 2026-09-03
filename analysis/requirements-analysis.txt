@@ -3,11 +3,14 @@
 # ⚠️ 不是"可选":研究员后台的「数据分析」面板(views/analysis_panel.py)在 try 之外
 #    import analysis/*,缺任何一个 → 一点开就 ImportError 崩页。部署前由
 #    scripts/deploy_check.py ⑦「分析依赖」红灯拦截;装完跑 `make smoke` 验收整条链。
-numpy
-scipy
-pandas
-statsmodels
-matplotlib      # analysis/figures.py(招牌图 + 主 DV)
+# ⚠️ 版本**钉死**(2026-09-02):scripts/freeze_prereg.py 把依赖版本记进冻结产物,理由是
+#    「statsmodels 换版本 LMM 数值会动」—— 不钉版本,冻结产物记的就是一个会漂的数。
+#    升级要走冻结变更流程(docs/paper/07 偏差记录),不能顺手 pip install -U。
+numpy==2.5.1
+scipy==1.18.0
+pandas==3.0.5
+statsmodels==0.14.6
+matplotlib==3.11.1      # analysis/figures.py(招牌图 + 主 DV)
 # openai 已在主 requirements.txt(analysis/embed.py 用其 embedding 接口)
 
 # 可选:仅 `analysis/metrics.py --backend local` 需要(副 embedding 模型

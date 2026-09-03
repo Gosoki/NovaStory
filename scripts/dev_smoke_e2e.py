@@ -121,6 +121,16 @@ def safe_run(at):
     for c in list(at.checkbox):  # e.g. stale _consent_agree after a page transition
         if c.key and c.key not in at.session_state:
             at.session_state[c.key] = False
+    # 无 key 的 widget(总问卷的 4 个跨轮单选、操纵察觉单选)换页后同样会残留,但它们
+    # 没有 key、按位置 id 存状态,上面那圈补不到 —— 序列化时 `state[self.id]` 直接 KeyError。
+    # set_value(None) 让它序列化成「未选择」:对已消失的旧节点无副作用,对当前页刚设过值的
+    # widget 也不会动(它的 _value 已不是 InitialValue,读 value 不会去查 session_state)。
+    for w in list(at.radio) + list(at.selectbox):
+        if not w.key:
+            try:
+                _ = w.value
+            except KeyError:
+                w.set_value(None)
     for k, v in _injected.items():  # segmented_control & friends
         if k not in at.session_state:
             at.session_state[k] = v
@@ -237,7 +247,7 @@ def _answer_final_survey(at) -> None:
         bg = at.radio[i]
         bg.set_value(bg.options[2])           # 都选第 3 轮,便于断言
     set_sc(at, "_fs_sat", 6)
-    inject(at, "_fs_noticed", "3回目だけ先に質問された")
+    at.radio[4].set_value(at.radio[4].options[2])   # 操纵察觉:第 3 档「注意到 AI 参与方式不同」
     btn_click(at, "提交并完成")
 
 
@@ -279,7 +289,7 @@ def _assert_db() -> None:
     assert fs["pref_round"] == 3 and fs["reuse_round"] == 3 and fs["overall_sat"] == 6, fs
     # 2026-09-02 新增的三条(跨轮保真 / 跨轮努力 / 操纵察觉开放题)
     assert fs["closest_round"] == 3 and fs["effort_round"] == 3, fs
-    assert fs["noticed_diff"], "操纵察觉开放题没落库"
+    assert fs["noticed_idx"] == 2, f"操纵察觉选项没落库: {fs.get('noticed_idx')}"
     scr = json.loads(p.iloc[0]["screening_json"])
     assert scr.get("script_confidence") == 2, scr.get("script_confidence")
 
@@ -328,14 +338,15 @@ def _assert_db() -> None:
     # keyed by session_id) and backfilled with the id at screening — that
     # backfill is what makes consent/intro/screening dwell times attributable.
     intake = ev[ev["round_idx"] == 0]
-    # 顺序已是 同意 → 背景问卷 → 说明页(§4);类型集合与去重序号不变
+    # 顺序已是 同意 → 背景问卷 → 说明页(§4)。2026-09-02 起总问卷的两条也写在 round_idx=0
+    # (它在所有轮次之外,以前带着第 3 轮的 round_idx/attempt 落进第 3 轮的事件窗口)。
     assert set(intake["type"]) == {
         "consent_shown", "consent_agree", "intro_shown", "intro_continue",
-        "screening_shown", "screening_submit",
+        "screening_shown", "screening_submit", "final_survey_shown", "final_survey_submit",
     }, f"intake 事件不全: {sorted(set(intake['type']))}"
     assert intake["participant_id"].notna().all(), "intake 事件没回填 participant_id"
     assert intake["attempt"].nunique() == 1, "intake 事件的 session_id 不唯一"
-    assert list(intake.sort_values("id")["seq_in_round"]) == [1, 2, 3, 4, 5, 6], \
+    assert list(intake.sort_values("id")["seq_in_round"]) == [1, 2, 3, 4, 5, 6, 7, 8], \
         "intake 事件序号不连续(去重逻辑漏了或重复落库)"
     assert pd.notna(p.iloc[0]["finished_at"]), "finished_at 没写入,整场时长算不出"
 
@@ -344,7 +355,7 @@ def _assert_db() -> None:
     from analysis import events as A_ev  # noqa: PLC0415 — test-only import
 
     aev, aparts = A_ev.load_events(db.DB_PATH)
-    assert (A_ev.per_trial(aev)["round_idx"] != 0).all(), "intake 段被当成了一轮 trial"
+    assert (A_ev.per_trial_events(aev)["round_idx"] != 0).all(), "intake 段被当成了一轮 trial"
     pp = A_ev.per_participant(aev, aparts).set_index("participant_id")
     row = pp.loc[int(p.iloc[0]["id"])]
     for c in ("t_consent", "t_intro", "t_screening", "t_intake_total",

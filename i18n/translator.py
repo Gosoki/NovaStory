@@ -30,7 +30,8 @@ def get_lang() -> str:
     return st.session_state.get("lang", DEFAULT_LANG)
 
 
-def _dig(d: dict, dotted: str):
+def _lookup_dotted(d: dict, dotted: str):
+    """按点号路径逐层取值;任一层缺失或不是 dict → None(命名空间前缀会返回 dict)。"""
     cur = d
     for part in dotted.split("."):
         if not isinstance(cur, dict) or part not in cur:
@@ -41,9 +42,9 @@ def _dig(d: dict, dotted: str):
 
 def t(key: str, **kwargs) -> str:
     lang = get_lang()
-    val = _dig(_load(lang), key)
+    val = _lookup_dotted(_load(lang), key)
     if val is None and lang != DEFAULT_LANG:
-        val = _dig(_load(DEFAULT_LANG), key)
+        val = _lookup_dotted(_load(DEFAULT_LANG), key)
         if val is not None:
             _log.warning("missing key %r in %s, fell back to %s", key, lang, DEFAULT_LANG)
     if val is None:
@@ -51,6 +52,7 @@ def t(key: str, **kwargs) -> str:
     if kwargs:
         try:
             return val.format(**kwargs)
-        except (KeyError, IndexError):
+        except (KeyError, IndexError, ValueError):
+            # ValueError = 文案里有孤立的 { 或 }:宁可原样显示也别把整页炸掉
             return val
     return val

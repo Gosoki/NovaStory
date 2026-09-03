@@ -51,6 +51,8 @@ HASHED_FILES = [
     "analysis/stats.py",       # LMM / 计划对比 / Holm / TOST / 复合构建
     "analysis/events.py",      # 事件层指标(问卷时长、调用次数)
     "analysis/embed.py",       # embedding 保真 Δ(占保真复合一半权重)
+    "scripts/baseline_gen.py", # Δ 的零点(机器基线)怎么生成
+    "scripts/judge.py",        # judge_fidelity(次要/收敛证据,合进同一份 CSV 并会被报告)
     "analysis/textstats.py",   # 文本指标
     "analysis/pilot_check.py", # 试测 go/no-go 判读
     "core/shots.py",           # 分镜解析器 —— 它的宽严直接决定 parse_ok 与所有逐镜头指标
@@ -64,6 +66,18 @@ HASHED_FILES = [
     "i18n/locales/ja.json",
     "i18n/locales/zh.json",
     "i18n/locales/en.json",
+    # 测量工具本身:筛查里 quiz 的正确项索引(_QUIZ*_CORRECT → quiz_correct → novice 定义)、
+    # 问卷里的题数与注意力题期望值(_ATTENTION_EXPECTED)。改一个数字就改了主分析人群或
+    # 敷衍剔除的口径,而 prereg / v3 / stats 的哈希都不会动。
+    "views/screening.py",
+    "views/questionnaire.py",
+    # 定义 DV 的测量代码:t_pregen/t_postgen 的计时口径(round_durations)、版本快照规则、
+    # 引导问答的 item 形状、被打断等待的记账、trial 行写什么 —— 改它们同样改变数据。
+    "core/state.py",
+    "views/_postgen.py",
+    "views/guidance.py",
+    "views/_streaming.py",
+    "views/_trial.py",
 ]
 
 
@@ -96,9 +110,12 @@ def collect_knobs() -> dict:
         "config.SUPPLEMENT_RANGE": list(C.SUPPLEMENT_RANGE),
         "config.FOLLOWUP_RANGE": list(C.FOLLOWUP_RANGE),
     }
+    from core import state as S
+    knobs["state._COND_ORDERS"] = [list(x) for x in S._COND_ORDERS]
+    knobs["state._TOPIC_ORDERS"] = [list(x) for x in S._TOPIC_ORDERS]
     # stats 侧的腿集合与 H4 DV 名 —— 命名随版本变过,缺哪个就记 None 而不是让脚本崩
-    for name in ("_H4_QUALITY_DV", "_H4_LEGS", "_FIDELITY_LEGS", "_EFFORT_LEGS",
-                 "_DOSE_LEGS", "_OWN_LEGS", "_Z_SCOPE"):
+    for name in ("_H4_QUALITY_DV", "_H4_LEGS", "_FIDELITY_SUBJ_LEGS", "_FIDELITY_OBJ_LEG",
+                 "_FIDELITY_LEGS", "_EFFORT_LEGS", "_DOSE_LEGS", "_PAIRS"):
         v = getattr(A_stats, name, None)
         knobs[f"stats.{name}"] = list(v) if isinstance(v, (list, tuple, set)) else v
     return knobs
@@ -121,6 +138,8 @@ def build() -> dict:
     ) if x)
     payload = {
         "_what": "NovaStory 分析计划冻结产物(内部冻结,非第三方预注册 —— B3)",
+        "_self_sha256_rule": "sha256 of this JSON serialized with sort_keys=True, indent=1, ensure_ascii=False, "
+                             "BEFORE the _self_sha256 field was added (third parties can recompute it that way)",
         "_warning": ("⛔ 论文/发表不得写 'preregistered' / 「事前登録」。"
                      "可写:分析计划在采数前确定并纳入版本管理。"),
         "prereg": prereg.as_dict(),
@@ -165,15 +184,24 @@ def check(path: Path) -> int:
     cur = build()
     bad = []
 
-    for k, v in frozen.get("prereg", {}).items():
-        if cur["prereg"].get(k) != v:
-            bad.append(f"prereg.{k}: 冻结={v!r} 现在={cur['prereg'].get(k)!r}")
-    for k, v in frozen.get("pipeline_knobs", {}).items():
-        if cur["pipeline_knobs"].get(k) != v:
-            bad.append(f"旋钮 {k}: 冻结={v!r} 现在={cur['pipeline_knobs'].get(k)!r}")
-    for rel, h in frozen.get("file_sha256", {}).items():
-        if cur["file_sha256"].get(rel) != h:
-            bad.append(f"文件 {rel} 已改动(sha256 不符)")
+    # 双向比对:冻结后**新增**的常量 / 旋钮 / 文件也算偏离(以前只遍历冻结产物里已有的键,
+    # 改名一个 _*_LEGS 两边都是 None、新加一个旋钮没人比 —— 校验照样绿)。
+    for section, label in (("prereg", "prereg"), ("pipeline_knobs", "旋钮"), ("file_sha256", "文件")):
+        fro, now = frozen.get(section, {}), cur[section]
+        for k in sorted(set(fro) | set(now)):
+            if k not in fro:
+                bad.append(f"{label} {k}: 冻结后新增,未冻结(现在={now[k]!r})")
+            elif k not in now:
+                bad.append(f"{label} {k}: 冻结时有、现在没了(冻结={fro[k]!r})")
+            elif fro[k] != now[k]:
+                bad.append(f"{label} {k}: 冻结={fro[k]!r} 现在={now[k]!r}" if section != "file_sha256"
+                           else f"文件 {k} 已改动(sha256 不符)")
+    # 依赖版本:docstring 自己写着「statsmodels 换版本 LMM 数值会动」,记了就得守
+    fro_pk = {p.split("==")[0].lower(): p for p in frozen.get("packages", [])}
+    now_pk = {p.split("==")[0].lower(): p for p in cur["packages"]}
+    for name in ("numpy", "scipy", "pandas", "statsmodels"):
+        if name in fro_pk and fro_pk[name] != now_pk.get(name):
+            bad.append(f"依赖 {name}: 冻结={fro_pk[name]} 现在={now_pk.get(name)}(会改变 LMM/统计数值)")
 
     if not bad:
         print(f"✅ 冻结校验通过 —— 分析计划与管线常量与 {path.name} 一致。")

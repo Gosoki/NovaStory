@@ -4,7 +4,7 @@ import json
 
 import streamlit as st
 
-from core import db, llm, shots, state
+from core import config, db, llm, shots, state
 
 
 def submit_trial(final_text: str) -> None:
@@ -40,6 +40,7 @@ def submit_trial(final_text: str) -> None:
         n_ai_rounds=st.session_state["r_n_ai_rounds"],
         n_hand_edits=st.session_state["r_n_hand_edits"],
         hand_edit_chars=st.session_state["r_hand_edit_chars"],
+        app_rev=config.APP_REV or None,
         **meta,
         **durs,
     )

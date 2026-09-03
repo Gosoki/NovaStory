@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import difflib
 import json
+import logging
 import secrets
 import time
 from pathlib import Path
@@ -10,7 +11,9 @@ from typing import Any, Optional
 import streamlit as st
 
 from core import config, db
-from i18n import AVAILABLE_LANGS
+from i18n import AVAILABLE_LANGS, DEFAULT_LANG
+
+_log = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "data"
@@ -34,48 +37,59 @@ assert len(_COND_ORDERS) * len(_TOPIC_ORDERS) == config.LATIN_SQUARE_N
 
 # Seed topics written to data/topics.json on first launch when the file is
 # missing. Live session always reads from topics.json via load_topics().
-# title/scenario/choices carry {"ja": ..., "zh": ...} — ja is the formal-study
-# language, zh is for the researcher's testing (paper/8 i18n).
+# title/scenario/choices carry {"ja": ..., "zh": ..., "en": ...} — ja is the formal-study
+# language, zh is for the researcher's testing, en for English sessions. Keep in
+# sync with data/topics.json: a missing topics.json is REPLACED by this seed, and
+# deploy_check requires all three languages.
 # `scenario` is the setup; `choices` is the "which will you do?" list, kept
 # separate since 2026-09-01 (§15) so the UI can grey it out and mark it as one
 # suggestion among many rather than a required direction. The model still gets
 # both, joined (prompts.scenario_text).
 _SEED_TOPICS = [
     {
-        "title": {"ja": "拾った切符（誰かの落とし物）", "zh": "捡到的失物（别人掉的东西）"},
+        "title": {"ja": "拾った切符（誰かの落とし物）", "zh": "捡到的失物（别人掉的东西）",
+                  "en": "The Ticket You Picked Up (someone's lost item)"},
         "scenario": {
             "ja": "道で、誰かが落とした小さな物を拾う。",
             "zh": "在路上捡到别人掉落的小东西。",
+            "en": "On the street you pick up something small that someone dropped.",
         },
         "choices": {
             "ja": "中を見るか、届けるか、それとも——。",
             "zh": "是打开看看、拿去归还,还是——。",
+            "en": "Do you peek inside, hand it in, or——?",
         },
         "shot_count": 3,
         "total_seconds": 15,
     },
     {
-        "title": {"ja": "最後のひと口（分け合う/独り占め）", "zh": "最后一口（分享还是独享）"},
+        "title": {"ja": "最後のひと口（分け合う/独り占め）", "zh": "最后一口（分享还是独享）",
+                  "en": "The Last Bite (share it or keep it)"},
         "scenario": {
             "ja": "目の前に、好きなものがたったひとつだけ残っている。ほんの数秒の攻防。",
             "zh": "眼前只剩最后一口喜欢的东西——短短几秒的拉锯。",
+            "en": "Just one bite of your favorite thing is left in front of you — a standoff of just a few seconds.",
         },
         "choices": {
             "ja": "誰かと分けるか、自分で食べるか。",
             "zh": "是分给别人,还是自己吃掉。",
+            "en": "Share it with someone, or keep it for yourself?",
         },
         "shot_count": 3,
         "total_seconds": 15,
     },
     {
-        "title": {"ja": "はじめての街の、最初の一歩", "zh": "陌生街道的第一步"},
+        "title": {"ja": "はじめての街の、最初の一歩", "zh": "陌生街道的第一步",
+                  "en": "The First Step in an Unfamiliar Town"},
         "scenario": {
             "ja": "見慣れない街に降り立った、最初の一歩。",
             "zh": "降落在陌生的街道,迈出第一步。",
+            "en": "Your first step after arriving in an unfamiliar town.",
         },
         "choices": {
             "ja": "地図を見るか、匂いをたどるか、誰かに声をかけるか。",
             "zh": "是看地图、循着气味走,还是开口问路。",
+            "en": "Do you check a map, follow a scent, or call out to someone?",
         },
         "shot_count": 3,
         "total_seconds": 15,
@@ -109,14 +123,14 @@ ROUND_PAYLOAD_DEFAULTS: dict[str, Any] = {
     "r_g_fallback": False,
     "r_llm_wait": 0.0,
     "r_llm_wait_post": 0.0,       # waits occurring after the first script_shown
-    "r_llm_wait_pre": 0.0,        # E round-1: waits inside [guidance_shown, guidance_submit)
+    "r_llm_wait_in_guidance": 0.0,  # E round-1: waits inside [guidance_shown, guidance_submit)
     "r_events": [],               # [(epoch_seconds, type)] session mirror for durations
     "r_trial_id": None,
     "r_attempt": "",              # session segment id (LOG4); fresh per round attempt
 }
 
 DEFAULTS: dict[str, Any] = {
-    "lang": "ja",
+    "lang": DEFAULT_LANG,
     # Opaque id for this browser session, minted before a participant row
     # exists so the intake stage (consent → intro → screening) can log events
     # and have them backfilled with the participant id at screening.
@@ -132,7 +146,6 @@ DEFAULTS: dict[str, Any] = {
     "stage": "consent",        # consent → screening → intro → rounds → final_survey → done
     "round_idx": 1,
     "round_plan": [],          # [{"condition": str, "topic": dict}] × 3
-    "attention_value": None,
     "completion_code": "",
     **ROUND_PAYLOAD_DEFAULTS,
 }
@@ -142,7 +155,7 @@ def init_state() -> None:
     db.init_db()
     for k, v in DEFAULTS.items():
         if k not in st.session_state:
-            st.session_state[k] = v if not isinstance(v, (dict, list)) else _clone(v)
+            st.session_state[k] = v if not isinstance(v, (dict, list)) else _json_copy(v)
     if not st.session_state["session_id"]:
         st.session_state["session_id"] = secrets.token_hex(4)
     _apply_url_lang()
@@ -198,18 +211,26 @@ def _attempt_resume() -> None:
     def _restore_identity() -> None:
         st.session_state["participant_id"] = p["id"]
         st.session_state["seq"] = p["seq"]
-        st.session_state["lang"] = p.get("lang") or st.session_state.get("lang", "ja")
+        st.session_state["lang"] = p.get("lang") or st.session_state.get("lang", DEFAULT_LANG)
 
-    if p.get("status") == "done":  # finished — restore the completion screen
+    if p.get("status") == "done" or p.get("final_survey_json"):
+        # finished — restore the completion screen. final_survey_json without status
+        # 'done' = the submit landed but the done page never rendered (connection
+        # dropped on that rerun); _render_done mints the code on arrival, so land
+        # there instead of making them answer the whole survey again.
         _restore_identity()
         st.session_state["stage"] = "done"
         st.session_state["completion_code"] = p.get("completion_code") or ""
         return
 
     # Need the round plan from here on; bail (don't half-restore) if topics.json
-    # has been edited below N_ROUNDS — same guard as begin_rounds.
+    # has been edited below N_ROUNDS — same guard as enter_intro.
     topics = load_topics()
     if len(topics) < config.N_ROUNDS:
+        # 以前直接 return:已入组、已消耗 seq 的被试会被丢回同意页,重填问卷后才撞错 —— 还可能
+        # 再入组一次。恢复身份、停在一个明确的错误页上等研究员修题库。
+        _restore_identity()
+        st.session_state["stage"] = "blocked"
         return
     _restore_identity()
     st.session_state["round_plan"] = plan_for_seq(p["seq"], topics[: config.N_ROUNDS])
@@ -218,9 +239,23 @@ def _attempt_resume() -> None:
         # all rounds answered but status != done → final survey not submitted yet
         st.session_state["round_idx"] = config.N_ROUNDS
         st.session_state["stage"] = "final_survey"
+        # 这里也要铸新段 id:否则 session_resumed / final_survey_* 会以 attempt=NULL 写进第 3 轮,
+        # 破坏「每段都有 attempt」(LOG4),以后按段切的脚本会把它当旧格式行。
+        reset_round_payload()
         log_event("session_resumed", {"stage": "final_survey"})
         return
     st.session_state["round_idx"] = done_rounds + 1
+    # 终稿已提交、问卷还没交(问卷页刷新 / 断线):从 trial 行把这一轮**原样恢复到问卷页**。
+    # 以前这里无条件从 intent 重做 —— 被试要再写一遍创意、AI 再生成一次(二次暴露),已落库的
+    # 终稿被 OR REPLACE 掉;而 trials 行本来就存着恢复问卷页所需的全部状态。必须排在下面
+    # 「done_rounds == 0 → 说明页」分支之前,否则第 1 轮的这种情形会被送回说明页。
+    tr = db.get_trial(p["id"], done_rounds + 1)
+    if tr and tr.get("final_output"):
+        st.session_state["stage"] = "rounds"
+        reset_round_payload()   # 铸新 r_attempt:问卷段是新的一段,不冒充产出终稿的那段(LOG4)
+        _restore_round_from_trial(tr)
+        log_event("session_resumed", {"round_idx": done_rounds + 1, "stage": "questionnaire"})
+        return
     if done_rounds == 0:
         # Round 1 isn't finished, so they were either still on the briefing page
         # or partway through round 1 — and a resume wipes the round payload
@@ -229,7 +264,7 @@ def _attempt_resume() -> None:
         # ON the briefing would otherwise silently lose the standardized
         # onboarding, and its button is what starts the round clock (§4).
         st.session_state["stage"] = "intro"
-        # Mint a fresh attempt segment here too, not only in begin_rounds: two
+        # Mint a fresh attempt segment here too, not only in start_rounds: two
         # tabs resumed from the same token must be tellable apart in the event
         # log from their very first event (LOG4), and `session_resumed` is it.
         reset_round_payload()
@@ -244,7 +279,31 @@ def _attempt_resume() -> None:
     log_event("round_start")
 
 
-def _clone(v):
+def _restore_round_from_trial(tr: dict) -> None:
+    """把 trials 行装回本轮会话并直接进问卷:创意、全部版本、E 的问答、D 的修改请求与计数。
+    时长列不恢复(已在 trial 行里);问卷用时由 events 的 trial_submit→questionnaire_submit 算,
+    续接后跨两段 attempt,events.round_metrics 给 NaN、n_resumes 标记这一轮。"""
+    def _j(x, default):
+        try:
+            v = json.loads(x) if isinstance(x, str) and x.strip() else default
+        except ValueError:
+            return default
+        return v if isinstance(v, type(default)) else default
+    st.session_state["r_intent"] = tr.get("intent_statement") or ""
+    versions = _j(tr.get("script_versions"), [])
+    if not versions:
+        versions = [{"v": 1, "author": "ai", "text": tr.get("final_output") or ""}]
+    st.session_state["r_versions"] = versions
+    st.session_state["r_guidance_rounds"] = _j(tr.get("guidance_json"), {}).get("rounds") or []
+    st.session_state["r_revision_requests"] = _j(tr.get("revision_requests"), [])
+    for col in ("n_ai_rounds", "n_hand_edits", "hand_edit_chars"):
+        st.session_state[f"r_{col}"] = int(tr.get(col) or 0)
+    st.session_state["r_trial_id"] = tr.get("id")
+    st.session_state["r_phase"] = "questionnaire"
+
+
+def _json_copy(v):
+    """JSON 往返深拷贝:只用于 DEFAULTS 里的 dict/list(元组会变列表,非 JSON 值会抛)。"""
     return json.loads(json.dumps(v))
 
 
@@ -264,8 +323,12 @@ def _ensure_api_defaults() -> None:
 # ---------------- assignment & round flow ----------------
 
 def plan_for_seq(seq: int, topics: list[dict]) -> list[dict]:
-    conds = _COND_ORDERS[seq // 3]
-    topic_idx = _TOPIC_ORDERS[seq % 3]
+    if not 0 <= seq < config.LATIN_SQUARE_N:
+        # 负数会走 Python 负索引静默返回别的排列,越界才抛 —— 两种都不该静默。
+        raise ValueError(f"seq {seq} out of range [0, {config.LATIN_SQUARE_N})")
+    n_topic = len(_TOPIC_ORDERS)   # 3 = 题目轮转数,不是 N_ROUNDS(两者恰好相等,别混)
+    conds = _COND_ORDERS[seq // n_topic]
+    topic_idx = _TOPIC_ORDERS[seq % n_topic]
     return [{"condition": c, "topic": dict(topics[i])} for c, i in zip(conds, topic_idx)]
 
 
@@ -277,7 +340,7 @@ def enter_intro(participant_id: int, seq: int, token: str = "") -> None:
     burn a second Latin-square seq). What is deliberately NOT done here is
     `round_start`: t_read_intent is measured from it, so starting the clock
     before the briefing would fold the whole briefing into round 1's reading
-    time. begin_rounds (called by the intro page's button) starts it."""
+    time. start_rounds (called by the intro page's button) starts it."""
     topics = load_topics()
     if len(topics) < config.N_ROUNDS:
         raise RuntimeError(f"topics.json needs >= {config.N_ROUNDS} topics")
@@ -298,7 +361,7 @@ def start_rounds() -> None:
 
     刻意**不**重建 round_plan:计划在 `enter_intro` 里就装好了,而这颗按钮被按下时
     被试行与拉丁方 seq 早已落库。若在这里再读一次 topics.json,只要研究员在被试读
-    说明页的这两分钟里动了题库(哪怕只是存了个半截文件),`begin_rounds` 就会抛
+    说明页的这两分钟里动了题库(哪怕只是存了个半截文件),`enter_intro` 就会抛
     RuntimeError —— 抛在一个已经吃掉一个 seq、又没有任何出路的被试脸上。"""
     st.session_state["stage"] = "rounds"
     st.session_state["round_idx"] = 1
@@ -306,8 +369,8 @@ def start_rounds() -> None:
     log_event("round_start")
 
 
-def begin_rounds(participant_id: int, seq: int, token: str = "") -> None:
-    """身份 + 计划 + 开跑,一步到位。只剩 devtools 的「跳过同意+筛查」还在用它 ——
+def enter_rounds_directly(participant_id: int, seq: int, token: str = "") -> None:
+    """身份 + 计划 + 开跑,一步到位(跳过说明页)。只有 devtools 的「跳过同意+筛查」在用 ——
     正式流程走的是 enter_intro(筛查提交)→ start_rounds(说明页的按钮)两步,
     好让说明页的停留不被算进第 1 轮的 t_read_intent。"""
     enter_intro(participant_id, seq, token)
@@ -320,14 +383,16 @@ def current_round() -> dict:
 
 def reset_round_payload() -> None:
     for k, v in ROUND_PAYLOAD_DEFAULTS.items():
-        st.session_state[k] = v if not isinstance(v, (dict, list)) else _clone(v)
+        st.session_state[k] = v if not isinstance(v, (dict, list)) else _json_copy(v)
     # Every (re)start of a round gets its own segment id, so a redone round's
     # events can be told apart from the discarded attempt's (LOG4).
     st.session_state["r_attempt"] = secrets.token_hex(4)
     # Ephemeral widget keys (Streamlit usually cleans these on unmount; pop
     # defensively so a new round never inherits stale editor content).
     for k in list(st.session_state.keys()):
-        if k in ("_script_edit", "_intent_input", "_revision_input") or k.startswith("_g_"):
+        # ⚠️ 别在这里清 _q_*:advance_round 在问卷提交的那次 rerun 里调用本函数,此时问卷 widget
+        # 仍挂载,同一 run 内删它的 key 会让 Streamlit 炸;_q_ 键按轮次编号,下一轮天然不冲突。
+        if k in ("_script_edit", "_intent_input", "_revision_input", "_gen_failed") or k.startswith("_g_"):
             st.session_state.pop(k, None)
 
 
@@ -383,6 +448,10 @@ def add_version(text: str, author: str) -> None:
 
 def _edit_chars(a: str, b: str) -> int:
     """Changed-character volume between two versions (difflib opcodes)."""
+    if len(a) + len(b) > 20_000:
+        # difflib 是二次方的:两次超长粘贴就能让一个 rerun 卡几十秒。编辑框已有 max_chars,
+        # 这里是最后一道保险 —— 退化为长度差,不做逐字对齐。
+        return abs(len(b) - len(a))
     total = 0
     for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, a, b).get_opcodes():
         if tag != "equal":
@@ -420,7 +489,7 @@ def add_llm_wait(seconds: float) -> None:
     # script_shown, so it escapes r_llm_wait_post. Track it separately so
     # round_durations can keep it out of t_pregen (a creative-time column).
     if "guidance_shown" in types and "guidance_submit" not in types:
-        st.session_state["r_llm_wait_pre"] += seconds
+        st.session_state["r_llm_wait_in_guidance"] += seconds
 
 
 def log_intake_event(type_: str, payload: Optional[dict] = None) -> None:
@@ -447,11 +516,10 @@ def log_intake_event(type_: str, payload: Optional[dict] = None) -> None:
     )
 
 
-def _ts(type_: str, last: bool = False) -> Optional[float]:
-    hits = [t for t, ty in st.session_state["r_events"] if ty == type_]
-    if not hits:
-        return None
-    return hits[-1] if last else hits[0]
+def _ts(type_: str) -> Optional[float]:
+    """本轮 attempt 里 type_ 事件**首次**出现的时刻;没有则 None。"""
+    hits = [ts for ts, ty in st.session_state["r_events"] if ty == type_]
+    return hits[0] if hits else None
 
 
 def round_durations(condition: str) -> dict:
@@ -470,15 +538,15 @@ def round_durations(condition: str) -> dict:
     if condition == "E":
         pre = _delta("guidance_shown", "guidance_submit")
         if pre is not None:  # net of the final-script generation wait in-window
-            out["t_pregen"] = round(max(0.0, pre - st.session_state["r_llm_wait_pre"]), 2)
+            out["t_pregen"] = round(max(0.0, pre - st.session_state["r_llm_wait_in_guidance"]), 2)
     post = _delta("script_shown", "trial_submit")
     if post is not None:
         out["t_postgen"] = round(max(0.0, post - st.session_state["r_llm_wait_post"]), 2)
     return out
 
 
-def _delta(a: str, b: str, last_a: bool = False) -> Optional[float]:
-    ta, tb = _ts(a, last=last_a), _ts(b)
+def _delta(a: str, b: str) -> Optional[float]:
+    ta, tb = _ts(a), _ts(b)
     if ta is None or tb is None or tb < ta:
         return None
     return round(tb - ta, 2)
@@ -493,16 +561,20 @@ def load_topics() -> list[dict]:
             json.dumps(_SEED_TOPICS, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
-        return [dict(t) for t in _SEED_TOPICS]
+        return [dict(tp) for tp in _SEED_TOPICS]
     try:
         data = json.loads(TOPICS_FILE.read_text(encoding="utf-8"))
         if isinstance(data, list):
-            topics = [_normalize_topic(t) for t in data if isinstance(t, dict)]
+            topics = [_normalize_topic(tp) for tp in data if isinstance(tp, dict)]
             if topics:
                 return topics
-    except json.JSONDecodeError:
+        _log.warning("topics.json 结构无效,回退种子主题 —— 被试跑的不是你以为的题目")
+    except (ValueError, OSError) as e:
+        _log.warning("topics.json 读取失败(%s),回退种子主题", type(e).__name__)
+        # ValueError 盖住 JSONDecodeError **和** UnicodeDecodeError:日文题库被编辑器存成
+        # Shift-JIS 时抛的是后者,以前只接 JSON 错,编码错会从 init_state 冒出来让每一页都崩。
         pass
-    return [dict(t) for t in _SEED_TOPICS]
+    return [dict(tp) for tp in _SEED_TOPICS]
 
 
 def _int_or(v, default: int) -> int:

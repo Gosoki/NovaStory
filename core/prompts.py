@@ -15,7 +15,7 @@ def _norm(lang: str) -> str:
     return lang if lang in ("zh", "ja", "en") else "ja"
 
 
-def _loc(value, lang: str) -> str:
+def _localize(value, lang: str) -> str:
     """Topic fields may be a plain str (legacy) or {"ja":..,"zh":..} dict."""
     if isinstance(value, dict):
         return value.get(lang) or value.get("ja") or value.get("zh") or ""
@@ -29,11 +29,13 @@ def _int_or(v, default: int) -> int:
         return default
 
 
-def _shots(topic: dict) -> int:
+def _shot_count(topic: dict) -> int:
+    """题目要求的镜头数(int)—— 别和 core/shots.parse_shots 返回的镜头列表混了。"""
     return _int_or(topic.get("shot_count"), 3)
 
 
-def _total(topic: dict) -> int:
+def _total_seconds(topic: dict) -> int:
+    """题目要求的总时长(秒)。"""
     return _int_or(topic.get("total_seconds"), 15)
 
 
@@ -69,8 +71,8 @@ def scenario_text(topic: dict, lang: str, *, with_note: bool = True) -> str:
     the choice list out and mark it as non-binding; the model still sees the same
     sentence sequence it saw before, so generation is unchanged."""
     key = situation_lang(topic, lang)
-    scenario = _loc(topic.get("scenario", ""), key).strip()
-    choices = _loc(topic.get("choices", ""), key).strip()
+    scenario = _localize(topic.get("scenario", ""), key).strip()
+    choices = _localize(topic.get("choices", ""), key).strip()
     if not choices:
         return scenario
     # 选择列表要**明确标成例子**。题目卡自 2026-09-01(§15)起把它括进浅色括号并注明
@@ -100,7 +102,7 @@ def _topic_block(topic: dict, intent: str, lang: str) -> str:
     # 会话语言,半译的题库就会给模型一个「日文题名 + 英文情境」的混语前提 ——
     # 题目卡那边已经这么修过一次,这里是同一个坑的另一半。
     key = situation_lang(topic, lang)
-    title = _loc(topic.get("title", ""), key).strip()
+    title = _localize(topic.get("title", ""), key).strip()
     scenario = scenario_text(topic, lang)
     intent = (intent or "").strip()
     if _norm(lang) == "zh":
@@ -113,7 +115,7 @@ def _topic_block(topic: dict, intent: str, lang: str) -> str:
 # ---------------- script generation (all conditions) ----------------
 
 def build_system_script(topic: dict, lang: str = _DEFAULT_LANG) -> str:
-    n, total = _shots(topic), _total(topic)
+    n, total = _shot_count(topic), _total_seconds(topic)
     if _norm(lang) == "zh":
         return (
             "你是一名专业短视频分镜脚本助手。\n"
@@ -187,7 +189,7 @@ def build_system_script(topic: dict, lang: str = _DEFAULT_LANG) -> str:
 
 def build_user_script(topic: dict, intent: str, lang: str = _DEFAULT_LANG) -> str:
     """C / D first generation: straight from the intent."""
-    n, total = _shots(topic), _total(topic)
+    n, total = _shot_count(topic), _total_seconds(topic)
     block = _topic_block(topic, intent, lang)
     if _norm(lang) == "zh":
         return (
@@ -223,7 +225,7 @@ def build_user_script_from_answers(
     topic: dict, intent: str, answers: list[dict], lang: str = _DEFAULT_LANG
 ) -> str:
     """E first generation: intent + the user's confirmed Q&A answers."""
-    n, total = _shots(topic), _total(topic)
+    n, total = _shot_count(topic), _total_seconds(topic)
     lines, delegated = _answer_lines(answers)
     block = _topic_block(topic, intent, lang)
     if _norm(lang) == "zh":
@@ -264,7 +266,7 @@ def build_user_script_from_answers(
 # ---------------- revision (post-generation loop) ----------------
 
 def build_system_revision(topic: dict, lang: str = _DEFAULT_LANG) -> str:
-    n, total = _shots(topic), _total(topic)
+    n, total = _shot_count(topic), _total_seconds(topic)
     if _norm(lang) == "zh":
         return (
             "你是一名专业短视频分镜脚本修订助手。用户会给你当前的分镜脚本和修改要求。\n"

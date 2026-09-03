@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import date
 from pathlib import Path
 
 import numpy as np
@@ -21,13 +22,15 @@ import numpy as np
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from analysis import textstats  # noqa: E402
+from analysis import prereg, textstats  # noqa: E402
+from core import config  # noqa: E402
+from core import state as _state  # noqa: E402
 from core.shots import parse_shots, strip_format  # noqa: E402
 
 BASELINE = ROOT / "data" / "baseline"
-TOPICS = json.loads((ROOT / "data" / "topics.json").read_text(encoding="utf-8"))
+OUT_DIR = ROOT / "data" / "analysis"
 _FIELDS = ("shot_type", "visual", "audio", "duration")
-_MIN_BASELINE = 5  # 每题机器稿下限:更少则 CR/distinct 的题间比较没有意义
+_MIN_BASELINE = prereg.MIN_BASELINE_PER_TOPIC  # 每题机器稿下限:更少则 CR/distinct 的题间比较没有意义
 
 
 def _load_texts(i: int) -> list[str]:
@@ -58,9 +61,10 @@ def main() -> None:
     if not BASELINE.exists():
         raise SystemExit(f"缺少机器基线目录 {BASELINE}(norming 的唯一输入)—— 先跑: make baseline")
     rows = []
-    for i, topic in enumerate(TOPICS[:3]):
+    topics = _state.load_topics()[: config.N_ROUNDS]   # 与被试同一份归一化后的题库
+    for i, topic in enumerate(topics):
         texts = _load_texts(i)
-        title = topic.get("title", {}).get("ja", f"topic{i}")
+        title = _state.topic_text(topic, "title", "ja") or f"topic{i}"
         if len(texts) < _MIN_BASELINE:
             raise SystemExit(f"[topic{i}] {title}: 只有 {len(texts)} 份基线"
                              f"(<{_MIN_BASELINE}),三题不可比 —— 先跑: make baseline")
@@ -69,12 +73,13 @@ def main() -> None:
                "gzip_cr": textstats.gzip_cr(stripped),
                "distinct2": textstats.distinct_n(stripped, 2),
                "self_rep4": textstats.self_repetition(stripped, 4),
-               "mean_len": float(np.mean([len(t) for t in texts]))}
+               # 与前三项同口径:算在剥掉分镜模板之后的内容上(以前算的是含模板的原文)
+               "mean_stripped_len": float(np.mean([len(t) for t in stripped]))}
         row.update(_compliance(texts))
         rows.append(row)
 
     print(f"{'指标':<16}", *[f"{r['topic'][:18]:>20}" for r in rows], sep="")
-    keys = ["n", "gzip_cr", "distinct2", "self_rep4", "mean_len",
+    keys = ["n", "gzip_cr", "distinct2", "self_rep4", "mean_stripped_len",
             "parse_ok_rate", "mean_shots", "shots3_rate", "field_complete"]
     for k in keys:
         vals = "".join(f"{r[k]:>20.3f}" if isinstance(r[k], float) else f"{r[k]:>20}"
@@ -91,6 +96,12 @@ def main() -> None:
                 flag = "⚠️ 题间差异较大,建议调措辞/换题" if mean and spread / mean > 0.15 else "✓ 大致可比"
                 print(f"\n{metric}: 极差 {spread:.3f} / 均值 {mean:.3f} → {flag}")
     print("\n注:开放度相对比较用同一模型即可;绝对值随模型变。冻结题面前若离群则改题。")
+    # 结论落盘:norming 是「冻结题面前」的把关步骤,只打到 stdout 的话事后无法复核
+    # (docs/paper/13 已经在抱怨「norming 数字来自旧题面、无法复核」)。
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    out = OUT_DIR / f"norming_{date.today().isoformat()}.json"
+    out.write_text(json.dumps({"rows": rows, "min_baseline": _MIN_BASELINE}, ensure_ascii=False, indent=1), encoding="utf-8")
+    print(f"→ 已落盘 {out}")
 
 
 if __name__ == "__main__":

@@ -25,7 +25,7 @@ _SB_CSS = """
 .sb-sheet .sb-hd{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;
   border-bottom:2px solid #3f3f3f;padding-bottom:7px;margin-bottom:11px}
 .sb-sheet .sb-ttl{font-size:1.06rem;font-weight:700;letter-spacing:.18em;color:#2a2a2a}
-.sb-sheet .sb-sub{color:#7a7a7a;font-size:.83rem}
+.sb-sheet .sb-sub{color:#6a6a6a;font-size:.83rem}   /* 5.3:1 on #fbfaf3,过 AA */
 table.sb-tbl{border-collapse:collapse;width:100%;table-layout:fixed;font-size:.86rem;color:#2a2a2a}
 table.sb-tbl th,table.sb-tbl td{border:1px solid #9a958c;padding:6px 8px;vertical-align:top}
 table.sb-tbl thead th{background:rgba(63,63,63,.08);text-align:center;font-weight:600;letter-spacing:.05em}
@@ -40,7 +40,7 @@ td.sb-pic{vertical-align:middle;padding:7px}
   border:1.5px solid #3f3f3f;background:#fff;overflow:hidden;
   box-shadow:inset 0 0 0 3px #fff,inset 0 0 0 4px #ececec}
 .sb-frame .lbl{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-  color:#c3bfb4;font-style:italic;font-size:.82rem;white-space:pre-line;text-align:center;padding:0 6px}
+  color:#6a6a6a;font-size:.82rem;white-space:pre-line;text-align:center;padding:0 6px}  /* 原 #c3bfb4 斜体只有 1.84:1 */
 .sb-frame .secs{position:absolute;right:5px;bottom:4px;font-size:.72rem;color:#6a6a6a;
   background:rgba(255,255,255,.85);padding:0 3px;border-radius:2px;z-index:1}
 .sb-frame img{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:contain;display:block}
@@ -174,7 +174,7 @@ tr.sb-blank .sb-frame .lbl{display:none}
 
 def _frame(label: str, secs: str, sketch: str = "") -> str:
     sec = f'<span class="secs">{html.escape(secs)}</span>' if secs else ""
-    if sketch:  # trusted, author-supplied SVG (only the intro sample uses this)
+    if sketch:  # trusted, self-produced <img data:…> tag (intro sample / imagegen) — inserted unescaped
         return f'<div class="sb-frame">{sketch}{sec}</div>'
     lbl = f'<span class="lbl">{html.escape(label)}</span>' if label else ""
     return f'<div class="sb-frame">{lbl}{sec}</div>'
@@ -183,7 +183,7 @@ def _frame(label: str, secs: str, sketch: str = "") -> str:
 def render(script: str, subtitle: str, sketches: list[str] | None = None,
            pin: bool = False, mini: bool = False) -> None:
     """Render a finished script as a 絵コンテ sheet with the given subtitle.
-    `sketches` (optional) is a per-shot list of trusted SVG strings drawn into
+    `sketches` (optional) is a per-shot list of trusted <img data:…> tags drawn into
     the picture frames; without it the frames show the "coming soon" placeholder.
     Falls back to plain text (bordered box) when the script doesn't parse.
 

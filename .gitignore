@@ -228,7 +228,7 @@ data/*.db-shm
 data/*.db-journal
 data/llm.log
 data/archive/
-data/baseline/
+# data/baseline/ 不再忽略(2026-09-03):机器基线零被试数据、体积小、是 Δ 的零点,应随代码入库
 data/ghosts/
 data/analysis/
 backup/

@@ -1,3 +1,10 @@
+"""T7.1 — offline batch LLM client.
+
+Unlike core.llm this never touches st.session_state: api_key / base_url /
+model / temperature are passed explicitly (or read from secrets.toml), so
+the scripts/ and analysis/ pipelines can run outside Streamlit.
+"""
+
 from __future__ import annotations
 
 import time
@@ -6,14 +13,8 @@ from pathlib import Path
 
 from openai import OpenAI
 
+from core import config
 from core.llm import clean_output
-
-"""T7.1 — offline batch LLM client.
-
-Unlike core.llm this never touches st.session_state: api_key / base_url /
-model / temperature are passed explicitly (or read from secrets.toml), so
-the scripts/ and analysis/ pipelines can run outside Streamlit.
-"""
 
 ROOT = Path(__file__).resolve().parent.parent
 SECRETS_PATH = ROOT / ".streamlit" / "secrets.toml"
@@ -27,7 +28,7 @@ class BatchClient:
         api_key: str,
         base_url: str,
         model: str,
-        temperature: float = 0.8,
+        temperature: float = config.TEMPERATURE,   # 机器基线必须与被试同温度,别各写一个 0.8
     ) -> None:
         if not (api_key or "").strip():
             raise ValueError("missing api_key")
@@ -38,13 +39,13 @@ class BatchClient:
         self.base_url = (base_url or "").strip()
         # Same per-request cap as core/llm.py — a congested gateway must not
         # hang an offline batch run for the SDK's ~600s default.
-        kwargs: dict = {"api_key": api_key.strip(), "timeout": 120}
+        kwargs: dict = {"api_key": api_key.strip(), "timeout": 120, "max_retries": 0}   # 重试由 _create 独占
         if self.base_url:
             kwargs["base_url"] = self.base_url
         self._client = OpenAI(**kwargs)
 
     @classmethod
-    def from_secrets(cls, index: int = 0, temperature: float = 0.8) -> "BatchClient":
+    def from_secrets(cls, index: int = 0, temperature: float = config.TEMPERATURE) -> "BatchClient":
         """Build from `[[api_configs]]` #index in .streamlit/secrets.toml
         (the file is gitignored but present locally)."""
         if not SECRETS_PATH.exists():
@@ -79,6 +80,7 @@ class BatchClient:
     def _create(self, messages: list[dict], *, n: int = 1, max_retries: int = 3):
         """One chat.completions call with exponential-backoff retry."""
         delay = 1.0
+        max_retries = max(1, max_retries)   # 0 会让循环体不执行、隐式返回 None,调用方在 .choices 上炸
         for attempt in range(max_retries):
             try:
                 kwargs: dict = {"n": n} if n > 1 else {}

@@ -4,12 +4,12 @@ import hashlib
 import json
 import re
 import unicodedata
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import streamlit as st
 
 from core import config, db, state
-from i18n import t
+from i18n import DEFAULT_LANG, t
 from views import (
     consent, final_survey, intro, researcher, round_common, screening, sidebar,
 )
@@ -46,7 +46,14 @@ def main() -> None:
     elif stage == "final_survey":
         final_survey.render()
     elif stage == "done":
-        _done()
+        _render_done()
+    elif stage == "blocked":
+        # 续接时题库不可用(state._attempt_resume):身份已恢复、不再入组,等研究员修好题库
+        st.error(t("errors.not_ready"))
+    else:
+        # 没接上的 stage 值(拼错 / 新增阶段忘了接)以前会渲染成一张只有标题的空白页,
+        # 被试端表现为「点了没反应」。宁可报错也不要静默。
+        st.error(t("errors.not_ready"))
     _footer()
 
 
@@ -77,7 +84,7 @@ def _footer() -> None:
 # 主题跟被试的**操作系统**走,而 toolbarMode="minimal" 又把切换菜单藏了 —— 浅色是
 # 「手机没开深色模式的人」的默认,不是边角情况。一套值不可能在两个底色上都过 WCAG AA
 # (#3b82f6 在白底只有 3.7:1;#2563eb 在深色底 #0E1117 只有 3.1:1)。
-_ACTION_CSS = """
+_DESIGN_CSS = """
 <style>
 :root{
   --ns-accent:#2563eb; --ns-dim:#6e6e6e;
@@ -181,7 +188,7 @@ header[data-testid="stHeader"] [data-testid="stExpandSidebarButton"]:active{
 
 
 def _inject_css() -> None:
-    st.markdown(_ACTION_CSS, unsafe_allow_html=True)
+    st.markdown(_DESIGN_CSS, unsafe_allow_html=True)
 
 
 def _progress_bar() -> None:
@@ -199,14 +206,14 @@ def _progress_bar() -> None:
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s.]+(?:\.[^@\s.]+)+$")
 
 
-def _done() -> None:
+def _render_done() -> None:
     if not st.session_state.get("completion_code"):
         st.session_state["completion_code"] = db.make_completion_code(
             st.session_state["participant_id"]
         )
         # 只有「在本次会话里真的做完了」才置位。续接一位已完成的被试时完成码是从库里
-        # 读回来的,不会走这里 —— 这正是联系方式表单的归属凭据。
-        st.session_state["_own_completion"] = True
+        # 读回来的,不会走这里 —— 这是联系方式表单的归属凭据之一(另一条见 _finished_recently)。
+        st.session_state["_completed_in_this_session"] = True
     st.success(t("done.title"))
     st.write(t("done.message"))
     st.code(st.session_state["completion_code"])
@@ -223,6 +230,20 @@ def _done() -> None:
         st.caption(t("done.reset_hint"))
 
 
+# 完成后多久之内仍算「本人刚做完」。只凭 session 标志的话,完成页一刷新(手机切回浏览器时
+# Safari 常常整页重载)就再也交不了邮箱 —— 而那正是被试在敲邮箱的时刻。两小时:够覆盖
+# 「刷新 / 断线重连 / 先关掉想了想再回来」,又不至于让几天后转发出去的网址还能写。
+_CONTACT_GRACE = timedelta(hours=2)
+
+
+def _finished_recently(row: dict) -> bool:
+    try:
+        finished = datetime.fromisoformat(row.get("finished_at") or "")
+    except ValueError:
+        return False
+    return datetime.now() - finished <= _CONTACT_GRACE
+
+
 def _contact_form() -> None:
     """Opt-in contact capture on the completion screen (2026-09-01 §13).
 
@@ -237,8 +258,9 @@ def _contact_form() -> None:
     pid = st.session_state.get("participant_id")
     if not pid:
         return
-    with st.container(border=True):
-        st.subheader(t("done.contact_title"))
+    # 默认折叠:这是完成页最后一块、完全自愿的东西,展开着会让「做完了」的画面又长出
+    # 一整屏表单。想要的人点开,不想要的人一眼看到完成码就可以关页面。
+    with st.expander(t("done.contact_title"), expanded=False):
         st.markdown(t("done.contact_body"))
         # 「存过没有」以数据库为准,不以 session_state 为准:重连会丢掉 session,
         # 于是被试会看到一张空表单、以为没存上,再填一次就把上一次连同备注一起顶掉。
@@ -246,15 +268,15 @@ def _contact_form() -> None:
         if row.get("contact_json"):
             st.success(t("done.contact_saved"))
             return
-        if not st.session_state.get("_own_completion"):
-            # 拿着别人转发/共用机器上残留的 ?t= 网址进来的人,不给写。
+        if not (st.session_state.get("_completed_in_this_session") or _finished_recently(row)):
+            # 拿着别人转发 / 共用机器上残留的 ?t= 网址进来的人,不给写。
             st.caption(t("done.contact_closed"))
             return
         want = st.checkbox(t("done.contact_want"), key="_contact_want")
-        email = st.text_input(t("done.contact_email"), key="_contact_email")
+        email = st.text_input(t("done.contact_email"), key="_contact_email", max_chars=254)
         note = st.text_area(
             t("done.contact_note"), key="_contact_note",
-            placeholder=t("done.contact_note_ph"), height=80,
+            placeholder=t("done.contact_note_ph"), height=80, max_chars=300,
         )
         if st.button(t("done.contact_submit"), width="stretch"):
             # NFKC:日本語IMEが全角のままだと「ｔａｒｏ＠ｅｘａｍｐｌｅ．ｃｏｍ」になり、
@@ -276,7 +298,7 @@ def _contact_form() -> None:
                                 ("done.contact_body", "done.contact_want",
                                  "done.no_repeat")
                                 ).encode("utf-8")).hexdigest()[:16],
-                "lang": st.session_state.get("lang", "ja"),
+                "lang": st.session_state.get("lang", DEFAULT_LANG),
             }
             try:
                 stored = db.set_contact(pid, json.dumps(payload, ensure_ascii=False))

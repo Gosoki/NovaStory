@@ -35,13 +35,18 @@ def add(flag: str, name: str, detail: str) -> None:
 
 
 def check_password(sec: dict) -> None:
-    pw = sec.get("researcher_password", "")
+    import os
+    # 与 core/config.researcher_password 同一条优先级:secrets → 环境变量 → 'nova'
+    pw = sec.get("researcher_password", "") or os.environ.get("NOVASTORY_RESEARCHER_PW", "")
     if not pw or pw == "nova":
         add(R, "研究员密码", "未设置或仍是弱口令 'nova' → 公开即数据泄露+去盲。secrets 设强口令。")
-    elif len(pw) < 8:
-        add(Y, "研究员密码", f"已设置但偏短({len(pw)} 字符),建议 ≥12。")
+    elif len(pw) < 12:
+        # 与 DEPLOY.md / docs/paper/07 的 ≥12 要求一致;以前 8 位就放行、6 位只给黄灯不阻断
+        add(R, "研究员密码", f"只有 {len(pw)} 字符(<12)。登录框已藏到 ?admin=1 并按 IP 节流,但口令强度仍是最后一道门。")
+    elif len(pw) < 16:
+        add(Y, "研究员密码", f"{len(pw)} 字符,建议 ≥16。")
     else:
-        add(G, "研究员密码", "已设置且非弱口令。")
+        add(G, "研究员密码", "已设置且足够长。")
 
 
 # 正式采数用的模型(2026-08-03 选型实测:引导问题最具体、规格违反 0/20、延迟 p95 10.5s)。
@@ -88,12 +93,28 @@ def check_clean_db() -> None:
         add(G, "空库起跑", "库存在但无 participants。")
 
 
-def check_config() -> None:
+def check_run_on_save() -> None:
     cfg = ROOT / ".streamlit" / "config.toml"
-    if cfg.exists() and "runOnSave = true" in cfg.read_text():
-        add(Y, "config runOnSave", "runOnSave=true 是 dev 设置,生产建议关。")
+    if cfg.exists() and re.search(r"^\s*runOnSave\s*=\s*true", cfg.read_text(), re.M):
+        add(Y, "config runOnSave", "runOnSave=true 是 dev 设置(任何文件落盘都会踢掉在答题的会话);"
+                                   "若 systemd ExecStart 带 --server.runOnSave false 则命令行覆盖配置,可忽略。")
     else:
         add(G, "config runOnSave", "无 dev 自动重载设置。")
+
+
+def check_perms() -> None:
+    """secrets(OpenAI key)与被试库不该是 world-readable:共用主机上任何本地账号都能读。"""
+    import stat
+    bad = []
+    for rel in (".streamlit/secrets.toml", "data/novastory.db", "data/novastory.db-wal", "data/llm.log"):
+        p = ROOT / rel
+        if p.exists() and (p.stat().st_mode & (stat.S_IRWXG | stat.S_IRWXO)):
+            bad.append(rel)
+    if bad:
+        add(R if ".streamlit/secrets.toml" in bad else Y, "文件权限",
+            f"{' · '.join(bad)} 对同组/其他用户可读 → chmod 600(目录 chmod 700 data)。")
+    else:
+        add(G, "文件权限", "secrets 与被试数据仅属主可读。")
 
 
 def check_gitignore() -> None:
@@ -113,7 +134,7 @@ def check_analysis_deps() -> None:
                if importlib.util.find_spec(m) is None]
     if missing:
         add(R, "分析依赖", f"缺 {', '.join(missing)} → 研究员后台「数据分析」面板一点即崩"
-                          "(ImportError)。装:.venv/bin/pip install -r analysis/requirements-analysis.txt")
+                          "(ImportError)。装:uv pip install -r analysis/requirements-analysis.txt(本 venv 无 pip)")
     else:
         add(G, "分析依赖", "numpy/scipy/pandas/statsmodels/matplotlib 齐备,分析面板可用。")
 
@@ -150,7 +171,7 @@ def check_topics() -> None:
     """题库必须先于第一个被试就绪。
 
     `load_topics()` 对损坏文件是**静默回退种子主题**(不崩也不告警),所以研究员改坏了
-    题目自己不会知道;而题数 < N_ROUNDS 时 `begin_rounds` 抛 RuntimeError —— 那一刻
+    题目自己不会知道;而题数 < N_ROUNDS 时 `enter_intro` 抛 RuntimeError —— 那一刻
     被试行已经 INSERT、seq 已经消耗,留下一个永远走不完的孤儿被试。故在部署前拦。"""
     from core import config, state
 
@@ -161,7 +182,7 @@ def check_topics() -> None:
         return
     try:
         raw = json.loads(f.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as e:
+    except (ValueError, OSError) as e:   # ValueError 含 JSON 错与 UnicodeDecodeError(非 UTF-8 存盘)
         add(R, "题库 topics.json", f"文件损坏({type(e).__name__}) → load_topics 会**静默**"
                                    f"回退种子主题,被试跑的不是你以为的题目。")
         return
@@ -233,11 +254,84 @@ def check_consent() -> None:
                          "事后就无法证明每位被试同意的是哪一版)。")
 
 
-def check_backup() -> None:
-    if (ROOT / "scripts" / "backup_db.sh").exists():
-        add(G, "备份脚本", "scripts/backup_db.sh 就位;确认已进 cron(每日 + 每场后)、异地一份。")
+def check_freeze() -> None:
+    """冻结产物(docs/paper/prereg_frozen.json)是「分析计划在见数据之前就定了」的全部证据。
+    没有 → 黄灯(采数前必须 make freeze);有但与当前代码不一致 → 红灯(那是协议偏离)。"""
+    import contextlib, io
+    spec = importlib.util.spec_from_file_location("freeze_prereg", ROOT / "scripts" / "freeze_prereg.py")
+    freeze_prereg = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(freeze_prereg)
+    if not freeze_prereg.OUT.exists():
+        add(Y, "冻结产物", "docs/paper/prereg_frozen.json 不存在 → 采数前必须 `make freeze`(先清干净工作树)。")
+        return
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc = freeze_prereg.check(freeze_prereg.OUT)
+    if rc == 0:
+        add(G, "冻结产物", "prereg_frozen.json 与当前代码一致(make freeze-check 通过)。")
     else:
+        add(R, "冻结产物", "prereg_frozen.json 与当前代码**不一致** → 采数已开始的话这是协议偏离;"
+                          "看 `make freeze-check` 的逐条差异。")
+
+
+def check_runtime() -> None:
+    """运行时(不只是文件与配置):单元是否持久、是否 root、是否绑 0.0.0.0、有没有 :443 监听者。
+    以前闸门对这四件事一无所知,而它们恰是 DEPLOY.md §2/§5 的全部内容。非 Linux / 无 systemctl 时跳过。"""
+    import shutil, subprocess
+    if shutil.which("systemctl") is None:
+        add(Y, "运行时", "无 systemctl,跳过运行时检查(部署机上再跑一次)。")
+        return
+    try:
+        out = subprocess.run(["systemctl", "show", "novastory.service", "-p", "FragmentPath", "-p", "User",
+                              "-p", "ExecStart", "-p", "ActiveState"], capture_output=True, text=True, timeout=10).stdout
+    except Exception:  # noqa: BLE001
+        out = ""
+    props = dict(l.split("=", 1) for l in out.splitlines() if "=" in l)
+    if props.get("ActiveState") != "active":
+        add(Y, "运行时", "novastory.service 未运行(本机没部署?)。")
+        return
+    bad = []
+    if props.get("FragmentPath", "").startswith("/run/systemd/transient"):
+        bad.append("transient 单元(重启即消失)→ 用 deploy/novastory.service 安装持久单元")
+    if props.get("User", "") in ("", "root"):   # systemd 不设 User= 时回显为空 = root
+        bad.append("以 root 运行 → 单元里设 User=<非 root 账号>(仓库须搬出 /root)")
+    exec_ = props.get("ExecStart", "")
+    if "0.0.0.0" in exec_ or "--server.address" not in exec_:
+        bad.append("监听 0.0.0.0(或未指定地址)→ --server.address 127.0.0.1,外部走反代")
+    try:
+        ss = subprocess.run(["ss", "-ltn"], capture_output=True, text=True, timeout=10).stdout
+        if not re.search(r":443\s", ss):
+            bad.append("没有任何进程监听 :443 → 无 HTTPS 反代(Caddy/nginx)")
+    except Exception:  # noqa: BLE001
+        pass
+    if bad:
+        add(R, "运行时", " · ".join(bad))
+    else:
+        add(G, "运行时", "持久单元、非 root、只听 127.0.0.1、有 :443 监听者。")
+
+
+def check_backup() -> None:
+    """脚本在 + 对一个临时库**真跑一次** + 进了 cron。「文件存在」不是备份能用的证据。"""
+    import subprocess, tempfile
+    script = ROOT / "scripts" / "backup_db.sh"
+    if not script.exists():
         add(R, "备份脚本", "无备份脚本 → 一次磁盘故障=毕业数据灭失。")
+        return
+    tmp = Path(tempfile.mkdtemp())
+    con = sqlite3.connect(tmp / "t.db"); con.execute("CREATE TABLE x(a)"); con.commit(); con.close()
+    r = subprocess.run(["bash", str(script), str(tmp / "t.db"), str(tmp / "out")],
+                       capture_output=True, text=True, timeout=120)
+    if r.returncode != 0 or not list((tmp / "out").glob("novastory-*.db")):
+        add(R, "备份脚本", f"scripts/backup_db.sh 对临时库实跑失败(exit {r.returncode}):{(r.stderr or r.stdout)[-200:]}")
+        return
+    try:
+        cron = subprocess.run(["crontab", "-l"], capture_output=True, text=True, timeout=10).stdout
+    except Exception:  # noqa: BLE001
+        cron = ""
+    if "backup_db.sh" in cron:
+        add(G, "备份脚本", "实跑通过且已进 cron;确认异地还有一份。")
+    else:
+        add(Y, "备份脚本", "实跑通过,但 crontab 里没有 backup_db.sh → 加每日一次(+ 每场后),并异地同步一份。")
 
 
 def main() -> None:
@@ -249,11 +343,14 @@ def main() -> None:
     check_password(sec)
     check_model(sec)
     check_clean_db()
-    check_config()
+    check_run_on_save()
+    check_perms()
     check_gitignore()
     check_baseline(sec)
     check_topics()
     check_consent()
+    check_freeze()
+    check_runtime()
     check_backup()
     check_analysis_deps()
 

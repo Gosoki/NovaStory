@@ -15,10 +15,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from core import prompts  # noqa: E402
+from core import config, prompts, state  # noqa: E402
 from core.llm_batch import BatchClient  # noqa: E402
 
-TOPICS_PATH = ROOT / "data" / "topics.json"
 OUT_DIR = ROOT / "data" / "baseline"
 
 
@@ -32,16 +31,17 @@ def count_lines(path: Path) -> int:
 def assert_consistent(path: Path, client) -> None:
     """续跑前校验已有行的 model/temperature/base_url 与当前 client 一致,
     防止换 --config-index/--temperature 续跑时同一题基线混用不同模型/温度。"""
-    with path.open(encoding="utf-8") as f:
-        first = f.readline().strip()
-    if not first:
-        return
-    prev, meta = json.loads(first), client.meta()
-    for k in ("model", "temperature", "base_url"):
-        if k in prev and k in meta and prev[k] != meta[k]:
-            raise SystemExit(
-                f"[{path.name}] 续跑配置不一致:已有 {k}={prev[k]!r} vs 当前 {meta[k]!r}。"
-                " 同一题基线不能混用模型/温度——删除该文件重跑,或换回原配置。")
+    meta = client.meta()
+    # 看**每一行**:只看首行的话,中途换配置续跑过的文件检不出来
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        prev = json.loads(line)
+        for k in ("model", "temperature", "base_url"):
+            if k in prev and k in meta and prev[k] != meta[k]:
+                raise SystemExit(
+                    f"[{path.name}] 续跑配置不一致:已有 {k}={prev[k]!r} vs 当前 {meta[k]!r}。"
+                    " 同一题基线不能混用模型/温度——删除该文件重跑,或换回原配置。")
 
 
 def load_seeds(path: Path | None) -> list[str]:
@@ -65,12 +65,15 @@ def main() -> None:
         "--config-index", type=int, default=0,
         help="secrets.toml 中 api_configs 序号(默认 0)",
     )
-    ap.add_argument("--temperature", type=float, default=0.8)
-    ap.add_argument("--lang", default="ja", choices=("ja", "zh"),
-                    help="生成语言(正式=ja,与被试数据可比;zh 仅测试)")
+    ap.add_argument("--temperature", type=float, default=config.TEMPERATURE,
+                    help="默认 = 被试用的 config.TEMPERATURE;基线与被试温度不同则 Δ 的零点不同源")
+    ap.add_argument("--lang", default="ja", choices=("ja", "zh", "en"),
+                    help="生成语言(正式=ja,与被试数据可比;embed 只对同语言被试算 Δ;zh/en 仅测试)")
     args = ap.parse_args()
 
-    topics = json.loads(TOPICS_PATH.read_text(encoding="utf-8"))[:3]
+    # 走 state.load_topics:与被试同一份归一化(shot_seconds→total_seconds、整数化),
+    # 直接 json.loads 会绕过它,旧 schema 下基线的镜数/总秒数会与被试实际跑的题目不同。
+    topics = state.load_topics()[: config.N_ROUNDS]
     seeds = load_seeds(args.seeds_file)
     client = BatchClient.from_secrets(args.config_index, temperature=args.temperature)
     OUT_DIR.mkdir(parents=True, exist_ok=True)

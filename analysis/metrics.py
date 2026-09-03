@@ -212,7 +212,7 @@ class Embedder:
 def load_trials_df(db_path: Path) -> pd.DataFrame:
     if not db_path.exists():
         return pd.DataFrame()
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)   # 只读:这是分析脚本,不该能写生产库
     df = pd.read_sql_query("SELECT * FROM trials ORDER BY id", conn)
     conn.close()
     return df

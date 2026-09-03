@@ -185,7 +185,10 @@ def generate(out: Path, n: int = 36, seed: int = 7) -> dict:
     db.init_db()
 
     rng = random.Random(seed)
-    topics = json.loads((ROOT / "data" / "topics.json").read_text(encoding="utf-8"))[:3]
+    from core import config as _cfg, state as _state
+    topics = _state.load_topics()[: _cfg.N_ROUNDS]   # 与被试同一份归一化;题数不足时给可读错误
+    if len(topics) < _cfg.N_ROUNDS:
+        raise SystemExit(f"topics.json 只有 {len(topics)} 题 < N_ROUNDS={_cfg.N_ROUNDS}")
     dims = ["psychology", "turning_point", "key_shot", "tone", "ending", "sound"]
     t0 = datetime(2026, 9, 1, 10, 0, 0)
 

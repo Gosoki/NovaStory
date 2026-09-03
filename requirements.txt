@@ -1,6 +1,8 @@
 # 1.57+: st.html(unsafe_allow_javascript=…) — the questionnaire's storyboard
 # pin observer passes it; on older Streamlit that argument is a TypeError.
-streamlit>=1.57
-openai>=1.40
-pandas>=2.0
+# 钉死到实测版本(2026-09-02):两条 E2E 门(make smoke-e2e / robust)依赖 streamlit.testing 的
+# 私有形状,一次无上界升级就能让它们以看不懂的 KeyError 挂掉。升级要先跑完三条链。
+streamlit==1.60.0
+openai>=1.40,<3
+pandas==3.0.5
 Pillow>=10.0

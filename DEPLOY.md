@@ -20,7 +20,8 @@
 - [ ] **同意书含**：外部 AI(OpenAI)处理、勿填隐私、可随时退出、数据用途与匿名（APPI 越境条款，见 `docs/paper/07` §2.3）。
 
 ## 2. 起服务（systemd 守护，别用 tmux）
-`/etc/systemd/system/novastory.service`（占位，按你的路径/用户改）：
+模板已入库：**`deploy/novastory.service`**（非 root 账号、只监听 127.0.0.1、`ProtectSystem=strict`），按文件头的命令安装——仓库在 `/root` 下时**必须先搬到 `/opt/novastory`**（非 root 账号进不了 /root）。⚠️ 现在机器上跑的是 `systemd-run` 造的 **transient** 单元（重启即消失、root、0.0.0.0），`scripts/deploy_check.py` 的「运行时」项会为此亮红灯。研究者画面：网址加 `?admin=1`。
+下面是同一份模板的摘要（以文件为准）：
 ```ini
 [Unit]
 Description=NovaStory experiment app

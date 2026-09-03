@@ -27,9 +27,10 @@ def _plain_title(topic: dict, lang: str) -> str:
 
 def render() -> None:
     pid = st.session_state["participant_id"]
-    # once=True: the page re-renders on every keystroke, we want one arrival
-    # stamp so final_survey_shown → final_survey_submit is its answering time.
-    state.log_event("final_survey_shown", once=True)
+    # 总问卷在所有轮次之外:像 contact_submit 一样写到 round_idx=0(intake 段的约定),否则它会
+    # 带着第 3 轮的 round_idx / attempt 落进第 3 轮的事件窗口(n_resumes、最后一个事件都被拉长)。
+    # log_intake_event 每个浏览器会话只记一次 —— 页面每次按键都 rerun,只要一个到达戳。
+    state.log_intake_event("final_survey_shown")
     st.header(t("final_survey.title"))
     st.caption(t("final_survey.hint"))
 
@@ -53,20 +54,23 @@ def render() -> None:
     closest_sel = st.radio(t("final_survey.q_closest"), labels, index=None)
     effort_sel = st.radio(t("final_survey.q_effort"), labels, index=None)
     sat = _scale.likert(t("final_survey.q_overall"), "_fs_sat", anchors="satisfied")
-    # 操纵察觉:论文里回答「被试会不会猜到假设」这类质疑的唯一材料。放在所有
-    # 测量之后,答不答都不影响任何一个数据点。
-    noticed = st.text_area(t("final_survey.q_noticed"), key="_fs_noticed",
-                           placeholder=t("final_survey.q_noticed_ph"), height=80)
-    comment = st.text_area(t("final_survey.comment"), key="_fs_comment")
+    # 操纵察觉:论文里回答「被试会不会猜到假设」这类质疑的唯一材料。放在所有测量之后,
+    # 怎么答都不影响任何一个数据点。2026-09-03 由开放题改为 4 档有序单选(察觉深度):
+    # 自由文本要人工编码、多数人只写一两个字,而这四档正是论文要报的那个梯度;
+    # 想补充的话下面的「その他」栏还在。存**选项序号**(语言无关,与其它 categorical 一致)。
+    noticed_opts = [t(f"final_survey.q_noticed_opt{i}") for i in range(1, 5)]
+    noticed_sel = st.radio(t("final_survey.q_noticed"), noticed_opts, index=None)
+    comment = st.text_area(t("final_survey.comment"), key="_fs_comment", max_chars=1000)
 
     if st.button(t("final_survey.submit"), type="primary", width="stretch"):
         # Name the unanswered items back, same as every other form in the study.
-        missing = [_scale.short(lbl) for lbl, v in (
+        missing = [_scale.truncate_label(lbl) for lbl, v in (
             (t("final_survey.q_pref"), pref_sel),
             (t("final_survey.q_reuse"), reuse_sel),
             (t("final_survey.q_closest"), closest_sel),
             (t("final_survey.q_effort"), effort_sel),
             (t("final_survey.q_overall"), sat),
+            (t("final_survey.q_noticed"), noticed_sel),
         ) if v is None]
         if missing:
             st.error(t("errors.unanswered", items=" / ".join(missing)))
@@ -80,12 +84,12 @@ def render() -> None:
                     "closest_round": lbl2round[closest_sel],
                     "effort_round": lbl2round[effort_sel],
                     "overall_sat": int(sat),
-                    "noticed_diff": (noticed or "").strip(),
+                    "noticed_idx": noticed_opts.index(noticed_sel),   # 0=没注意到 … 3=猜到研究目的
                     "comment": (comment or "").strip(),
                 },
                 ensure_ascii=False,
             ),
         )
-        state.log_event("final_survey_submit")
+        state.log_intake_event("final_survey_submit")
         st.session_state["stage"] = "done"
         st.rerun()

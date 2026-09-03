@@ -19,6 +19,7 @@ C_CEIL_YELLOW_MEAN = 5.5
 NOVICE_SHARE_GREEN, NOVICE_SHARE_YELLOW = 0.60, 0.40
 RELIABILITY_GREEN, RELIABILITY_YELLOW = 0.70, 0.60
 OWN_ALPHA_FLOOR = 0.60                                   # own1-3 α 低于此 → 后手D 切 SoPA
+SOA_R_GREEN, SOA_R_YELLOW = 0.50, 0.30                   # soa1-2 两题相关 r;<0.30 = 🔴(docs/paper/05 §④)
 
 # ---- novice 定义(5 项严格 AND;录而不 gate)----
 # B1 拍板(2026-08-03):招募端**不设门槛**(随机找人),但 novice 子集 = **采数前冻结的主分析
@@ -36,7 +37,7 @@ NOVICE_DEF = ("published_idx==0 AND background=='no' AND written=='no' "
 # 每次分析都从 screening_json 的**原始 5 项重算**,而不是信任入库时写下的
 # `is_novice` 布尔:定义一旦在冻结前微调(例如 B1 退路里的 4-of-5),旧行的布尔就
 # 是按旧定义算的,重算才能保证全样本口径一致。
-NOVICE_CRITERIA = ("published_idx", "background", "written", "self_rating", "quiz_correct")
+NOVICE_CRITERION_FIELDS = ("published_idx", "background", "written", "self_rating", "quiz_correct")
 
 # 满足几项才算 novice。5 = 全部满足(严格,现行);4 = B1 已声明的退路
 # (若试测实测 novice 占比 <40% 即 pilot_check ③ 🔴 时启用)。
@@ -103,7 +104,7 @@ SESOI_BY_ENDPOINT: dict[str, float | None] = {
 # 主终点 → 做等价检验时实际使用的 DV。z 合成的复合没有可解释的原始单位,
 # 故保真的「≈」判在原始锚题上;所有权复合本身就是原始分,用自己。
 # ⛔ 报告里必须写明:「保真的等价检验在 imagine 原始分上进行,复合分只用于主效应」。
-EQUIV_DV = {
+EQUIV_DV_BY_ENDPOINT = {
     "ownership_composite": "ownership_composite",
     "fidelity_composite": "imagine",
 }
@@ -160,6 +161,14 @@ H4_IS_CONFIRMATORY = False
 H4_NOTE = ("H4=描述性:结构完整度是贴天花板的客观下界,零方差时 TOST 报 INCONCLUSIVE,"
            "不得写成「不劣」;本研究未测量审美/叙事质量。")
 
+# ---- 显著性水平:此前 0.05 散在 stats.decide 的默认参数与 tost 的 `< .05` 里,不在冻结体系内 ----
+ALPHA = 0.05
+
+# ---- 测量常量(与 views 共用,别各写一份字面量)----
+LIKERT_POINTS = 7                                   # 全部量表 7 点;中点 = (7+1)//2
+MIN_BASELINE_PER_TOPIC = 5                          # 机器基线质心的每题稿数下限(embed / norming 共用)
+SHOT_TAGS = ("mine", "ai_ok", "ai_against")       # 逐镜头归属标注的三个标签(views/questionnaire ↔ v3.shot_fidelity)
+
 # ---- 终点层级(#13 族错误控制)——两个主复合上做 FWER,次要/探索门控其后;正式族在 SAP 锁 ----
 PRIMARY_ENDPOINTS = ("ownership_composite", "fidelity_composite")
 SECONDARY_ENDPOINTS = ("satisfaction", "effort_composite",
@@ -168,7 +177,10 @@ SECONDARY_ENDPOINTS = ("satisfaction", "effort_composite",
 # ---- 复合公式(as-run,见 analysis/stats.build_composites) ----
 # z 一律按**全样本**算(跨全部 trial 的均值/标准差),被试间差异交给 LMM 的随机截距
 # (1|被试) 吸收——不用被试内 z:每被试每条件仅 1 轮,被试内 SD 由 3 个点估计、噪声过大,
-# 且与随机截距功能重叠(用户 2026-08-03 拍板)。⚠️ docs/paper/04 §2.1 仍写「被试内 z」,待回写。
+# 且与随机截距功能重叠(用户 2026-08-03 拍板;docs/paper/04 §2.1 已同步)。
+# ⚠️ 未拍板的歧义:「全样本」指**当次分析人群的全部 trial**,还是**全部纳入被试(含经验者)**?
+#   stats.main 现在是后者(先在整份 CSV 上 z、再筛 novice)。两种读法下复合列数值相同但含义不同,
+#   写 Method 前必须定一个并写进这里(见 docs/paper/13 §⑦-H)。
 COMPOSITES = {
     "fidelity_composite": ("0.5*mean z(imagine, -violation, not_against) + 0.5*z(embed_fidelity)"
                            ";embed 缺席则退回主观三腿等权并告警(2026-08-03 拍板:各半)。"
@@ -193,14 +205,16 @@ def as_dict() -> dict:
             "novice_share": [NOVICE_SHARE_GREEN, NOVICE_SHARE_YELLOW],
             "reliability": [RELIABILITY_GREEN, RELIABILITY_YELLOW],
             "own_alpha_floor": OWN_ALPHA_FLOOR,
+            "soa_r": [SOA_R_GREEN, SOA_R_YELLOW],
         },
         "novice_def": NOVICE_DEF,
-        "novice_criteria": list(NOVICE_CRITERIA),
+        "novice_criteria": list(NOVICE_CRITERION_FIELDS),
         "novice_min_criteria": NOVICE_MIN_CRITERIA,
         "analysis_requires_all_rounds": ANALYSIS_REQUIRES_ALL_ROUNDS,
         "sesoi": SESOI,
         "sesoi_by_endpoint": dict(SESOI_BY_ENDPOINT),
-        "equiv_dv": dict(EQUIV_DV),
+        "equiv_dv": dict(EQUIV_DV_BY_ENDPOINT),
+        "alpha": ALPHA,
         "decision_branches": list(DECISION_BRANCHES),
         "h4_is_confirmatory": H4_IS_CONFIRMATORY,
         "h4_note": H4_NOTE,

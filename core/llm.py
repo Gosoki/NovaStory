@@ -24,7 +24,7 @@ REQUEST_TIMEOUT = 120
 
 
 # Reasoning models (e.g. DeepSeek-R1) may leak chain-of-thought into content.
-_THINK_RE = re.compile(r"<think>.*?(?:</think>|\Z)\s*", re.DOTALL)
+_THINK_RE = re.compile(r"<(think|thinking|reasoning)>.*?(?:</\1>|\Z)\s*", re.DOTALL | re.IGNORECASE)
 _THINK_OPEN, _THINK_CLOSE = "<think>", "</think>"
 
 
@@ -33,7 +33,7 @@ def clean_output(text: str) -> str:
     return _THINK_RE.sub("", text or "").strip()
 
 
-def _partial_suffix(s: str, tag: str) -> int:
+def _partial_tag_len(s: str, tag: str) -> int:
     """Length of the longest suffix of s that is a (proper) prefix of tag, so a
     tag split across streaming chunk boundaries isn't emitted prematurely."""
     for k in range(min(len(s), len(tag) - 1), 0, -1):
@@ -54,9 +54,9 @@ def stream_clean(chunks: Iterator[str]) -> Iterator[str]:
         out = ""
         while buf:
             if not in_think:
-                i = buf.find(_THINK_OPEN)
+                i = buf.lower().find(_THINK_OPEN)
                 if i == -1:
-                    keep = _partial_suffix(buf, _THINK_OPEN)
+                    keep = _partial_tag_len(buf, _THINK_OPEN)
                     out += buf[: len(buf) - keep]
                     buf = buf[len(buf) - keep :]
                     break
@@ -64,9 +64,9 @@ def stream_clean(chunks: Iterator[str]) -> Iterator[str]:
                 buf = buf[i + len(_THINK_OPEN) :]
                 in_think = True
             else:
-                j = buf.find(_THINK_CLOSE)
+                j = buf.lower().find(_THINK_CLOSE)
                 if j == -1:
-                    keep = _partial_suffix(buf, _THINK_CLOSE)
+                    keep = _partial_tag_len(buf, _THINK_CLOSE)
                     buf = buf[len(buf) - keep :]  # drop reasoning, keep partial-tag tail
                     break
                 buf = buf[j + len(_THINK_CLOSE) :]
@@ -109,10 +109,17 @@ def _client() -> OpenAI:
     base_url = (st.session_state.get("base_url") or "").strip()
     if not api_key:
         raise LLMConfigError("missing_api_key")
-    kwargs = {"api_key": api_key, "timeout": REQUEST_TIMEOUT}
+    # max_retries=0:重试由 generate_stream / generate_json 自己的循环独占(留 llm.log 痕迹)。
+    # SDK 默认再叠 2 次静默重试 → 最坏等待 3×3×120s,被试对着转圈十几分钟。
+    kwargs = {"api_key": api_key, "timeout": REQUEST_TIMEOUT, "max_retries": 0}
     if base_url:
         kwargs["base_url"] = base_url
     return OpenAI(**kwargs)
+
+
+def ensure_configured() -> None:
+    """只做配置检查(api_key 在不在),不发请求;缺配置抛 LLMConfigError。"""
+    _client()
 
 
 def _model() -> str:
@@ -157,6 +164,13 @@ def _stash_usage(usage) -> None:
         "completion": getattr(usage, "completion_tokens", None),
         "total_tokens": getattr(usage, "total_tokens", None),
     }
+
+
+def _begin_call_trace(seed: int) -> None:
+    """新一次调用开始:清掉上一次的 usage / fingerprint,记下本次 seed。"""
+    _stash_usage(None)
+    _stash_repro(None)
+    _stash_repro(seed)
 
 
 def _stash_repro(seed: int | None, fingerprint=None) -> None:
@@ -232,9 +246,7 @@ def generate_stream(
     ]
     _log(group, user_id, f"start model={model} base={base_url} seed={seed}")
     t0 = time.time()
-    _stash_usage(None)
-    _stash_repro(None)
-    _stash_repro(seed)
+    _begin_call_trace(seed)
     for attempt in range(retries + 1):
         total_len = 0
         first = True
@@ -246,6 +258,10 @@ def generate_stream(
             for chunk in stream:
                 if getattr(chunk, "system_fingerprint", None):
                     _stash_repro(None, chunk.system_fingerprint)
+                # 服务端回显的 model:正式快照(gpt-5.4-mini)不返回 system_fingerprint,这一项是
+                # 「服务的确是所请求的快照」的唯一证据
+                if getattr(chunk, "model", None):
+                    st.session_state.setdefault("_last_llm_repro", {}).setdefault("served_model", chunk.model)
                 # The usage chunk arrives last with choices=[] — read it before
                 # the empty-choices skip below.
                 if getattr(chunk, "usage", None):
@@ -293,7 +309,7 @@ def _guidance_client_and_model() -> tuple[OpenAI, str]:
         raise LLMConfigError(f"guidance api_configs[{idx}] missing api_key")
     client = OpenAI(
         api_key=cfg["api_key"], base_url=cfg.get("base_url") or None,
-        timeout=REQUEST_TIMEOUT,
+        timeout=REQUEST_TIMEOUT, max_retries=0,
     )
     return client, (cfg.get("model") or "").strip() or "gpt-4o-mini"
 
@@ -319,13 +335,17 @@ def generate_json(
     seed = _seed()
     _log(group, user_id, f"json_start model={model} seed={seed}")
     t0 = time.time()
-    _stash_usage(None)
-    _stash_repro(None)
-    _stash_repro(seed)
+    _begin_call_trace(seed)
     spent: dict = {}
     last_err = ""
     msg_user = user
     for attempt in range(retries + 1):
+        # OpenAI 原生接口支持 JSON 模式(system 里已有「JSON」字样,满足其前置要求);第三方网关
+        # 不一定认这个参数,只对 openai.com 开。三次都不是合法 JSON 才降级成开放题 = 换掉了条件,
+        # 能少一次是一次。
+        kwargs = {}
+        if "openai.com" in (st.session_state.get("base_url") or ""):
+            kwargs["response_format"] = {"type": "json_object"}
         try:
             resp = client.chat.completions.create(
                 model=model,
@@ -335,11 +355,16 @@ def generate_json(
                 ],
                 temperature=temperature,
                 seed=seed,
+                **kwargs,
             )
         except Exception as e:  # noqa: BLE001
             _log(group, user_id, f"json_error elapsed={time.time()-t0:.2f}s err={e!r}")
             raise LLMCallError(str(e)) from e
-        _stash_repro(None, getattr(resp, "system_fingerprint", None))
+        fp = getattr(resp, "system_fingerprint", None)
+        if fp:   # None 时别调:两参皆 None 是「清空」的约定,会把刚存的 seed 抹掉
+            _stash_repro(None, fp)
+        if getattr(resp, "model", None):
+            st.session_state.setdefault("_last_llm_repro", {})["served_model"] = resp.model
         usage = getattr(resp, "usage", None)
         if usage:  # accumulate across JSON-retry attempts — cost is what we track
             for k, attr in (("prompt", "prompt_tokens"), ("completion", "completion_tokens"),
@@ -355,6 +380,10 @@ def generate_json(
         choices = getattr(resp, "choices", None) or []
         msg = choices[0].message if choices else None
         raw = _FENCE_RE.sub("", clean_output(getattr(msg, "content", None) or "")).strip()
+        # 模型偶尔在 JSON 前后加一句话:抠出最外层 {...} 再解析,别把整轮引导浪费在一句「以下是问题:」上
+        m_obj = re.search(r"\{.*\}", raw, re.DOTALL)
+        if m_obj and not raw.startswith("{"):
+            raw = m_obj.group(0)
         try:
             if not raw:
                 raise json.JSONDecodeError("empty response from model", "", 0)

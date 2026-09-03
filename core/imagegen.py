@@ -3,7 +3,7 @@
 流程:被试提交这一版后进入本轮问卷 → 页面立刻显示、分镜「画面」列先显示"生成中" →
 后台线程用 gpt-image-1-mini 并行生成 3 张手绘风插图、逐张写盘 → 问卷里的分镜表用 fragment
 每 2 秒轮询磁盘、好一张显示一张。**全程非阻塞、失败即静默降级**(某镜失败就停在"生成中",
-绝不打断实验)。图落 `data/storyboard_images/{被试}_{轮次}/`(留档,已 gitignore)。
+绝不打断实验)。图落 `data/storyboard_images/{被试}_{轮次}/{attempt}/`(留档,已 gitignore)。
 
 生图在**提交之后**发生,不进创作净时长(t_pregen/t_postgen)。风格锁定见 samples/imggen/README。
 线程读不到 session_state,故 api_key/base_url 由调用方在主线程捕获后传入。
@@ -41,13 +41,21 @@ _STYLE = (
 )
 
 
-def enabled() -> bool:
-    """仅当当前配置的接口是 OpenAI(图像模型只在 OpenAI 上有)时开启配图。"""
+def endpoint_supports_images() -> bool:
+    """仅当当前配置的接口是 OpenAI(图像模型只在 OpenAI 上有)时开启配图。
+    判据是 base_url 含 openai.com:填了别的 OpenAI 兼容网关会**静默**不配图。"""
     return "openai.com" in (st.session_state.get("base_url") or "")
 
 
+def _attempt() -> str:
+    return st.session_state.get("r_attempt") or "na"
+
+
 def _dir(pid: int, ridx: int) -> Path:
-    return _ARCHIVE / f"{pid}_{ridx}"
+    """归档目录按 (被试, 轮次, attempt) 分。同一轮重做(问卷页刷新 → 续接 → 从 intent 重跑,
+    或 devtools 切换条件)会换一份新稿;只按 {pid}_{ridx} 命名的话,问卷页会把**上一次尝试**
+    的旧图贴在新稿旁边 —— 插图是主观 DV 的测量情境,配错稿等于换了题。旧尝试的图仍留档。"""
+    return _ARCHIVE / f"{pid}_{ridx}" / _attempt()
 
 
 def _scene(shot: dict) -> str:
@@ -57,7 +65,7 @@ def _scene(shot: dict) -> str:
 def ensure_started(pid: int, ridx: int, shots: list[dict],
                    api_key: str, base_url: str) -> None:
     """本轮第一次进问卷时启动一次后台生成(session 标志防重复)。"""
-    flag = f"_imggen_started_{pid}_{ridx}"
+    flag = f"_imggen_started_{pid}_{ridx}_{_attempt()}"
     if st.session_state.get(flag):
         return
     st.session_state[flag] = True
@@ -112,7 +120,13 @@ def ensure_started(pid: int, ridx: int, shots: list[dict],
             with cf.ThreadPoolExecutor(max_workers=3) as ex:
                 list(ex.map(one, list(enumerate(scenes))))
         except Exception:  # noqa: BLE001
-            pass
+            # 线程池起来之前就炸(缺 PIL / openai、key 为空)以前不写任何标记 → all_attempted
+            # 永不为真,问卷页每 2 秒 fragment 重跑一整场。逐镜补上「尝试过了」的标记。
+            for i in range(len(scenes)):
+                try:
+                    (d / f"shot{i + 1}.done").write_bytes(b"")
+                except OSError:
+                    pass
 
     threading.Thread(target=worker, daemon=True).start()
 
@@ -133,8 +147,15 @@ def frame_htmls(pid: int, ridx: int, n: int, generating_label: str) -> list[str]
     return out
 
 
-def all_done(pid: int, ridx: int, n: int) -> bool:
-    """True once every shot has either an image or a .done marker (failed/empty),
+def n_images(pid: int, ridx: int, n: int) -> int:
+    """实际生成成功的张数(问卷页看到几张图 —— 这是主观 DV 的测量情境,要落库)。"""
+    d = _dir(pid, ridx)
+    return sum((d / f"shot{i}.jpg").exists() for i in range(1, n + 1))
+
+
+def all_attempted(pid: int, ridx: int, n: int) -> bool:
+    """True once every shot has either an image or a .done marker (failed/empty) —
+    「都试过了」,不是「都生成成功了」,
     so the questionnaire's 2s poll settles instead of spinning on a failed shot."""
     d = _dir(pid, ridx)
     return all((d / f"shot{i}.jpg").exists() or (d / f"shot{i}.done").exists()

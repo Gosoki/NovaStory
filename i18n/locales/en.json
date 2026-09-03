@@ -8,6 +8,8 @@
     "loading": "The AI is generating… please wait a moment."
   },
   "sidebar": {
+    "researcher_pw_locked": "Too many attempts. Please wait a minute and try again.",
+    "reset_hint": "(clears this browser session only — saved database records are kept)",
     "language": "Interface language",
     "api_section": "Model API",
     "topic_section": "Topic pool",
@@ -22,14 +24,15 @@
     "api_preset_label": "Select API configuration",
     "api_no_configs": "No API configurations found. Please add at least one [[api_configs]] block to .streamlit/secrets.toml (see secrets.toml.example).",
     "api_active": "Active configuration: {name}",
-    "api_key_missing": "This configuration is missing an API key. Please add it to .streamlit/secrets.toml."
+    "api_key_missing": "This configuration is missing an API key. Please add it to .streamlit/secrets.toml.",
+    "researcher_pw_unset": "The researcher password is not configured (secrets / NOVASTORY_RESEARCHER_PW); the admin panel stays closed until it is."
   },
   "consent": {
     "title": "Study Information and Informed Consent",
-    "body": "Thank you for taking part in this study!\n\n**What you will do**: You will create 3 short-video storyboard scripts on given topics, each with a different form of AI assistance, and answer a few short questions after each one. The whole session takes about **10-15 minutes**.\n\n**Data**: We record the text you enter, your interactions with the system, and your questionnaire answers. Data are used for academic research only, analyzed anonymously, and nothing that could identify you will be published.\n\n**External AI service**: The text you enter (your idea, revision instructions, free-text answers) is sent to the **OpenAI API (United States)** both to **generate** the storyboard and for **analysis** (automatic evaluation and semantic-similarity computation). Data sent via the API is not used to train models by default; it is retained for at most 30 days for abuse monitoring and then deleted. **Please do not write names, school names, or anything identifying a real person into the idea and storyboard fields.**\n\n**Publication**: The storyboards you create and the text you write may be quoted, anonymized, in the resulting paper, conference presentations and slides.\n\n**Retention**: Research data are kept until 〔fill in the retention period〕 and then destroyed irrecoverably. Your answers are collected anonymously, so normally your individual record cannot be singled out. However, **if you kept your completion code or provided an email address**, write to the contact below and we can identify and delete the corresponding record.\n\n**Voluntary participation**: Participation is entirely voluntary. You may stop at any time by closing the page, with no negative consequences, and neither taking part nor stopping will affect any grade or evaluation. **If you stop partway, the answers recorded up to that point will not be used in the analysis** (only participants who complete all 3 rounds are analyzed; they are included only in anonymous counts of how many people reached which stage).\n\n**Contact**: g2550005@stu.musashino-u.ac.jp 〔fill in researcher name, affiliation, supervisor〕\n\n**Providing an email address is optional**: On the final screen we ask for an email address only from those who want one. It is used solely to deliver the AI-generated short film or to get in touch, and **leaving it blank is completely fine and changes nothing about your participation**. Only if you provide it is the address stored linked to your answers (without it, the record stays anonymous). Please do not write names, school names, phone numbers or any personal information other than your email address into the free-text boxes.\n\nIf you agree, please tick the box below and begin.",
+    "body": "Thank you for taking part in this study!\n\n**What you will do**: Create 3 short-video storyboards on given topics, each with a different form of AI assistance, answering a few short questions after each one (about **10-15 minutes** in total).\n\n**Data**: We record the text you enter, your interactions, and your questionnaire answers, used **for academic research only** and analyzed anonymously. Nothing that could identify you will be published.\n\n**External AI service**: The text you enter (your idea, revision instructions, free-text answers) is sent to the **OpenAI API (United States)** both to **generate** the storyboard and for **analysis** (automatic evaluation and semantic-similarity computation). Data sent via the API is not used to train models by default and is deleted after at most 30 days. **Please do not write names, school names, or anything identifying a real person into the idea and storyboard fields.**\n\n**Publication and retention**: Your storyboards and the text you write may be quoted, anonymized, in the paper, conference presentations and slides. Data are kept until 〔fill in the retention period〕 and then destroyed irrecoverably.\n\n**Voluntary participation**: Participation is entirely voluntary. You may stop at any time by closing the page, with no negative consequences; neither taking part nor stopping affects any grade or evaluation. **If you stop partway, the answers recorded so far will not be used in the analysis** (only participants who complete all 3 rounds are analyzed; they appear only in anonymous counts of how many people reached which stage). Answers are collected anonymously, so a single record normally cannot be singled out; however, if you kept your completion code or gave an email address, write to the contact below and we can identify and delete that record.\n\n**Providing an email address is optional**: We ask only those who want one, on the final screen. It is used solely to deliver the AI-generated short film or to get in touch, and **leaving it blank changes nothing about your participation**; only if you provide it is the address stored linked to your answers. Please do not write any personal information other than your email address into the free-text boxes.\n\n**Contact**: g2550005@stu.musashino-u.ac.jp 〔fill in researcher name, affiliation, supervisor〕\n\nIf you agree, please tick the box below and begin.",
     "agree": "I have read the above and agree to take part in this study",
     "start": "Agree and begin",
-    "no_refresh": "⚠️ Please try not to refresh or use the browser's Back button. If you do refresh, you'll automatically resume where you left off as long as you stay in the same tab (please don't close the tab)."
+    "no_refresh": "⚠️ Please try not to refresh or use the browser's Back button. If you refresh, the current round has to be redone (scripts you already submitted and earlier rounds are kept). Staying in the same tab resumes automatically where you left off."
   },
   "intro": {
     "title": "Before you begin",
@@ -113,10 +116,10 @@
     "topic_choices": "({choices} … {free})",
     "topic_free": "whatever else you dream up",
     "flow_label": "📍 This round's flow:",
-    "instr_C": "In this round the AI will generate a complete {shot_count}-shot storyboard script directly from your idea. ⚠️ **It generates only once** — the script cannot be edited or regenerated afterwards, so review it and submit. First, write your story idea in one or two sentences.",
-    "instr_D": "In this round the AI generates a complete script first; you can then edit it directly, or tell the AI what to change (it can be abstract, e.g. \"make it funnier\"), and polish it as many times as you like. First, write your story idea in one or two sentences.",
-    "instr_E": "In this round the AI will first ask you a few questions to understand what you want, then generate the script; afterwards you can keep being guided by the AI or edit the script directly until you are happy. First, write your story idea in one or two sentences.",
-    "intent_label": "Your story idea (one or two sentences)",
+    "instr_C": "In this round the AI will generate a complete {shot_count}-shot storyboard script directly from your idea. ⚠️ **It generates only once** — the script cannot be edited or regenerated afterwards, so review it and submit. First, write your story idea (any length or form is fine).",
+    "instr_D": "In this round the AI generates a complete script first; you can then edit it directly, or tell the AI what to change (it can be abstract, e.g. \"make it funnier\"), and polish it as many times as you like. First, write your story idea (any length or form is fine).",
+    "instr_E": "In this round the AI will first ask you a few questions to understand what you want, then generate the script; afterwards you can keep being guided by the AI or edit the script directly until you are happy. First, write your story idea (any length or form is fine).",
+    "intent_label": "Your story idea (any length or form)",
     "intent_placeholder": "e.g., The main character discovers they dreamed every question on the exam the night before…",
     "intent_scope": "🎬 First, picture a short story that fits **{total}s · {count} shots**.",
     "intent_submit": "Confirm and start creating",
@@ -203,11 +206,14 @@
     "q_closest": "Which round's result came closest to **what you first pictured**?",
     "q_effort": "Which round felt like the most effort?",
     "q_overall": "Overall, how satisfied are you with this creative experience?",
-    "q_noticed": "Did you notice any difference between the three rounds? If so, how did they differ? (optional)",
-    "q_noticed_ph": "e.g. in round 2 I could ask the AI to revise it; in round 3 it asked me questions first…",
+    "q_noticed": "Did you notice differences between the three rounds?",
     "round_n": "Round {i}",
     "comment": "Anything else you'd like to add (optional)",
-    "submit": "Submit and finish"
+    "submit": "Submit and finish",
+    "q_noticed_opt1": "Not particularly",
+    "q_noticed_opt2": "Something felt different, but I can't say what",
+    "q_noticed_opt3": "Yes — how the AI was involved differed (asked first / editable afterwards, etc.)",
+    "q_noticed_opt4": "Yes — I could even guess what this study is comparing"
   },
   "researcher": {
     "title": "Experiment Data Dashboard",
@@ -222,8 +228,9 @@
     "failed": "Generation failed"
   },
   "errors": {
+    "script_empty": "The script can't be empty — the current version has been put back in the editor. To rewrite it, just edit it above.",
     "no_api_key": "The system API is not configured. Please contact the researcher.",
-    "llm_failed": "AI request failed: {error}. Please click any button to retry in a moment, or contact the researcher.",
+    "llm_failed": "The AI request failed. Please retry in a moment, or contact the researcher if it keeps happening.",
     "intent_too_short": "Please make your idea more specific (at least {n} characters).",
     "unanswered": "Unanswered items → {items}",
     "answer_or_skip": "Please pick an option, write your own, or leave it to the AI.",
@@ -289,6 +296,9 @@
     "ping_fail": "❌ Failed · {s}s · {detail}"
   },
   "monitor": {
+    "fingerprint_drift": "⚠️ {n} distinct system_fingerprint values seen — the server-side build changed mid-collection (B7: report this as model drift)",
+    "novice_done": "{n} of them are novices (the primary-analysis population) — judge recruitment by this number; the bar above counts everyone",
+    "dev_excluded": "({n} researcher test rows are excluded from this panel, matching the analysis rule)",
     "title": "🗂 Experiment data management · Monitoring",
     "empty": "No participant data yet. Once collection starts, completion progress, Williams-sequence balance, daily progress, and descriptive stats will appear here.",
     "cond_C": "C one-shot",
@@ -323,6 +333,7 @@
     "lang_mix": "Language mix — {mix} (the formal study is ja; zh/en means a researcher test or an off-protocol session)"
   },
   "analysis": {
+    "kept_cols": "Carried over existing columns: {cols}",
     "title": "📊 Data analysis (just click — no command line needed)",
     "caption": "Produce results and figures here during/after collection; data comes from the current experiment DB. The command-line version is still `make pilot / make analysis`.",
     "btn_pilot": "① Pilot health check (4 make-or-break questions)",

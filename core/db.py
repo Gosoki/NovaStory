@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import json
-import random
 import secrets
 import sqlite3
-import string
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
@@ -16,7 +14,7 @@ from core import config
 ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = ROOT / "data" / "novastory.db"
 
-TABLES = ("participants", "trials", "events", "questionnaires")
+TABLES = ("participants", "trials", "events", "questionnaires", "trials_archive")
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS participants (
@@ -62,6 +60,13 @@ CREATE TABLE IF NOT EXISTS trials (
   t_postgen REAL,             -- first script shown -> submit, net of LLM waits
   created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS trials_archive (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  participant_id INTEGER NOT NULL,
+  round_idx INTEGER NOT NULL,
+  archived_at TEXT NOT NULL,
+  row_json TEXT NOT NULL            -- 被 INSERT OR REPLACE 顶掉的那一行 trials(整行 JSON)
+);
 CREATE TABLE IF NOT EXISTS events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   participant_id INTEGER,
@@ -87,6 +92,8 @@ CREATE TABLE IF NOT EXISTS questionnaires (
   ai_q_amount INTEGER,          -- E only: 1=too few · 4=just right · 7=too many
   ai_q_best_json TEXT,          -- E only: the guiding question flagged most useful (optional)
   shot_annotations_json TEXT,
+  trial_id INTEGER,             -- 这份问卷评的是哪一行 trial(另一会话重做过这一轮时能对出来)
+  attempt TEXT,                 -- 同上,段 id(LOG4)
   created_at TEXT NOT NULL
 );
 """
@@ -123,30 +130,55 @@ _MIGRATIONS = [
     "ALTER TABLE events ADD COLUMN seq_in_round INTEGER",
     "ALTER TABLE events ADD COLUMN attempt TEXT",
     "ALTER TABLE events ADD COLUMN trial_id INTEGER",
+    # 2026-09-02:问卷 ↔ 终稿的对应关系以前只靠 (pid, round) 隐含;两个会话各自 INSERT OR
+    # REPLACE 之后,问卷评的可能不是现行那份终稿,而分析侧无从察觉。
+    "ALTER TABLE questionnaires ADD COLUMN trial_id INTEGER",
+    "ALTER TABLE questionnaires ADD COLUMN attempt TEXT",
+    # 采数期间改代码是被预期的(冻结允许偏差记录),可数据里没有一列说「这一行是哪个版本产生的」
+    "ALTER TABLE trials ADD COLUMN app_rev TEXT",
 ]
 
 
 def _conn() -> sqlite3.Connection:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    # timeout=30 已经是 sqlite3_busy_timeout(30s);以前紧接着又 PRAGMA busy_timeout=10000
+    # 把它悄悄覆盖成 10s —— 两处写两个数,读者不知道哪个生效。只留一处。
     conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA busy_timeout=10000")
     return conn
 
 
+# 每个进程对同一个库只需初始化一次:init_state 每次 rerun 都调 init_db,以前每次都跑整份
+# DDL + 21 条注定失败的 ALTER。按路径记录,测试脚本切换 DB_PATH 后照样会初始化新库;
+# 文件被删掉重建也会重新初始化。
+_INITIALIZED: set[Path] = set()
+
+
 def init_db() -> None:
+    if DB_PATH in _INITIALIZED and DB_PATH.exists():
+        return
     with _conn() as conn:
         conn.executescript(_SCHEMA)
         for stmt in _MIGRATIONS:
             try:
                 conn.execute(stmt)
-            except sqlite3.OperationalError:
-                pass  # column already exists
+            except sqlite3.OperationalError as e:
+                if "duplicate column" not in str(e).lower():
+                    raise   # 只吞「列已存在」;库文件损坏/只读之类的真错误不该被同一句 pass 掩盖
         for stmt in _INDEXES:
             try:
                 conn.execute(stmt)
             except sqlite3.IntegrityError:
                 pass  # legacy dev DB already has duplicate (pid, round) rows
+        # 索引建不起来(库里已有重复 (pid, round) 行)以前是静默的:整个采数期都会在无索引状态
+        # 运行,INSERT OR REPLACE 退化成普通 INSERT,重做轮产生重复行、续接少做一轮。宁可拒绝启动。
+        have = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='index'")}
+        missing = [n for n in ("idx_trials_pid_round", "idx_quest_pid_round") if n not in have]
+        if missing:
+            raise RuntimeError(
+                f"unique index missing: {missing} — {DB_PATH} 里已有重复 (participant_id, round_idx) 行,"
+                " 先归档/清理这个库再启动")
+    _INITIALIZED.add(DB_PATH)
 
 
 def _now() -> str:
@@ -155,6 +187,15 @@ def _now() -> str:
 
 def _dumps(obj: Any) -> str:
     return json.dumps(obj, ensure_ascii=False)
+
+
+def _cols(fields) -> str:
+    """把 **kwargs 的键拼成 SQL 列名清单。键只该来自内部调用方,但这几个函数长得像
+    「随手加一列就能用」,所以拦住任何不是 Python 标识符的键,f-string 拼 SQL 才不会变成注入口。"""
+    bad = [k for k in fields if not str(k).isidentifier()]
+    if bad:
+        raise ValueError(f"illegal column name(s): {bad}")
+    return ", ".join(fields)
 
 
 # ---------------- participants ----------------
@@ -183,9 +224,12 @@ def insert_participant(
             conn.execute("BEGIN IMMEDIATE")
             # Researcher-injected test subjects (screening_json {"dev": true})
             # must not shift real participants' Latin-square rotation.
+            # json_valid 先行:一行非法 JSON(手改库 / 写入中断)会让 json_extract 抛错,
+            # 整条 COUNT 崩 → 阻断之后**所有**新被试入库。非法 JSON 的行按真被试计。
             n = conn.execute(
                 "SELECT COUNT(*) FROM participants WHERE passed=1"
-                " AND COALESCE(json_extract(screening_json, '$.dev'), 0) != 1"
+                " AND (json_valid(screening_json) = 0"
+                "      OR COALESCE(json_extract(screening_json, '$.dev'), 0) != 1)"
             ).fetchone()[0]
             seq = n % config.LATIN_SQUARE_N  # 18 Williams seqs (#1)
         cur = conn.execute(
@@ -207,6 +251,15 @@ def get_participant_by_token(token: str) -> Optional[dict]:
         row = conn.execute(
             "SELECT * FROM participants WHERE token=? LIMIT 1", (token,)
         ).fetchone()
+        return dict(row) if row else None
+
+
+def get_trial(participant_id: int, round_idx: int) -> Optional[dict]:
+    """某被试某轮已提交的 trial 行;没有则 None。续接用它把问卷页原样恢复。"""
+    with _conn() as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT * FROM trials WHERE participant_id=? AND round_idx=?",
+                           (participant_id, round_idx)).fetchone()
         return dict(row) if row else None
 
 
@@ -243,6 +296,7 @@ def set_contact(pid: int, payload: str) -> bool:
 
 
 def update_participant(pid: int, **fields: Any) -> None:
+    _cols(fields)
     cols = ", ".join(f"{k}=?" for k in fields)
     with _conn() as conn:
         conn.execute(
@@ -250,21 +304,44 @@ def update_participant(pid: int, **fields: Any) -> None:
         )
 
 
+# 去掉 0/O/1/I:被试要把这串码**抄进邮件**,同形字是纯粹的失败源。
+_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+
 def make_completion_code(pid: int) -> str:
-    code = "".join(random.choices(string.ascii_uppercase + string.digits, k=8))
-    # finished_at closes the only timing gap the events table can't fill on its
-    # own: whole-session duration = finished_at - created_at (intake included).
-    update_participant(pid, completion_code=code, status="done", finished_at=_now())
-    return code
+    """签发完成码并把 status 置 done;**已有码就原样返回**(幂等)。
+
+    两个会话先后到达完成页(第二个 tab 迟一步提交总问卷)时,以前会无条件重签:被试已经
+    抄走的那串在库里被顶掉,finished_at 也被推后。finished_at 是 events 表补不了的唯一一段
+    (整场时长 = finished_at − created_at),只能签一次。"""
+    code = "".join(secrets.choice(_CODE_ALPHABET) for _ in range(8))
+    with _conn() as conn:
+        conn.execute(
+            "UPDATE participants SET completion_code=?, status='done', finished_at=?"
+            " WHERE id=? AND completion_code IS NULL",
+            (code, _now(), pid),
+        )
+        row = conn.execute("SELECT completion_code FROM participants WHERE id=?", (pid,)).fetchone()
+    return row[0] if row and row[0] else code
 
 
 # ---------------- trials / events / questionnaires ----------------
 
 def insert_trial(**f: Any) -> int:
     f.setdefault("created_at", _now())
-    cols = ", ".join(f.keys())
+    cols = _cols(f.keys())
     marks = ", ".join("?" for _ in f)
     with _conn() as conn:
+        # 被顶掉的那次尝试先归档:以前 OR REPLACE 会连 final_output / script_versions / guidance_json
+        # 一起物理删除,「重做前后是否一致」的敏感性分析就无从做起。events 只记 v 号,不记正文。
+        conn.row_factory = sqlite3.Row
+        old = conn.execute("SELECT * FROM trials WHERE participant_id=? AND round_idx=?",
+                           (f.get("participant_id"), f.get("round_idx"))).fetchone()
+        if old is not None:
+            conn.execute("INSERT INTO trials_archive (participant_id, round_idx, archived_at, row_json)"
+                         " VALUES (?,?,?,?)", (old["participant_id"], old["round_idx"], _now(),
+                                              _dumps(dict(old))))
+        conn.row_factory = None
         # OR REPLACE: a resume re-doing a round (or a double-click) overwrites the
         # existing (participant_id, round_idx) row instead of duplicating it.
         cur = conn.execute(
@@ -333,7 +410,7 @@ def attach_intake_events(participant_id: int, session_id: str) -> None:
 
 def insert_questionnaire(**f: Any) -> int:
     f.setdefault("created_at", _now())
-    cols = ", ".join(f.keys())
+    cols = _cols(f.keys())
     marks = ", ".join("?" for _ in f)
     with _conn() as conn:
         cur = conn.execute(
@@ -351,12 +428,3 @@ def load_table(name: str) -> pd.DataFrame:
     with _conn() as conn:
         return pd.read_sql_query(f"SELECT * FROM {name}", conn)
 
-
-def counts() -> dict:
-    with _conn() as conn:
-        return {
-            "participants": conn.execute("SELECT COUNT(*) FROM participants").fetchone()[0],
-            "passed": conn.execute("SELECT COUNT(*) FROM participants WHERE passed=1").fetchone()[0],
-            "done": conn.execute("SELECT COUNT(*) FROM participants WHERE status='done'").fetchone()[0],
-            "trials": conn.execute("SELECT COUNT(*) FROM trials").fetchone()[0],
-        }

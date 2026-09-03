@@ -67,6 +67,15 @@ def run(tmp: Path) -> None:
     # ---------- ① 合成库 ----------
     print("\n[1/10] 合成实验库(N=36 + 1 dev)")
     info = gen_synthetic_db.generate(db_path, n=N_SUBJ, seed=7)
+    # make events 走的是**脚本入口**(`$(PY) analysis/events.py`),模块导入路径对它是盲的 ——
+    # 2026-09-02 就漏过一次缺 sys.path.insert 的 ModuleNotFoundError,smoke 全绿。
+    import subprocess
+    for rel in ("analysis/v3.py", "analysis/events.py"):
+        out_csv = tmp / "script_entry.csv"
+        args = [sys.executable, str(ROOT / rel), "--db", str(db_path)] + (["--out", str(out_csv)] if rel.endswith("v3.py") else ["--csv", str(out_csv)])
+        r = subprocess.run(args, cwd=ROOT, capture_output=True, text=True, timeout=300)
+        assert r.returncode == 0, f"{rel} 以脚本方式运行失败(退出码 {r.returncode}):\n{r.stderr[-800:]}"
+    ok("v3.py / events.py 以脚本入口(make v3 / make events)运行通过")
     assert info["events"] > 0, "fixture 没写出 events"
     assert info["parse_fail"] and info["redo_rounds"], "fixture 缺解析失败/重做轮埋点"
     ok(f"trials {info['trials_total']}(非 dev {info['trials_non_dev']}) · events {info['events']} · "
@@ -121,7 +130,7 @@ def run(tmp: Path) -> None:
         assert merged[c].notna().all(), f"事件层指标 {c} 有空行"
     assert (merged["t_questionnaire"] > 0).all(), "问卷时长必须为正"
     ev_raw, parts_raw = A_ev.load_events(db_path)
-    ev_dev = A_ev.per_trial(ev_raw)
+    ev_dev = A_ev.per_trial_events(ev_raw)
     assert dev not in set(ev_dev["participant_id"]), "dev 被试混进了事件层"
     assert (ev_dev["round_idx"] != 0).all(), "intake 段(round_idx=0)不该当成一轮 trial"
     # 逐被试 intake/整场时长表:合成库没有 intake 埋点,列必须全 NaN 而不是抛栈
@@ -209,9 +218,9 @@ def run(tmp: Path) -> None:
        f"/verdict={r2['verdict']}(mean_diff={r2['mean_diff']:.3f}、n={r2['n']})")
 
     # 两个主终点必须各自有等价界(此前它们的「≈(不劣)」格在统计上是空的),
-    # 且界要经 prereg.EQUIV_DV 落到**正确量纲**的 DV 上。
+    # 且界要经 prereg.EQUIV_DV_BY_ENDPOINT 落到**正确量纲**的 DV 上。
     for dv in prereg.PRIMARY_ENDPOINTS:
-        eq = prereg.EQUIV_DV.get(dv, dv)
+        eq = prereg.EQUIV_DV_BY_ENDPOINT.get(dv, dv)
         b = prereg.SESOI_BY_ENDPOINT.get(eq)
         assert isinstance(b, (int, float)) and b > 0, \
             f"主终点 {dv}(等价 DV={eq})没有冻结的等价界 → 四象限的「≈」格无检验支撑"
@@ -229,24 +238,24 @@ def run(tmp: Path) -> None:
                 f"等价界落在了 z 合成的列上:{eq} 的 mean={m:.3f}(≈0 = 已 z 化), sd={sd:.3f} —— "
                 f"界 {b} 会被当成 {b / sd:.2f} 个标准差,量纲错配。等价检验须在原始单位的 DV 上做。")
     ok("两个主终点各自登记了等价界且量纲正确: "
-       f"{ {dv: (prereg.EQUIV_DV.get(dv, dv), prereg.SESOI_BY_ENDPOINT[prereg.EQUIV_DV.get(dv, dv)]) for dv in prereg.PRIMARY_ENDPOINTS} }")
+       f"{ {dv: (prereg.EQUIV_DV_BY_ENDPOINT.get(dv, dv), prereg.SESOI_BY_ENDPOINT[prereg.EQUIV_DV_BY_ENDPOINT.get(dv, dv)]) for dv in prereg.PRIMARY_ENDPOINTS} }")
 
     # 冻结的三分支必须**真的被执行**,不能只是 prereg 里的一串字符串
     # (NOVICE_DEF「写了但从不执行」的同一种病;2026-09-01 自查)。
-    d_sup = A_stats.decide(df, "ownership_composite", {"p_holm": 0.001, "estimate": +0.8})
+    d_sup = A_stats.primary_verdict(df, "ownership_composite", {"p_holm": 0.001, "estimate": +0.8})
     assert d_sup["verdict"] == "superior", d_sup
     # ⚠️ 显著性是**双侧**的:E 显著劣于 D 时 p 同样 <.05。只看 p 会把结论写反。
-    d_inf = A_stats.decide(df, "ownership_composite", {"p_holm": 0.001, "estimate": -0.8})
+    d_inf = A_stats.primary_verdict(df, "ownership_composite", {"p_holm": 0.001, "estimate": -0.8})
     assert d_inf["verdict"] == "inferior", ("显著但方向为负,必须判 inferior 而不是 superior", d_inf)
-    d_ns, _log = quiet(lambda: A_stats.decide(
+    d_ns, _log = quiet(lambda: A_stats.primary_verdict(
         df, "fidelity_composite", {"p_holm": 0.9, "estimate": 0.01}))
     assert d_ns["verdict"] in ("equivalent", "INCONCLUSIVE") and "tost" in d_ns, d_ns
-    assert d_ns["equiv_dv"] == prereg.EQUIV_DV["fidelity_composite"], d_ns
-    d_none = A_stats.decide(df, "ownership_composite", None)
+    assert d_ns["equiv_dv"] == prereg.EQUIV_DV_BY_ENDPOINT["fidelity_composite"], d_ns
+    d_none = A_stats.primary_verdict(df, "ownership_composite", None)
     assert d_none["verdict"] == "INCONCLUSIVE", d_none
     try:
-        A_stats.decide(df, "effort_composite", {"p_holm": 0.01, "estimate": 1.0})
-        raise AssertionError("decide() 对非主终点应拒绝(方向约定不成立)")
+        A_stats.primary_verdict(df, "effort_composite", {"p_holm": 0.01, "estimate": 1.0})
+        raise AssertionError("primary_verdict() 对非主终点应拒绝(方向约定不成立)")
     except ValueError:
         pass
     ok(f"判定分支真的执行且带方向:显著+→{d_sup['verdict']} · 显著−→{d_inf['verdict']} · "

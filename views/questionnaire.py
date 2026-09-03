@@ -4,6 +4,7 @@ import json
 
 import streamlit as st
 
+from analysis import prereg
 from core import db, imagegen, shots, state
 from i18n import get_lang, t
 from views import _scale, _storyboard
@@ -13,7 +14,7 @@ _SOA_ITEMS = 2          # q.soa1..soa2
 _TLX_ITEMS = 1          # q.tlx1
 _ATTENTION_ROUND = 2    # attention check embedded in round 2's questionnaire
 _ATTENTION_EXPECTED = 2
-_SHOT_TAGS = ("mine", "ai_ok", "ai_against")
+_SHOT_TAGS = prereg.SHOT_TAGS   # 与 analysis/v3.shot_fidelity 同源
 
 
 def _ai_q_best_pick(ridx: int):
@@ -55,23 +56,25 @@ def _live_storyboard(script: str, subtitle: str, pid: int, ridx: int, n: int) ->
     _storyboard.render(script, subtitle,
                        sketches=imagegen.frame_htmls(pid, ridx, n, t("storyboard.generating")),
                        pin=True)
-    if imagegen.all_done(pid, ridx, n):
+    if imagegen.all_attempted(pid, ridx, n):
         st.rerun()  # full rerun → outer renders static, polling stops
 
 
 def _render_storyboard_area(ridx: int) -> None:
     """Storyboard preview above the questionnaire. With OpenAI, the 画面 column
-    fills with gpt-image-1 illustrations generated in the background AFTER submit
+    fills with gpt-image-1-mini illustrations generated in the background AFTER submit
     (not during the creative task, so it doesn't touch t_pregen/t_postgen). The
     sheet starts inline at natural size; _install_sb_scroll_observer wires a
     scroll listener that pins it to the top-right thumbnail once scrolled past."""
     script = state.current_script()
     subtitle = state.topic_text(state.current_round()["topic"], "title", get_lang())
-    if imagegen.enabled():
+    if imagegen.endpoint_supports_images():
         parsed = shots.parse_shots(script)
         if parsed:
             pid, n = st.session_state["participant_id"], len(parsed)
-            if imagegen.all_done(pid, ridx, n):
+            if imagegen.all_attempted(pid, ridx, n):
+                # 曝光落库:被试答问卷时看到了几张图。成功/失败以前只在磁盘上,events 里什么都没有。
+                state.log_event("images_ready", {"n_shots": n, "n_ok": imagegen.n_images(pid, ridx, n)}, once=True)
                 _storyboard.render(script, subtitle,
                                    sketches=imagegen.frame_htmls(pid, ridx, n, t("storyboard.generating")),
                                    pin=True)
@@ -380,7 +383,7 @@ def render() -> None:
     def likert(key: str, label: str, anchors: str | None = "agree") -> None:
         val = _scale.likert(label, f"_q_{key}_{ridx}", anchors=anchors)
         if val is None:
-            missing.append(_scale.short(label))
+            missing.append(_scale.truncate_label(label))
         answers[key] = val
         st.divider()
 
@@ -434,7 +437,7 @@ def render() -> None:
             key=f"_q_whole_{ridx}",
         )
         if sel is None:
-            missing.append(_scale.short(t("q.whole_tag_label")))
+            missing.append(_scale.truncate_label(t("q.whole_tag_label")))
         shot_annotations.append({"shot": 0, "tag": lbl2tag.get(sel)})
 
     # E 专属、可选:哪些引导问题真的帮到了。放在逐镜头标注**之后**(见上方注释)。
@@ -476,9 +479,13 @@ def _submit(ridx: int, answers: dict, shot_annotations: list[dict]) -> None:
         satisfaction=answers["sat"],
         ai_q_quality=answers.get("ai_q_quality"),  # E only; NULL for C/D
         ai_q_amount=answers.get("ai_q_amount"),    # E only; NULL for C/D
+        # None = 没问(不足 2 题);[] = 问了但一道都没勾 —— 后者是有信息的回答,不能抹成缺失
         ai_q_best_json=(json.dumps(answers["ai_q_best"], ensure_ascii=False)
-                        if answers.get("ai_q_best") else None),
+                        if answers.get("ai_q_best") is not None else None),
         shot_annotations_json=json.dumps(shot_annotations, ensure_ascii=False),
+        # 这份问卷评的是哪一份终稿:另一会话重做过这一轮时,分析侧靠它对出错配(v3.load)
+        trial_id=st.session_state.get("r_trial_id"),
+        attempt=st.session_state.get("r_attempt") or None,
     )
     if ridx == _ATTENTION_ROUND:
         db.update_participant(

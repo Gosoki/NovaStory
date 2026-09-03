@@ -1,14 +1,11 @@
 from __future__ import annotations
 
-import hashlib
-from datetime import datetime
-
 import streamlit as st
 
 from analysis import prereg
 from core import config, db, state
-from i18n import t
-from views import _scale
+from i18n import DEFAULT_LANG, t
+from views import _scale, consent
 
 # Indices of the correct quiz options. Nobody is gated on these anymore —
 # novice status is recorded as a covariate (screening_json["is_novice"]) and
@@ -103,9 +100,9 @@ def render() -> None:
         return
 
     # (label, value) so an unanswered item can be named back to the subject —
-    # same feedback as the per-round questionnaire (a 12-item form must not say
+    # same feedback as the per-round questionnaire (a 13-item form must not say
     # only "something is missing" and leave them hunting for it).
-    answered = [
+    items = [
         (t("screening.age"), age), (t("screening.gender"), gender),
         (t("screening.ai_freq"), ai_freq), (t("screening.aiexp"), aiexp),
         (t("screening.published"), published), (t("screening.background"), background),
@@ -114,7 +111,7 @@ def render() -> None:
         (t("screening.trust"), trust), (t("screening.own_trait"), own_trait),
         (t("screening.quiz1"), quiz1), (t("screening.quiz2"), quiz2),
     ]
-    missing = [_scale.short(lbl) for lbl, v in answered if v is None]
+    missing = [_scale.truncate_label(lbl) for lbl, v in items if v is None]
     if missing:
         st.error(t("errors.unanswered", items=" / ".join(missing)))
         return
@@ -132,33 +129,11 @@ def render() -> None:
     quiz_correct = int(quiz1_idx == _QUIZ1_CORRECT) + int(quiz2_idx == _QUIZ2_CORRECT)
     is_no = t("screening.no")
 
-    # Recorded, not gating: everyone proceeds to the experiment.
-    # 判定走 analysis.prereg.is_novice —— 这里曾经有一份内联的同义逻辑,与 prereg 的
-    # NOVICE_DEF 字符串并存,两处都可能被单独改动而不自知(2026-09-01 拍板 2.1)。
-    # 现在入库的这个布尔只是**便利列**,分析侧一律从原始 5 项重算。
-    novice_src = {
-        "published_idx": published_idx,
-        "background": "no" if background == is_no else "yes",
-        "written": "no" if written == is_no else "yes",
-        "self_rating": int(self_rating),
-        "quiz_correct": quiz_correct,
-    }
-    is_novice = prereg.is_novice(novice_src)
-
     demographics = {"age_idx": age_idx, "gender_idx": gender_idx, "ai_freq_idx": ai_freq_idx}
     screening = {
-        # 同意书版本存证(2026-09-01 拍板 0.5):记下这位被试实际看到的同意文的
-        # 指纹 + 语言 + 时刻。采数期间同意书改动一个字(哪怕是修错别字),事后就无法
-        # 证明每位被试同意的是哪一版 —— 而这是审查时会被直接问到的。
-        # 指纹要盖住被试**实际看到并勾选**的全部同意文字:正文 + 勾选项措辞 +
-        # 不刷新提示。只盖 body 的话,改了 agree 那句(「我已阅读并同意参与本研究」)
-        # 事后照样说不清他同意的是哪一版。
-        "consent_sha1": hashlib.sha1(
-            "\x1f".join(t(k) for k in
-                        ("consent.body", "consent.agree", "consent.no_refresh")
-                        ).encode("utf-8")).hexdigest()[:16],
-        "consent_lang": st.session_state.get("lang", "ja"),
-        "consent_at": datetime.now().isoformat(timespec="seconds"),
+        # 同意书版本存证:指纹在同意页勾选那一刻抓(views/consent.py),这里只落库;
+        # 没抓到(测试脚本直接从筛查页进)才现算。
+        **(st.session_state.get("_consent_proof") or consent.proof_now()),
         "published_idx": published_idx,
         "background": "no" if background == is_no else "yes",
         "written": "no" if written == is_no else "yes",
@@ -170,9 +145,13 @@ def render() -> None:
         "quiz1_idx": quiz1_idx,
         "quiz2_idx": quiz2_idx,
         "quiz_correct": quiz_correct,
-        "is_novice": is_novice,
     }
-    # 题库必须先于入库就绪:`begin_rounds` 在题数不足时抛 RuntimeError,而那一刻被试行
+    # Recorded, not gating: everyone proceeds to the experiment.
+    # 判定走 analysis.prereg.is_novice(容忍多余键,直接喂整份 screening)—— 这里曾经有一份
+    # 内联的同义逻辑,与 prereg 的 NOVICE_DEF 字符串并存(2026-09-01 拍板 2.1)。入库的这个
+    # 布尔只是**便利列**,分析侧一律从原始 5 项重算。
+    screening["is_novice"] = prereg.is_novice(screening)
+    # 题库必须先于入库就绪:`enter_intro` 在题数不足时抛 RuntimeError,而那一刻被试行
     # 已经 INSERT、拉丁方 seq 已被消耗 —— 留下一个永远走不完的孤儿被试,还挪动了后续
     # 所有人的轮转。deploy_check 在部署前拦一次;这里兜住「采数期间有人改坏
     # topics.json」的运行时窗口。
@@ -182,7 +161,7 @@ def render() -> None:
 
     state.log_intake_event("screening_submit")
     pid, seq, token = db.insert_participant(
-        st.session_state.get("lang", "ja"), demographics, screening, passed=True
+        st.session_state.get("lang", DEFAULT_LANG), demographics, screening, passed=True
     )
     # Now that the id exists, claim this browser session's intake events for it.
     db.attach_intake_events(pid, st.session_state.get("session_id", ""))

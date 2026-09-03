@@ -105,6 +105,16 @@ def safe_run(at: AppTest) -> None:
     for c in list(at.checkbox):
         if c.key and c.key not in at.session_state:
             at.session_state[c.key] = False
+    # 无 key 的 widget(总问卷的 4 个跨轮单选、操纵察觉单选)换页后同样会残留,但它们
+    # 没有 key、按位置 id 存状态,上面那圈补不到 —— 序列化时 `state[self.id]` 直接 KeyError。
+    # set_value(None) 让它序列化成「未选择」:对已消失的旧节点无副作用,对当前页刚设过值的
+    # widget 也不会动(它的 _value 已不是 InitialValue,读 value 不会去查 session_state)。
+    for w in list(at.radio) + list(at.selectbox):
+        if not w.key:
+            try:
+                _ = w.value
+            except KeyError:
+                w.set_value(None)
     at.run()
 
 
@@ -215,7 +225,8 @@ def section_a() -> None:
         t.join()
 
     seqs = sorted(s for _, s, _ in got)
-    expect = sorted(list(range(18)) + list(range(n - 18)))
+    from core import config as _cfg
+    expect = sorted(list(range(_cfg.LATIN_SQUARE_N)) + list(range(n - _cfg.LATIN_SQUARE_N)))
     ck(not errs, "24 人同时通过筛查无异常", f"{time.time() - t0:.2f}s")
     ck(seqs == expect, "拉丁方 seq 无重复无跳号", f"得到 {seqs[:6]}…")
     ck(len({t for _, _, t in got}) == len(got), "续接 token 唯一")
@@ -271,10 +282,12 @@ def section_a() -> None:
     ck(not read_err and not ev_err,
        "研究员后台读全表与被试写入并发不互斥(WAL)", f"读 {reads[0]} 轮")
 
-    for _ in range(10):     # 双击 / 多标签页同时提交同一轮
-        threading.Thread(target=lambda: db.insert_trial(
-            participant_id=pids[0], round_idx=3, condition="E", t_total=9.9)).start()
-    time.sleep(0.6)
+    dup_threads = [threading.Thread(target=lambda: db.insert_trial(
+        participant_id=pids[0], round_idx=3, condition="E", t_total=9.9)) for _ in range(10)]
+    for t in dup_threads:     # 双击 / 多标签页同时提交同一轮
+        t.start()
+    for t in dup_threads:     # join,别 sleep(0.6) 赌线程跑完了
+        t.join()
     with db._conn() as c:
         dup = c.execute("SELECT COUNT(*) FROM trials WHERE participant_id=? AND round_idx=3",
                         (pids[0],)).fetchone()[0]
@@ -399,8 +412,9 @@ def section_c() -> None:
 
     submit_version(at)                                 # trial 已落库,问卷未答
     r = boot_app(t=token)
-    ck(r.session_state["round_idx"] == 1,
-       "trial 已交/问卷未交时刷新:重做该轮(trial 被 OR REPLACE 覆盖)")
+    ck(r.session_state["round_idx"] == 1 and r.session_state["r_phase"] == "questionnaire"
+       and len(r.session_state["r_versions"]) >= 1 and bool(r.session_state["r_trial_id"]),
+       "trial 已交/问卷未交时刷新:恢复到问卷页(终稿原样保留,不再重做、不再二次生成)")
     ck(len(db.load_table("participants")) == n0 + 1,
        "反复刷新不产生第二个被试行 / 不消耗第二个 seq")
 
@@ -546,9 +560,9 @@ def section_e() -> None:
         sh = [{"idx": i, "visual": v} for i, v in enumerate(["闹钟", "翻书", "天亮"], 1)]
         imagegen.ensure_started(999, 1, sh, "sk-invalid", "https://127.0.0.1:9/v1")
         t0 = time.time()
-        while time.time() - t0 < 90 and not imagegen.all_done(999, 1, 3):
+        while time.time() - t0 < 90 and not imagegen.all_attempted(999, 1, 3):
             time.sleep(0.5)
-        ck(imagegen.all_done(999, 1, 3),
+        ck(imagegen.all_attempted(999, 1, 3),
            "配图 API 全挂:all_done 会 settle", f"{time.time() - t0:.1f}s")
         ck(all(h == "" for h in imagegen.frame_htmls(999, 1, 3, "生成中…")),
            "失败的镜降级为空画框,不永远挂着「生成中」",

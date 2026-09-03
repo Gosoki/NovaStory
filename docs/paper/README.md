@@ -17,7 +17,7 @@
 
 **模型（既定）**：文本 —— 测试期 `gpt-4o-mini-2024-07-18`，**正式采数换 `gpt-5.4-mini-2026-03-17`**；配图 —— **`gpt-image-1-mini`**（最便宜且差距决定性、零安全拒绝、线条最干净；`size`/`quality` 已在最省档）。选型与稳定性实测见 [02 §8](02_实验设计.md)，决策依据见 [10](10_核心决策留痕.md)。
 
-**✅ 2026-09-01 下午已按拍板实施**：主分析人群 `is_novice()` 可执行并接进全管线（`stats --population novice` 为默认）· `SESOI_BY_ENDPOINT` 双终点 + 三分支判定 · H4 降描述性 · 保真复合第三腿换 `not_against` + **新增事前意图快照屏** · `scripts/freeze_prereg.py` 冻结产物 · 子集功效表（**实测 N=18 → MDES dz 0.71**）。逐条对照 → [13 号「拍板与执行结果」](13_待办总表_20260901.md)。
+**✅ 2026-09-01 下午已按拍板实施**：主分析人群 `is_novice()` 可执行并接进全管线（`stats --population novice` 为默认）· `SESOI_BY_ENDPOINT` 双终点 + 三分支判定 · H4 降描述性 · 保真复合第三腿换 `not_against` + ~~新增事前意图快照屏~~（当晚撤销，见 13 §⑥）· `scripts/freeze_prereg.py` 冻结产物 · 子集功效表（**实测 N=18 → MDES dz 0.71**）。逐条对照 → [13 号「拍板与执行结果」](13_待办总表_20260901.md)。
 
 **⚠️ 2026-09-01 全库扫描结论**：`11` 号审计（2026-08-04）的 P0 项**逐条核实几乎零进展** —— 主分析人群 `NOVICE_DEF` 仍是从不执行的字符串、冻结产物无生成机制、同意书缺 6 项必备内容、18 岁门槛不存在、提出日倒排工程表不存在。**完整可执行路径 → [13_待办总表](13_待办总表_20260901.md)。**
 
@@ -52,7 +52,7 @@
 - **冻结常量单一真源：`analysis/prereg.py`**（pilot 阈值 / novice 定义 / SESOI / 终点层级 / 复合公式）
 - 试测体检：`analysis/pilot_check.py`（`make pilot`）；网页版在研究员后台「📊 数据分析」
 - 部署闸门：`scripts/deploy_check.py`、`scripts/backup_db.sh`、`DEPLOY.md`
-- 回归三条链：`make smoke-e2e`（正常全流程）· `make robust`（**出事时扛不扛得住** → [12](12_实测就绪性验证_20260901.md)）· `make smoke`（分析链）
+- 回归五条链（i18n / smoke-e2e / robust / smoke / 4 场实跑）：`make smoke-e2e`（正常全流程）· `make robust`（**出事时扛不扛得住** → [12](12_实测就绪性验证_20260901.md)）· `make smoke`（分析链）
 
 ## 维护规则
 

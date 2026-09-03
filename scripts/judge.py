@@ -102,11 +102,11 @@ def load_trials(db_path: Path) -> list[tuple]:
     # 这里尤其要紧 —— judge 会把被试原文**再送一次给 OpenAI**,而同意书写着
     # 中止者的回答不用于分析。共用 v3.included_participants,不再各写一份 dev 过滤。
     from analysis import v3 as _v3  # noqa: PLC0415 — 避免模块级循环依赖
-    keep = _v3.included_participants(db_path)
-    dev = {i for i, s in parts if _loads(s).get("dev")} | {i for i, _ in parts if i not in keep}
-    if dev:
-        print(f"排除 dev 测试被试 {len(dev)} 人")
-    return [r for r in rows if r[0] not in dev]
+    keep = _v3.included_participants(db_path)   # 已含 dev 过滤 + 走完全部轮次
+    excluded = {i for i, _ in parts if i not in keep}
+    if excluded:
+        print(f"纳入规则:排除 {len(excluded)} 人(dev 测试被试 / 未走完全部轮次)")
+    return [r for r in rows if r[0] not in excluded]
 
 
 def load_ok(path: Path) -> dict[tuple, int]:
@@ -198,10 +198,12 @@ def merge(out_path: Path, csv: Path) -> None:
     if not csv.exists():
         raise SystemExit(f"{csv} 不存在 —— 先跑 analysis/v3.py 再重跑本脚本"
                          f"(分数已落盘 {out_path},续跑不会重复调 API)。")
-    rows = [{"participant_id": pid, "round_idx": ridx, "judge_fidelity": mean(g)}
+    # judge_n_reps 一并合入:report() 只用满次的轮算 ICC,而这里 1 次成功也出「均值」——
+    # 没有这一列,CSV 里分不出哪些 judge_fidelity 是 3 次的均值、哪些只是 1 次评分。
+    rows = [{"participant_id": pid, "round_idx": ridx, "judge_fidelity": mean(g), "judge_n_reps": len(g)}
             for (pid, ridx), g in _by_trial(out_path).items()]
-    pt = pd.read_csv(csv).drop(columns=["judge_fidelity"], errors="ignore").merge(
-        pd.DataFrame(rows, columns=["participant_id", "round_idx", "judge_fidelity"]),
+    pt = pd.read_csv(csv).drop(columns=["judge_fidelity", "judge_n_reps"], errors="ignore").merge(
+        pd.DataFrame(rows, columns=["participant_id", "round_idx", "judge_fidelity", "judge_n_reps"]),
         on=["participant_id", "round_idx"], how="left")
     n_ok = int(pt["judge_fidelity"].notna().sum())
     if not n_ok:
@@ -252,7 +254,9 @@ def selftest(db_path: Path, reps: int) -> None:
     n1 = calls["n"]
     print("—— 第 2 遍(续跑:只该重试 PARSE_FAIL)——")
     run(trials, stub, {"model": "stub"}, reps, out)
-    print(f"调用次数:第1遍={n1} 第2遍={calls['n'] - n1}(应等于第1遍的 PARSE_FAIL 数)")
+    n_fail = sum(1 for k in (7, 14) if k <= n1)
+    print(f"调用次数:第1遍={n1} 第2遍={calls['n'] - n1}(应等于第1遍的 PARSE_FAIL 数 {n_fail})")
+    assert calls["n"] - n1 == n_fail, "续跑没有只重试 PARSE_FAIL —— 自测失败"   # 自测只 print 等于没跑
     report(out, reps)
 
     import pandas as pd                      # 合入路径:桩 CSV(列名同 v3_per_trial.csv 的键)

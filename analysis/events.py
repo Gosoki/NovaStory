@@ -28,18 +28,23 @@ from __future__ import annotations
 import argparse
 import json
 import sqlite3
+import sys
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))   # 以脚本方式运行(make events)时 core/ 才 import 得到
 
 DEFAULT_DB = ROOT / "data" / "novastory.db"
 DEFAULT_CSV = ROOT / "data" / "analysis" / "v3_per_trial.csv"
 PARTICIPANT_CSV_NAME = "v3_per_participant.csv"   # 与 --csv 同目录(两张表是同一批产物)
-_COLS = ["t_questionnaire", "n_llm_calls", "n_llm_errors",
-         "llm_total_tokens", "llm_wait_max", "n_resumes"]
+# 合入 v3_per_trial.csv 的事件层列。**公开契约**:views/analysis_panel 靠它在重算前把这些列
+# 接回来,手抄副本一旦漏一列,研究员每点一次按钮就静默抹掉一次。
+EVENT_COLS = ["t_questionnaire", "n_llm_calls", "n_llm_errors",
+              "llm_total_tokens", "llm_wait_max", "n_resumes", "n_fingerprints"]
+_COLS = EVENT_COLS
 
 
 def load_events(db_path: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -70,8 +75,8 @@ def _loads(x) -> dict:
     return d if isinstance(d, dict) else {}
 
 
-def winning_attempt(g: pd.DataFrame) -> pd.DataFrame:
-    """一轮内进了论文的那段 attempt 的全部事件(含提交后的 questionnaire_submit)。"""
+def submitted_attempt_events(g: pd.DataFrame) -> pd.DataFrame:
+    """一轮内**产生了已提交 trial** 的那段 attempt 的全部事件(含提交后的 questionnaire_submit)。"""
     won = g.loc[g["trial_id"].notna(), "attempt"].dropna().unique()
     return g[g["attempt"].isin(won)] if len(won) else g
 
@@ -79,7 +84,7 @@ def winning_attempt(g: pd.DataFrame) -> pd.DataFrame:
 def round_metrics(g: pd.DataFrame) -> dict:
     """g = 一个 (participant, round) 的全部事件(已排序)。"""
     n_resumes = int((g["type"] == "session_resumed").sum())  # 续接跨段发生,按整轮计
-    w = winning_attempt(g)
+    w = submitted_attempt_events(g)
     pay = w["payload_json"].map(_loads)
 
     sub = w.loc[w["type"] == "trial_submit", "ts"]
@@ -93,6 +98,10 @@ def round_metrics(g: pd.DataFrame) -> dict:
              if isinstance(p.get("elapsed"), (int, float))]
     toks = [(p.get("usage") or {}).get("total_tokens") for p in done]
     toks = [t for t in toks if isinstance(t, (int, float))]
+    # B7 可追溯性:seed / system_fingerprint 落在 llm_done.repro 里,此前无人读。同一轮里出现
+    # >1 个 fingerprint = 服务端 build 在采数中途换了,论文里的「模型漂移检测」靠这一列说话。
+    fps = {(p.get("repro") or {}).get("system_fingerprint") for p in done}
+    fps.discard(None)
     return {
         "t_questionnaire": t_q,
         "n_llm_calls": int((w["type"] == "llm_start").sum()),
@@ -100,12 +109,17 @@ def round_metrics(g: pd.DataFrame) -> dict:
         "llm_total_tokens": float(sum(toks)) if toks else np.nan,
         "llm_wait_max": float(max(waits)) if waits else np.nan,
         "n_resumes": n_resumes,
+        "n_fingerprints": len(fps),
     }
 
 
-def per_trial(ev: pd.DataFrame) -> pd.DataFrame:
+def per_trial_events(ev: pd.DataFrame, keep_ids: set | None = None) -> pd.DataFrame:
+    """逐 trial 的事件层指标。`keep_ids` = 纳入的被试(v3.included_participants);None = 不过滤。
+    v3 侧的同名概念叫 per_trial(分析主表),这里是**附加列**,别混。"""
     rows = []
     ev = ev[ev["round_idx"] != 0]  # round_idx=0 = intake stage, not a trial
+    if keep_ids is not None:
+        ev = ev[ev["participant_id"].isin(keep_ids)]
     for (pid, ridx), g in ev.groupby(["participant_id", "round_idx"], sort=True):
         rows.append({"participant_id": int(pid), "round_idx": int(ridx), **round_metrics(g)})
     return pd.DataFrame(rows, columns=["participant_id", "round_idx", *_COLS])
@@ -113,14 +127,14 @@ def per_trial(ev: pd.DataFrame) -> pd.DataFrame:
 
 from core.config import N_ROUNDS as _N_ROUNDS  # noqa: E402
 
-_PCOLS = ["t_consent", "t_intro", "t_screening", "t_intake_total",
-          "t_final_survey", "t_session_total", "completed"]
+_PARTICIPANT_TIME_COLS = ["t_consent", "t_intro", "t_screening", "t_intake_total",
+                          "t_final_survey", "t_session_total", "completed"]
 
 
-def _gap(g: pd.DataFrame, a: str, b: str, *, last_pass: bool = False) -> float:
+def _gap(g: pd.DataFrame, a: str, b: str, *, pair_last_occurrence: bool = False) -> float:
     """b 的首次 − a 的首次(秒);任一缺失或倒序 → NaN。
 
-    `last_pass=True` 改成「**最后一次** b − 紧邻它之前的那次 a」。说明页在 2026-09-01
+    `pair_last_occurrence=True` 改成「**最后一次** b − 紧邻它之前的那次 a」。说明页在 2026-09-01
     之后会因为续接被重看(`state._attempt_resume` 把未完成第 1 轮的人送回说明页),
     于是同一位被试可能有多对 intro_shown/intro_continue。首对配首对会把整段离开时间
     算进停留时长 —— 而这一列存在的意义恰恰是「说明页只停了 2 秒 = 没读」的质量信号,
@@ -129,7 +143,7 @@ def _gap(g: pd.DataFrame, a: str, b: str, *, last_pass: bool = False) -> float:
     tb = g.loc[g["type"] == b, "ts"]
     if not len(ta) or not len(tb):
         return np.nan
-    if last_pass:
+    if pair_last_occurrence:
         end = tb.max()
         before = ta[ta <= end]
         if not len(before):
@@ -141,7 +155,10 @@ def _gap(g: pd.DataFrame, a: str, b: str, *, last_pass: bool = False) -> float:
 
 
 def _completed_ids(ev: pd.DataFrame) -> set:
-    """走完全部 N_ROUNDS 轮的被试(以 questionnaire_submit 事件计,与 v3 的问卷件数同义)。"""
+    """走完全部 N_ROUNDS 轮的被试(以 questionnaire_submit 事件计)。
+
+    这里**故意**不直接用 v3.included_participants:那个规则还带 prereg.ANALYSIS_REQUIRES_ALL_ROUNDS
+    与 dev 过滤,而这一列只是流失分析用的「走完没有」标记,永远按事件计。"""
     q = ev[ev["type"] == "questionnaire_submit"]
     if not len(q):
         return set()
@@ -158,7 +175,7 @@ def per_participant(ev: pd.DataFrame, parts: pd.DataFrame) -> pd.DataFrame:
     rows = []
     for pid, g in ev.groupby("participant_id", sort=True):
         t_consent = _gap(g, "consent_shown", "consent_agree")
-        t_intro = _gap(g, "intro_shown", "intro_continue", last_pass=True)
+        t_intro = _gap(g, "intro_shown", "intro_continue", pair_last_occurrence=True)
         t_screening = _gap(g, "screening_shown", "screening_submit")
         # intake 到哪里为止,取决于这一行是换序前还是换序后落的:
         # 2026-09-01(§4)之前是 同意→说明→筛查(收尾 = screening_submit),
@@ -185,9 +202,11 @@ def per_participant(ev: pd.DataFrame, parts: pd.DataFrame) -> pd.DataFrame:
             "t_intro": t_intro,
             "t_screening": t_screening,
             "t_intake_total": intake,
-            "t_final_survey": _gap(g, "final_survey_shown", "final_survey_submit"),
+            # 总问卷页刷新后会再落一条 final_survey_shown(每个浏览器会话一条),首对配首对会把
+            # 离开的整段时间算进答题时长(与说明页同一个坑)→ 配最后一对。
+            "t_final_survey": _gap(g, "final_survey_shown", "final_survey_submit", pair_last_occurrence=True),
         })
-    out = pd.DataFrame(rows, columns=["participant_id", *_PCOLS])
+    out = pd.DataFrame(rows, columns=["participant_id", *_PARTICIPANT_TIME_COLS])
     # 这张表**故意不做**纳入过滤:半途离场的人正是流失分析的对象(几人走到哪一步、
     # intake 花了多久),而同意书的措辞也只承诺「回答不用于分析」,并明写这类**匿名的
     # 进度集计**仍会包含他们。给一列 completed 让分析侧能随手切开,避免有人把离脱者
@@ -224,10 +243,12 @@ def main() -> None:
         with pd.option_context("display.width", 200, "display.float_format",
                                lambda x: f"{x:.1f}"):
             print("=== 逐被试 intake / 整场时长(秒)均值 ===")
-            print(pd.DataFrame({"mean": pp[_PCOLS].mean(numeric_only=True),
-                                "n_notna": pp[_PCOLS].notna().sum()}))
+            print(pd.DataFrame({"mean": pp[_PARTICIPANT_TIME_COLS].mean(numeric_only=True),
+                                "n_notna": pp[_PARTICIPANT_TIME_COLS].notna().sum()}))
             print(f"→ {out_p}\n")
-    pt = per_trial(ev)
+    # 逐 trial 的分母与 v3 同口径(dev 排除 + 走完全部轮次),否则这里打印的均值建在更宽的人群上
+    from analysis import v3 as _v3
+    pt = per_trial_events(ev, _v3.included_participants(args.db))
     if pt.empty:
         print(f"{args.db} 里还没有可用 events(N=0)。")
         return

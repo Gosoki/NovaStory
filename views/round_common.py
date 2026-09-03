@@ -45,7 +45,7 @@ def render() -> None:
         if cond == "C":
             _postgen.render_readonly(topic)
         else:
-            _postgen.render(topic, cond)
+            _postgen.render_editable(topic, cond)
     elif phase == "questionnaire":
         questionnaire.render()
 
@@ -61,7 +61,7 @@ def _step_strip(cond: str) -> None:
     steps.append(t("round.step_questionnaire"))
 
     cur = _current_step(cond, len(steps))
-    # 快照步骤加入后 E 条件是 6 格;备到 ⑩ 以免以后再加一步又越界
+    # E 条件 5 格(事前意图快照屏已于 2026-09-01 撤销);备到 ⑩ 以免以后再加一步越界
     nums = "①②③④⑤⑥⑦⑧⑨⑩"
     parts = []
     for i, s_ in enumerate(steps):
@@ -88,7 +88,7 @@ def _current_step(cond: str, n_steps: int) -> int:
     if phase in ("pipeline", "guidance"):
         # follow-up guidance rounds happen mid-polish
         return 1 if not st.session_state["r_versions"] else 3
-    return 2 if not st.session_state["r_versions"] else 3
+    return 3   # postgen:进得来就一定已有版本(生成成功 / 取消追问都以此为前提)→ polish
 
 
 # 句末标点 + 收尾破折号。choices 本身是完整的一句(「…还是开口问路。」/「…それとも——。」),
@@ -147,6 +147,7 @@ def _render_intent(cond: str, topic: dict) -> None:
         key="_intent_input",
         placeholder=t("round.intent_placeholder"),
         height=90,
+        max_chars=1000,   # 说明页说「长短都行」—— 这是防整段粘贴长文撑爆上下文的硬上限,不是引导
     )
     val = (st.session_state.get("_intent_input") or "").strip()
     if st.button(t("round.intent_submit"), type="primary", width="stretch"):

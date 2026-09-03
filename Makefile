@@ -4,7 +4,10 @@
 PY := .venv/bin/python
 .DEFAULT_GOAL := help
 
-.PHONY: help baseline norming v3 events pilot embed judge stats stats-all power figures analysis smoke robust smoke-e2e i18n freeze freeze-check
+.PHONY: help dev baseline norming v3 events pilot embed judge stats stats-all power figures analysis smoke robust smoke-e2e i18n freeze freeze-check
+
+dev:        ## 本地开发起服务(热重载;生产 config.toml 默认关)
+	.venv/bin/streamlit run app.py --server.runOnSave true --server.fileWatcherType auto
 
 help:       ## 列出所有命令(直接敲 `make` 就看这个)
 	@grep -hE '^[a-z][a-zA-Z0-9_-]*:.*##' $(MAKEFILE_LIST) | sed -E 's/:.*## / — /' | sort

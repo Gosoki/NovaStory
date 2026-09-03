@@ -496,14 +496,14 @@
         <ul style="margin-top:.4em">
           <li>計画対比：<b>E−D（主）</b> · E−C · D−C ／ 各複合内で <b>Holm</b> 補正</li>
           <li>主要終点は<b>2つだけ</b>（本収集前に確定・凍結）：忠実性複合・所有感複合</li>
-          <li>品質<b>非劣性</b>は <b>TOST</b>（H4・事前に定めた SESOI）／ 頑健性に Wilcoxon</li>
+          <li>品質（H4）は<b>記述的</b>に報告（構造的完全性は天井に張り付く客観的下限；TOST は分散ゼロなら INCONCLUSIVE）／ 頑健性に Wilcoxon</li>
           <li>品質＝構造的完全性（客観的な下限）。<span class="muted">LLM-judge は収束の傍証のみ・人手評価なし</span></li>
         </ul>
       </div>
       <table class="maptab">
         <thead><tr><th>仮説</th><th>指標（複合）</th><th>主対比</th></tr></thead>
         <tbody>
-          <tr><td class="h">H1 忠実性</td><td>忠実性複合<br><span class="faint" style="font-size:.82em">想像一致 + 違反(逆転) + mine率 + 埋込Δ</span></td><td><span class="c">E&gt;D&gt;C</span></td></tr>
+          <tr><td class="h">H1 忠実性</td><td>忠実性複合<br><span class="faint" style="font-size:.82em">想像一致 + 違反(逆転) + not_against(意図一致) + 埋込Δ</span></td><td><span class="c">E&gt;D&gt;C</span></td></tr>
           <tr><td class="h">H2 所有感</td><td>所有感複合（own1–3）</td><td><span class="c">E≥D&gt;C</span></td></tr>
           <tr><td class="h">H3a 事後の手直し</td><td>投入複合（事後↓）</td><td><span class="c">E&lt;D</span></td></tr>
           <tr><td class="h">H3b 再配分</td><td>事前投入（総投入は非劣）</td><td><span class="c">E&gt;D</span></td></tr>

@@ -67,7 +67,10 @@ def likert(label: str, key: str, *, anchors: str | None = "agree"):
     return val
 
 
-def short(label: str, n: int = 18) -> str:
-    """A compact, recognizable form of a long item label for the unanswered list."""
-    label = label.strip()
+def truncate_label(label: str, n: int = 18) -> str:
+    """A compact, recognizable form of a long item label for the unanswered list.
+
+    先剥掉 markdown 强调标记再截:ja 的 q.violation / q.imagine / final_survey.q_closest
+    都在前 18 字内含 `**`,按字数硬截会留下单边的 `**`,拼进 st.error 后整段渲染乱掉。"""
+    label = label.replace("**", "").replace("__", "").strip()
     return label if len(label) <= n else label[:n] + "…"

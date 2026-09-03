@@ -1,5 +1,10 @@
 [server]
-runOnSave = true
+# 生产默认:不热重载、不监视文件(fileWatcherType 才是决定「改文件踢会话」的那一行)。开发用 `make dev`。
+runOnSave = false
+fileWatcherType = "none"
+# 断线会话保留 10 分钟(默认 120 秒):切 App / 锁屏 / 隧道这类分钟级抖动能接回同一会话,
+# 不必走 ?t= 续接。再长会把长时间离开也算进时长 DV。整页重载仍是新会话 → state._attempt_resume。
+disconnectedSessionTTL = 600
 
 [browser]
 gatherUsageStats = false

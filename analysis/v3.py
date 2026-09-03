@@ -34,7 +34,7 @@ from core.shots import parse_shots, strip_format  # noqa: E402
 
 DEFAULT_DB = ROOT / "data" / "novastory.db"
 _SHOT_FIELDS = ("shot_type", "visual", "audio", "duration")
-_TAGS = ("mine", "ai_ok", "ai_against")
+_TAGS = prereg.SHOT_TAGS   # 与 views/questionnaire 同源,别各写一份
 
 
 # ---------------- load ----------------
@@ -83,8 +83,8 @@ def load(db_path: Path) -> pd.DataFrame:
         trials = pd.read_sql("SELECT * FROM trials", con)
         quest = pd.read_sql("SELECT * FROM questionnaires", con)
         parts = pd.read_sql(
-            "SELECT id, lang, seq, status, screening_json, final_survey_json"
-            " FROM participants", con)
+            "SELECT id, lang, seq, status, screening_json, final_survey_json,"
+            " attention_ok, attention_raw FROM participants", con)
     finally:
         con.close()
     keep_ids = included_participants(db_path)
@@ -102,6 +102,16 @@ def load(db_path: Path) -> pd.DataFrame:
     quest = quest.drop(columns=[c for c in ("id", "created_at") if c in quest], errors="ignore")
     df = trials.merge(quest, on=["participant_id", "round_idx"], how="left",
                       suffixes=("", "_q"))
+    # 问卷 ↔ 终稿错配(2026-09-02 起问卷记 trial_id):两个会话各自 INSERT OR REPLACE 过同一轮
+    # 时,问卷评的可能不是现行那份终稿。以前这种行会静默进主终点。这里标出来并大声说。
+    if "trial_id" in df.columns:
+        df["q_trial_mismatch"] = df["trial_id"].notna() & (df["trial_id"] != df["id"])
+        n_mis = int(df["q_trial_mismatch"].sum())
+        if n_mis:
+            print(f"    ⚠️ {n_mis} 行问卷评的不是现行终稿(trial_id 不一致,另一会话重做过这一轮)"
+                  " —— per_trial 带出 q_trial_mismatch 列,主分析前须决定剔除或改用被评的那版")
+    else:
+        df["q_trial_mismatch"] = False
     # Participant language (ja/zh/en, picked once on the consent page). Everything
     # downstream is language-dependent — prompts, topic scenarios, the shot parser,
     # the scales and the embedding fidelity Δ — so analyses must be able to split or
@@ -116,7 +126,7 @@ def load(db_path: Path) -> pd.DataFrame:
     pmeta = parts.rename(columns={"id": "participant_id"}).copy()
     scr = pmeta["screening_json"].map(lambda x: _loads(x, {}))
     pmeta["novice"] = scr.map(prereg.is_novice)
-    for k in prereg.NOVICE_CRITERIA:      # 5 个原始子项,便于分报「哪一项筛掉了人」
+    for k in prereg.NOVICE_CRITERION_FIELDS:      # 5 个原始子项,便于分报「哪一项筛掉了人」
         pmeta[f"nv_{k}"] = scr.map(lambda d, _k=k: prereg.novice_criteria(d)[_k])
     # 2026-09-02 新增的四项测量必须进得了管线,否则就是「收了但没人读」——
     # 这个项目已经因为同一种病吃过三次亏(NOVICE_DEF / DECISION_BRANCHES / 纳入规则)。
@@ -126,12 +136,16 @@ def load(db_path: Path) -> pd.DataFrame:
     fs = pmeta["final_survey_json"].map(lambda x: _loads(x, {}))
     for src, dst in (("pref_round", "fs_pref_round"), ("reuse_round", "fs_reuse_round"),
                      ("closest_round", "fs_closest_round"), ("effort_round", "fs_effort_round"),
-                     ("overall_sat", "fs_overall_sat"), ("noticed_diff", "fs_noticed_diff")):
+                     ("overall_sat", "fs_overall_sat"), ("noticed_idx", "fs_noticed_idx"),
+                     ("comment", "fs_comment")):
         pmeta[dst] = fs.map(lambda d, _k=src: d.get(_k))
+    # attention_ok / attention_raw:docs/paper/04 §敏感性分析写着「剔除 attention 失败」,但此前
+    # 全库没有任何代码读这两列 —— 先让它们进 CSV;剔不剔、怎么剔是冻结口径,不在这里悄悄做。
     keep = ["participant_id", "lang", "seq", "status", "novice", "script_confidence",
+            "attention_ok", "attention_raw",
             "fs_pref_round", "fs_reuse_round", "fs_closest_round", "fs_effort_round",
-            "fs_overall_sat", "fs_noticed_diff"] + \
-           [f"nv_{k}" for k in prereg.NOVICE_CRITERIA]
+            "fs_overall_sat", "fs_noticed_idx", "fs_comment"] + \
+           [f"nv_{k}" for k in prereg.NOVICE_CRITERION_FIELDS]
     df = df.merge(pmeta[keep], on="participant_id", how="left")
     df["lang"] = df["lang"].fillna("ja")
     df["novice"] = df["novice"].fillna(False).astype(bool)
@@ -184,7 +198,7 @@ def _duration_sec(raw) -> float:
     return float(m.group()) if m else np.nan
 
 
-def structural(final_output: str, total_seconds: float | None = None) -> dict:
+def structural_legs(final_output: str, total_seconds: float | None = None) -> dict:
     """任务规格符合度(客观质量下界):镜数、字段齐全率、是否达标。
 
     `spec_ok` = **「15s 且 3 镜」达标**(docs/paper/03 §4 的第三个成分)。此前只判镜数,
@@ -230,7 +244,7 @@ def shot_fidelity(shot_annotations_json) -> dict:
     """
     if not _text(shot_annotations_json).strip():   # 问卷未提交 → 无数据,不是 0
         return {"n_shots_tagged": np.nan, "whole_script_fallback": np.nan,
-                **{f"{t}_ratio": np.nan for t in _TAGS}}
+                **{f"{t}_ratio": np.nan for t in _TAGS}, "not_against": np.nan}   # 键集必须与下面两支一致
     ann = _loads(shot_annotations_json, [])
     tags = [a.get("tag") for a in ann if isinstance(a, dict) and a.get("tag") in _TAGS]
     gran = {
@@ -296,7 +310,7 @@ def version_evo(script_versions, final_output: str) -> dict:
             "final_vs_firstai_sim": ratio}  # 1=没改, 低=改得多
 
 
-def subjective(row: pd.Series) -> dict:
+def subjective_metrics(row: pd.Series) -> dict:
     own = _loads(row.get("ownership_json"), {})
     soa = _loads(row.get("soa_json"), {})
     tlx = _loads(row.get("tlx_json"), {})
@@ -306,9 +320,14 @@ def subjective(row: pd.Series) -> dict:
     # (own1-3 + soa1-2 + tlx1) identical, with ≥4 items answered (deep-review #31).
     block = own_vals + soa_vals + ([tlx.get("tlx1")] if tlx.get("tlx1") is not None else [])
     straightline = int(len(block) >= 4 and len(set(block)) == 1)
+    ai_q_best = _loads(row.get("ai_q_best_json"), None)
     return {
         "own_mean": float(np.mean(own_vals)) if own_vals else np.nan,
         "soa_mean": float(np.mean(soa_vals)) if soa_vals else np.nan,
+        # 以下三列此前「收了但没人读」(tlx1 只被拿来算 straightline)。全部描述性/探索性。
+        "tlx1": _num(tlx.get("tlx1")),
+        "ai_q_amount": _num(row.get("ai_q_amount")),          # E only:1 太少 · 4 刚好 · 7 太多
+        "n_ai_q_helpful": (len(ai_q_best) if isinstance(ai_q_best, list) else np.nan),  # E only;NaN=没问
         "violation": _num(row.get("intent_violation")),
         "imagine": _num(row.get("imagine_match")),
         "satisfaction": _num(row.get("satisfaction")),
@@ -317,12 +336,16 @@ def subjective(row: pd.Series) -> dict:
     }
 
 
-def behavioral(row: pd.Series) -> dict:
-    """努力再分配:事前投入(E 引导答题) vs 事后返工;三口径并报(docs/paper/03 §5.1)。"""
+def behavioral_metrics(row: pd.Series) -> dict:
+    """努力再分配:事前投入(E 引导答题) vs 事后返工;三口径并报(docs/paper/03 §5.1)。
+
+    缺失 ≠ 0:C/D 没有引导步,pre 是**设计上的 0**;E 的 t_pregen 缺失是数据缺失,保留 NaN
+    (以前记 0 → 进 H5 剂量复合后伪装成「剂量最低」的极端点);t_postgen 缺失时 total 也是 NaN,
+    不能把缺失轮当成「0 秒投入」拉低次要终点的均值。"""
     pre = _num(row.get("t_pregen"))
     post = _num(row.get("t_postgen"))
-    pre0 = 0.0 if pd.isna(pre) else pre        # C/D 无事前引导 → 记 0
-    total = pre0 + (0.0 if pd.isna(post) else post)
+    pre0 = 0.0 if (row.get("condition") in ("C", "D") and pd.isna(pre)) else pre
+    total = np.nan if (pd.isna(pre0) or pd.isna(post)) else pre0 + post
     return {
         "pre_investment": pre0,
         "post_investment": post,
@@ -355,22 +378,25 @@ def per_trial(df: pd.DataFrame) -> pd.DataFrame:
             # 没有该 id)这些列是 NaN,而 **bool(nan) 恒为 True** —— 会把 5 个子项
             # 全报成「满足」,与同一行 novice=False 直接矛盾。缺就记 NaN。
             **{f"nv_{k}": (np.nan if pd.isna(r.get(f"nv_{k}")) else bool(r.get(f"nv_{k}")))
-               for k in prereg.NOVICE_CRITERIA},
+               for k in prereg.NOVICE_CRITERION_FIELDS},
             # 2026-09-02 新增的四项测量。它们是**逐被试**的量,在逐 trial 表里会重复
             # 三行 —— 分析时按 participant_id 去重即可;放在这里是为了让它们真的
             # 出现在 CSV 里,而不是止步于 load()(「收了但没人读」已经栽过三次)。
             "script_confidence": r.get("script_confidence"),
+            "attention_ok": r.get("attention_ok"),
+            "attention_raw": r.get("attention_raw"),
+            "q_trial_mismatch": bool(r.get("q_trial_mismatch")),
             **{k: r.get(k) for k in ("fs_pref_round", "fs_reuse_round", "fs_closest_round",
-                                     "fs_effort_round", "fs_overall_sat", "fs_noticed_diff",
+                                     "fs_effort_round", "fs_overall_sat", "fs_noticed_idx", "fs_comment",
                                      "fs_pref_cond", "fs_reuse_cond", "fs_closest_cond",
                                      "fs_effort_cond")},
         }
-        m.update(structural(r.get("final_output"), _topic_seconds(r.get("topic_json"))))
+        m.update(structural_legs(r.get("final_output"), _topic_seconds(r.get("topic_json"))))
         m.update(shot_fidelity(r.get("shot_annotations_json")))
         m.update(guidance_dose(r.get("guidance_json")))
         m.update(version_evo(r.get("script_versions"), r.get("final_output")))
-        m.update(subjective(r))
-        m.update(behavioral(r))
+        m.update(subjective_metrics(r))
+        m.update(behavioral_metrics(r))
         rows.append(m)
     return pd.DataFrame(rows)
 
@@ -419,6 +445,7 @@ def diversity_by_group(df: pd.DataFrame) -> pd.DataFrame:
 _SUMMARY_COLS = [
     "parse_ok", "field_completeness", "shots_ok", "spec_ok", "dur_total",
     "own_mean", "soa_mean", "satisfaction", "imagine", "violation", "ai_q_quality",
+    "tlx1", "ai_q_amount", "n_ai_q_helpful",
     "mine_ratio", "ai_against_ratio", "not_against", "final_vs_firstai_sim",
     "n_shots_tagged", "whole_script_fallback",
     "g_custom_rate", "g_ai_decided_rate", "g_fallback_rate", "g_n_questions", "g_n_rounds",
@@ -460,7 +487,7 @@ def main() -> None:
     # == False 天然把 NaN 排除在外,正是「未满足」应有的语义(缺项 ≠ 不满足)。
     sub = pt.drop_duplicates("participant_id")
     fails = {k: int((sub[f"nv_{k}"] == False).sum())  # noqa: E712 — NaN 安全,不能改 `not`
-             for k in prereg.NOVICE_CRITERIA}
+             for k in prereg.NOVICE_CRITERION_FIELDS}
     print(f"    未满足人数(按子项): {fails}\n")
     if "lang" in pt.columns:
         mix = pt.groupby("lang")["participant_id"].nunique().to_dict()

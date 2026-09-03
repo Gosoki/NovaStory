@@ -27,14 +27,18 @@ import numpy as np
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from analysis import prereg  # noqa: E402
 from core.shots import strip_format  # noqa: E402
 
 DATA = ROOT / "data"
+DB = DATA / "novastory.db"
 BASELINE = DATA / "baseline"
 CSV = DATA / "analysis" / "v3_per_trial.csv"
 CACHE = DATA / "analysis" / "emb_cache.json"
 SECRETS = ROOT / ".streamlit" / "secrets.toml"
-_MIN_BASELINE = 5  # 质心的机器稿下限:更少则「纯 AI 本来有多贴」这个零点全是抽样噪声
+_MIN_BASELINE = prereg.MIN_BASELINE_PER_TOPIC  # 质心的机器稿下限:更少则「纯 AI 本来有多贴」这个零点全是抽样噪声
+# 基线只按这一种语言生成(scripts/baseline_gen.py --lang);别的语言的被试没有可比的零点,Δ 记 NaN。
+BASELINE_LANG = "ja"
 
 
 # ---------------- pure math(可单测)----------------
@@ -81,8 +85,11 @@ class Embedder:
         return np.asarray(self.cache[k], dtype=float)
 
     def flush(self) -> None:
+        """原子写(temp + rename):写一半崩掉不会留下损坏的缓存,下次启动 json.loads 才不会炸。"""
         CACHE.parent.mkdir(parents=True, exist_ok=True)
-        CACHE.write_text(json.dumps(self.cache))
+        tmp = CACHE.with_suffix(".tmp")
+        tmp.write_text(json.dumps(self.cache))
+        tmp.replace(CACHE)
 
 
 def _baseline_texts(topic_idx: int, topics: list) -> list[str]:
@@ -94,6 +101,7 @@ def _baseline_texts(topic_idx: int, topics: list) -> list[str]:
     p = BASELINE / f"topic{topic_idx}.jsonl"
     if not p.exists():
         raise SystemExit(f"缺少机器基线 {p} —— 先跑: make baseline")
+    # 反查题目身份用与 baseline_gen 相同语言的情境(BASELINE_LANG),不是被试语言
     recs = [json.loads(l) for l in p.read_text(encoding="utf-8").splitlines() if l.strip()]
     if len(recs) < _MIN_BASELINE:
         raise SystemExit(f"{p} 只有 {len(recs)} 份基线(<{_MIN_BASELINE}),质心不可靠 —— "
@@ -103,7 +111,7 @@ def _baseline_texts(topic_idx: int, topics: list) -> list[str]:
         raise SystemExit(f"{p} 内记录的 topic_idx={bad} 与文件名不符 —— 基线与题目错配,"
                          "删掉 data/baseline/ 重跑 make baseline")
     from core import prompts as _prompts  # noqa: PLC0415 — avoid a UI import at module load
-    scen = [_prompts.scenario_text(t, "ja", with_note=False) for t in topics]
+    scen = [_prompts.scenario_text(t, BASELINE_LANG, with_note=False) for t in topics]
     seed = (recs[0].get("seed") or "").strip()
     if seed and seed != scen[topic_idx]:
         if seed in scen:
@@ -112,7 +120,7 @@ def _baseline_texts(topic_idx: int, topics: list) -> list[str]:
         # 2026-09-02 之前生成的基线,seed 里带着那句写给模型看的元指令
         # (「以上の分岐はあくまで例です…」)。那批基线的「假装的用户创意」被污染过,
         # Δ 的零点量的不是「纯 AI 会写成什么样」——必须硬失败,不能只警告一句。
-        old_style = [_prompts.scenario_text(t, "ja", with_note=True) for t in topics]
+        old_style = [_prompts.scenario_text(t, BASELINE_LANG, with_note=True) for t in topics]
         if seed in old_style:
             raise SystemExit(
                 f"{p.name} 是 2026-09-02 seed 变更**之前**生成的(seed 里含元指令),"
@@ -132,9 +140,12 @@ def _check_baseline_model(topic_idxs, trial_models: set[str]) -> None:
     base_models = set()
     for i in topic_idxs:
         pth = BASELINE / f"topic{i}.jsonl"
-        first = next((l for l in pth.read_text(encoding="utf-8").splitlines() if l.strip()), "")
-        if first:
-            base_models.add(json.loads(first).get("model") or "?")
+        if not pth.exists():   # 存在性由 _baseline_texts 给出可读提示;这里别抢先抛裸 FileNotFoundError
+            continue
+        # 看**每一行**的 model:中途换配置续跑过的文件,只看首行检不出来
+        for l in pth.read_text(encoding="utf-8").splitlines():
+            if l.strip():
+                base_models.add(json.loads(l).get("model") or "?")
     if len(base_models) > 1:
         raise SystemExit(f"data/baseline/ 里混了多个模型 {sorted(base_models)} —— "
                          "同一批基线必须同模型,删掉 data/baseline/ 重跑 make baseline")
@@ -152,9 +163,10 @@ def compute() -> None:
         raise SystemExit("先跑 analysis/v3.py 生成 v3_per_trial.csv。")
     if not BASELINE.exists():
         raise SystemExit(f"缺少机器基线目录 {BASELINE} —— Δ 的零点就是它,先跑: make baseline")
-    con = sqlite3.connect(f"file:{DATA/'novastory.db'}?mode=ro", uri=True)
+    con = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
     trials = pd.read_sql("SELECT participant_id, round_idx, intent_statement, final_output, "
                          "topic_json, model FROM trials", con)
+    langs = pd.read_sql("SELECT id AS participant_id, lang FROM participants", con)
     con.close()
 
     # 纳入规则(同 analysis/v3):此前 embed **连 dev 过滤都没有** —— 研究员的测试稿会
@@ -167,19 +179,26 @@ def compute() -> None:
     if trials["participant_id"].nunique() < n0:
         print(f"  纳入规则:{n0} 人中排除 "
               f"{n0 - trials['participant_id'].nunique()} 人(dev / 未走完全部轮次)")
+    # 语言:基线只有 BASELINE_LANG 一种,别的语言的被试没有可比零点 —— 不发 API、Δ 记 NaN、大声说
+    trials = trials.merge(langs, on="participant_id", how="left")
+    other = trials[trials["lang"].fillna(BASELINE_LANG) != BASELINE_LANG]
+    if len(other):
+        print(f"  ⚠️ {other['participant_id'].nunique()} 位非 {BASELINE_LANG} 被试无同语言基线,embed_fidelity 记 NaN")
+        trials = trials[trials["lang"].fillna(BASELINE_LANG) == BASELINE_LANG]
 
     # topic title → baseline index(按 topics.json 顺序,由 _baseline_texts 复核身份)
-    topics = json.loads((DATA / "topics.json").read_text(encoding="utf-8"))
-    title2idx = {t["title"]["ja"]: i for i, t in enumerate(topics)}
+    from core import state as _state  # noqa: PLC0415 — 与被试同一份题库归一化(shot_seconds→total_seconds)
+    topics = _state.load_topics()
+    title2idx = {_state.topic_text(t, "title", BASELINE_LANG): i for i, t in enumerate(topics)}
     trials["topic_idx"] = [
-        title2idx.get(((json.loads(tj) if tj else {}).get("title") or {}).get("ja"))
+        title2idx.get(_state.topic_text(json.loads(tj) if tj else {}, "title", BASELINE_LANG))
         for tj in trials["topic_json"]]
     used = sorted({int(i) for i in trials["topic_idx"].dropna().unique()})
     if not used:
         raise SystemExit("没有一条 trial 的题目能对上 topics.json(题面被改过?)——无法配基线。")
-    # 先纯文件校验+读齐所有用到的基线,再花任何 API 调用
-    _check_baseline_model(used, {m for m in trials["model"].dropna().unique() if str(m).strip()})
+    # 先纯文件校验+读齐所有用到的基线,再花任何 API 调用。顺序:先存在性/身份(可读提示),再模型一致性
     base_texts = {i: _baseline_texts(i, topics) for i in used}
+    _check_baseline_model(used, {m for m in trials["model"].dropna().unique() if str(m).strip()})
 
     emb = Embedder()
     base_vecs = {i: np.array([emb.embed(t) for t in ts]) for i, ts in base_texts.items()}
@@ -193,7 +212,7 @@ def compute() -> None:
                                emb.embed(r["final_output"]), base_vecs[int(ti)])
         deltas.append({"participant_id": r["participant_id"], "round_idx": r["round_idx"],
                        "embed_fidelity": d})
-    emb.flush()
+        emb.flush()   # 逐 trial 落盘:中途限流/超时不丢已付费算出的向量,重跑即续跑
 
     pt = pd.read_csv(CSV)
     pt = pt.drop(columns=["embed_fidelity"], errors="ignore").merge(
@@ -217,6 +236,8 @@ def _selftest() -> None:
           " Δ(随机终稿)=", round(fidelity_delta(intent, far, baseline), 3))
     ok = fidelity_delta(intent, near, baseline) > fidelity_delta(intent, far, baseline)
     print("自测", "通过 ✅(贴合稿 Δ 更高)" if ok else "异常 ⚠️")
+    if not ok:
+        sys.exit(1)   # 自测只 print 不设退出码 = 跑绿等于没跑
 
 
 def main() -> None:

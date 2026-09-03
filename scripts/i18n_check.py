@@ -36,12 +36,12 @@ def main() -> int:
     flat = {L: _flatten(json.loads((LOCALES / f"{L}.json").read_text(encoding="utf-8")))
             for L in LANGS}
     base = LANGS[0]
-    bad: list[str] = []
+    problems: list[str] = []
     for L in LANGS[1:]:
         for k in sorted(set(flat[base]) - set(flat[L])):
-            bad.append(f"{L} 缺键: {k}")
+            problems.append(f"{L} 缺键: {k}")
         for k in sorted(set(flat[L]) - set(flat[base])):
-            bad.append(f"{L} 多出键(而 {base} 没有): {k}")
+            problems.append(f"{L} 多出键(而 {base} 没有): {k}")
     for k in sorted(set(flat[base])):
         want = set(_PH_RE.findall(flat[base][k]))
         for L in LANGS[1:]:
@@ -49,11 +49,11 @@ def main() -> int:
                 continue
             got = set(_PH_RE.findall(flat[L][k]))
             if got != want:
-                bad.append(f"占位符不一致 {k}: {base}={sorted(want)} {L}={sorted(got)}")
+                problems.append(f"占位符不一致 {k}: {base}={sorted(want)} {L}={sorted(got)}")
 
-    if bad:
-        print(f"⛔ i18n 三语不一致 —— {len(bad)} 处:")
-        for b in bad:
+    if problems:
+        print(f"⛔ i18n 三语不一致 —— {len(problems)} 处:")
+        for b in problems:
             print(f"   · {b}")
         return 1
     print(f"✅ i18n 三语一致:{len(flat[base])} 键 × {len(LANGS)} 语言,占位符全部对齐。")

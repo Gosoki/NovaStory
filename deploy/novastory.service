@@ -1,0 +1,28 @@
+# NovaStory —— 持久化 systemd 单元(替代 systemd-run 造的 transient 单元:那个不过重启、以 root 跑、绑 0.0.0.0)。
+# ⚠️ 仓库现在在 /root 下:非 root 账号进不了 /root(ProtectHome 也救不了),要用 User= 就得先把仓库搬到
+#    /opt/novastory 之类的地方并 chown。安装:
+#   sudo useradd -r -s /usr/sbin/nologin novastory
+#   sudo mv /root/coding/local/Claude/NovaStory /opt/novastory && sudo chown -R novastory:novastory /opt/novastory
+#   sudo cp /opt/novastory/deploy/novastory.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now novastory
+# 只监听 127.0.0.1;对外由 Caddy/nginx 反代 + TLS(DEPLOY.md §5)。研究者画面:网址加 ?admin=1。
+[Unit]
+Description=NovaStory experiment app
+After=network.target
+
+[Service]
+User=novastory
+WorkingDirectory=/opt/novastory
+ExecStart=/opt/novastory/.venv/bin/streamlit run app.py \
+  --server.port 8501 --server.address 127.0.0.1 --server.headless true \
+  --server.runOnSave false --server.fileWatcherType none
+Restart=always
+RestartSec=3
+# 最小权限:只允许写 data/ 与 backup/
+ProtectSystem=strict
+ReadWritePaths=/opt/novastory/data /opt/novastory/backup
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

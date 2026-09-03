@@ -7,6 +7,7 @@ import json
 import pandas as pd
 import streamlit as st
 
+from analysis import prereg
 from core import config, db
 from i18n import t
 
@@ -27,32 +28,42 @@ def _loads(x) -> dict:
 
 
 def _topic_title(x) -> str:
-    t = _loads(x).get("title", "")
-    if isinstance(t, dict):
-        return t.get("ja") or t.get("zh") or "?"
-    return t or "?"
+    title = _loads(x).get("title", "")   # 别叫 t:会遮蔽上面 import 的翻译函数
+    if isinstance(title, dict):
+        return title.get("ja") or title.get("zh") or "?"
+    return title or "?"
 
 
-def _novice_share(parts: pd.DataFrame):
+def _novice_flags(parts: pd.DataFrame) -> pd.Series:
+    """每位被试是否 novice —— 与分析侧一样从原始 5 项**重算**(prereg.is_novice),
+    不信任入库时写下的布尔:NOVICE_MIN_CRITERIA 若按退路从 5 调到 4,旧布尔就是旧口径。"""
     if "screening_json" not in parts:
-        return float("nan")
-    done = parts[parts.get("status") == "done"] if "status" in parts else parts
-    if done.empty:
-        return float("nan")
-    nov = done["screening_json"].map(lambda x: bool(_loads(x).get("is_novice")))
-    return nov.mean()
+        return pd.Series(False, index=parts.index)
+    return parts["screening_json"].map(lambda x: prereg.is_novice(_loads(x)))
 
 
 def render() -> None:
     st.subheader(t("monitor.title"))
     parts = db.load_table("participants")
     trials = db.load_table("trials")
+    # 研究员用 devtools「跳过同意+筛查」注入的测试行不进任何一格:它们在 seq 计数里
+    # 已被排除(core/db.insert_participant),在分析里被排除(v3.included_participants),
+    # 面板若还把它们算进完成数 / seq 平衡 / novice 占比,研究员看到的就是三套口径。
+    dev_ids: set[int] = set()
+    if "screening_json" in parts:
+        is_dev = parts["screening_json"].map(lambda x: bool(_loads(x).get("dev")))
+        dev_ids = {int(i) for i in parts.loc[is_dev, "id"]}
+        parts = parts[~is_dev]
+    if dev_ids:
+        st.caption(t("monitor.dev_excluded", n=len(dev_ids)))
+        if "participant_id" in trials:
+            trials = trials[~trials["participant_id"].isin(dev_ids)]
     if parts.empty:
         st.info(t("monitor.empty"))
         return
 
     _overview(parts)
-    _data_health(trials)
+    _data_health(trials, dev_ids)
     _balance(trials)
     _progress(parts)
     _descriptive(trials)
@@ -61,16 +72,21 @@ def render() -> None:
 def _overview(parts: pd.DataFrame) -> None:
     status = parts["status"].value_counts() if "status" in parts else pd.Series(dtype=int)
     done, inprog, out = (int(status.get(k, 0)) for k in ("done", "in_progress", "screened_out"))
-    nov = _novice_share(parts)
+    done_rows = parts[parts["status"] == "done"] if "status" in parts else parts.iloc[0:0]
+    nov_flags = _novice_flags(done_rows).astype(bool)   # 空表时 map 得到 object 空列,.sum() 会给 ''
+    nov = float(nov_flags.mean()) if len(done_rows) else float("nan")
     with st.container(border=True):
         c = st.columns(4)
         c[0].metric(t("monitor.done"), done)
         c[1].metric(t("monitor.inprog"), inprog)
         c[2].metric(t("monitor.out"), out)
-        c[3].metric(t("monitor.novice_share"), "—" if nov != nov else f"{nov:.0%}")
+        c[3].metric(t("monitor.novice_share"), "—" if pd.isna(nov) else f"{nov:.0%}")
     st.progress(min(done / _TARGET_N, 1.0),
                 text=t("monitor.progress", n=_TARGET_N, done=done,
                        remain=max(_TARGET_N - done, 0)))
+    # 主分析人群是 novice 子集(B1):上面那条绿了不等于分析 N 够了。招募够不够看这个数
+    # (power_sim 的子集功效表:N=18 → MDES dz 0.71)。
+    st.caption(t("monitor.novice_done", n=int(nov_flags.sum())))
     # 语言构成:正式研究是 ja,出现 zh/en 说明是研究员测试或脱离协议的会话 —— 采数期
     # 就要看见,不能等到分析时才发现(那时已无法补救)。
     if "lang" in parts and len(parts):
@@ -101,11 +117,13 @@ def _dup_contacts(parts: pd.DataFrame) -> None:
         st.warning(t("monitor.dup_contact", n=dup))
 
 
-def _data_health(trials: pd.DataFrame) -> None:
+def _data_health(trials: pd.DataFrame, dev_ids: set[int] = frozenset()) -> None:
     """Live data-quality signals so a silent corruption (parse failures, LLM
     errors, guidance fallbacks, slow gens) is visible between sessions instead of
     a green progress bar hiding a broken primary DV (deep-review 2026-07-19, #30)."""
     ev = db.load_table("events")
+    if dev_ids and "participant_id" in ev:
+        ev = ev[~ev["participant_id"].isin(dev_ids)]
     st.markdown(f"**{t('monitor.health_title')}**")
     if ev.empty and trials.empty:
         st.caption(t("monitor.health_none"))
@@ -118,18 +136,23 @@ def _data_health(trials: pd.DataFrame) -> None:
     err_rate = (int((typ == "llm_error").sum()) / n_start) if n_start else float("nan")
     gs = pj[typ == "guidance_shown"]
     fb_rate = gs.map(lambda x: bool(_loads(x).get("fallback"))).mean() if len(gs) else float("nan")
-    el = pj[typ == "llm_done"].map(lambda x: _loads(x).get("elapsed"))
+    done_pay = pj[typ == "llm_done"].map(_loads)
+    fps = {(p.get("repro") or {}).get("system_fingerprint") for p in done_pay} - {None}
+    el = done_pay.map(lambda p: p.get("elapsed"))
     el = pd.to_numeric(el, errors="coerce").dropna()
     med, p95 = (el.median(), el.quantile(0.95)) if len(el) else (float("nan"), float("nan"))
 
     def _pct(x):
-        return "—" if x != x else f"{x:.0%}"
+        return "—" if pd.isna(x) else f"{x:.0%}"
     c = st.columns(4)
     c[0].metric(t("monitor.health_parse"), _pct(parse_fail))
     c[1].metric(t("monitor.health_llm_err"), _pct(err_rate))
     c[2].metric(t("monitor.health_fallback"), _pct(fb_rate))
     c[3].metric(t("monitor.health_latency"),
-                "—" if med != med else f"{med:.0f}/{p95:.0f}s")
+                "—" if pd.isna(med) else f"{med:.0f}/{p95:.0f}s")
+    if len(fps) > 1:
+        # B7:服务端 build 在采数中途换了 —— 输出本身不可逐字复现,这是唯一能报告的漂移证据
+        st.warning(t("monitor.fingerprint_drift", n=len(fps)))
 
 
 def _balance(trials: pd.DataFrame) -> None:

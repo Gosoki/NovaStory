@@ -21,10 +21,14 @@ from views._streaming import stream_llm
 _HISTORY_HEIGHT = 480   # px; scrollable height of the chat-history pane (tunable)
 
 
-def render(topic: dict, cond: str) -> None:
+def render_editable(topic: dict, cond: str) -> None:
+    """D / E:可编辑的看稿循环(render_readonly 是 C 的只读兄弟)。"""
     _refresh_editor_if_flagged()
     if "_script_edit" not in st.session_state:
         st.session_state["_script_edit"] = state.current_script()
+    notice = st.session_state.pop("_postgen_notice", None)
+    if notice:
+        st.warning(t(notice))
 
     st.subheader(t("postgen.title", v=len(st.session_state["r_versions"])))
     st.text_area(
@@ -32,6 +36,7 @@ def render(topic: dict, cond: str) -> None:
         key="_script_edit",
         height=320,
         label_visibility="collapsed",
+        max_chars=4000,   # 一份 3 镜分镜 ≈ 300-600 字;硬上限只防整段粘贴撑爆 difflib / script_versions
     )
     st.caption(t("postgen.edit_hint"))
 
@@ -41,9 +46,22 @@ def render(topic: dict, cond: str) -> None:
         _render_guidance_channel()
 
     if st.button(t("postgen.submit"), type="primary", width="stretch"):
+        if not (st.session_state.get("_script_edit") or "").strip():
+            # 编辑框被清空:persist_pending_edit 会静默回落成 AI 原稿 —— 被试以为交了空稿
+            # 或想重写,库里却是 AI 版且 n_hand_edits 不增,页面还留着一个空框。把原稿放回去、
+            # 说明一句、不提交。
+            st.session_state["_postgen_notice"] = "errors.script_empty"
+            request_editor_refresh()
+            st.rerun()
         final = persist_pending_edit()
         _trial.submit_trial(final)
         st.rerun()
+
+
+def _pre(text: str) -> str:
+    """逐字回显(pre-wrap + 转义):被试写的「1. 起きる」经 markdown 会变成有序列表,AI 稿里的
+    「*」会变斜体 —— 被试看到的必须与编辑框 / 库里存的是同一份文字。"""
+    return f"<div style='white-space:pre-wrap;line-height:1.6'>{html.escape(text or '')}</div>"
 
 
 def render_readonly(topic: dict) -> None:
@@ -61,12 +79,9 @@ def render_readonly(topic: dict) -> None:
         with st.container(border=True):
             # 逐字回显:被试写的「1. 起きる 2. 走る」经 markdown 会变成有序列表,
             # 排版上与紧邻其下的 AI 稿难以区分 —— 而这段回显存在的意义就是分开两者。
-            st.markdown(
-                f"<div style='white-space:pre-wrap;line-height:1.6'>{html.escape(intent)}</div>",
-                unsafe_allow_html=True,
-            )
+            st.markdown(_pre(intent), unsafe_allow_html=True)
     st.subheader(t("postgen.readonly_title"))
-    st.markdown(state.current_script())
+    st.markdown(_pre(state.current_script()), unsafe_allow_html=True)
     if st.button(t("postgen.submit_c"), type="primary", width="stretch"):
         _trial.submit_trial(state.current_script())
         st.rerun()
@@ -100,35 +115,35 @@ def render_history() -> None:
     if not versions:
         return
     requests = st.session_state["r_revision_requests"]   # condition D
-    guidance = st.session_state["r_guidance_rounds"]      # condition E
+    guidance_rounds = st.session_state["r_guidance_rounds"]   # condition E(别叫 guidance:与下面局部 import 的模块同名)
     with st.expander(t("history.title"), expanded=True):
         with st.container(height=_HISTORY_HEIGHT):
             intent = (st.session_state.get("r_intent") or "").strip()
             if intent:
                 with st.chat_message("user"):
                     st.caption(t("history.intent"))
-                    st.markdown(intent)
+                    st.markdown(_pre(intent), unsafe_allow_html=True)
             ai_seen = 0
             for v in versions:
                 if v["author"] == "ai":
-                    _history_user_turn(ai_seen, requests, guidance)
+                    _history_user_turn(ai_seen, requests, guidance_rounds)
                     with st.chat_message("assistant"):
                         st.caption(t("history.ai", v=v["v"]))
-                        st.markdown(v["text"])
+                        st.markdown(_pre(v["text"]), unsafe_allow_html=True)
                     ai_seen += 1
                 else:  # user_edit
                     with st.chat_message("user"):
                         st.caption(t("history.edit"))
-                        st.markdown(v["text"])
+                        st.markdown(_pre(v["text"]), unsafe_allow_html=True)
 
 
-def _history_user_turn(ai_idx: int, requests: list, guidance: list) -> None:
+def _history_user_turn(ai_idx: int, requests: list, guidance_rounds: list) -> None:
     """The user message that triggered the ai_idx-th AI version: guidance answers
     for E; the free-text request for D's 2nd+ generation; nothing for the first."""
-    if guidance and ai_idx < len(guidance):
+    if guidance_rounds and ai_idx < len(guidance_rounds):
         with st.chat_message("user"):
             st.caption(t("history.guide"))
-            for it in guidance[ai_idx]["items"]:
+            for it in guidance_rounds[ai_idx]["items"]:
                 answer = (
                     t("guidance.ai_decide") if it.get("ai_decided")
                     else (it.get("chosen") or "—")
@@ -148,6 +163,7 @@ def _render_revision_channel(topic: dict) -> None:
         key="_revision_input",
         placeholder=t("d.revision_placeholder"),
         height=80,
+        max_chars=600,
     )
     st.caption(t("d.revision_hint"))
     if st.button(t("d.revision_send"), type="secondary", width="stretch", key="btn_more_ai"):
