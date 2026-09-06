@@ -29,10 +29,12 @@
   },
   "consent": {
     "title": "Study Information and Informed Consent",
-    "body": "Thank you for taking part in this study!\n\n**What you will do**: Create 3 short-video storyboards on given topics, each with a different form of AI assistance, answering a few short questions after each one (about **10-15 minutes** in total).\n\n**Data**: We record the text you enter, your interactions, and your questionnaire answers, used **for academic research only** and analyzed anonymously. Nothing that could identify you will be published.\n\n**External AI service**: The text you enter (your idea, revision instructions, free-text answers) is sent to the **OpenAI API (United States)** both to **generate** the storyboard and for **analysis** (automatic evaluation and semantic-similarity computation). Data sent via the API is not used to train models by default and is deleted after at most 30 days. **Please do not write names, school names, or anything identifying a real person into the idea and storyboard fields.**\n\n**Publication and retention**: Your storyboards and the text you write may be quoted, anonymized, in the paper, conference presentations and slides. Data are kept until 〔fill in the retention period〕 and then destroyed irrecoverably.\n\n**Voluntary participation**: Participation is entirely voluntary. You may stop at any time by closing the page, with no negative consequences; neither taking part nor stopping affects any grade or evaluation. **If you stop partway, the answers recorded so far will not be used in the analysis** (only participants who complete all 3 rounds are analyzed; they appear only in anonymous counts of how many people reached which stage). Answers are collected anonymously, so a single record normally cannot be singled out; however, if you kept your completion code or gave an email address, write to the contact below and we can identify and delete that record.\n\n**Providing an email address is optional**: We ask only those who want one, on the final screen. It is used solely to deliver the AI-generated short film or to get in touch, and **leaving it blank changes nothing about your participation**; only if you provide it is the address stored linked to your answers. Please do not write any personal information other than your email address into the free-text boxes.\n\n**Contact**: g2550005@stu.musashino-u.ac.jp 〔fill in researcher name, affiliation, supervisor〕\n\nIf you agree, please tick the box below and begin.",
+    "body": "Thank you for taking part in this study!\n\n**What you will do**:  \nCreate 3 short-video storyboards on given topics, each with a different form of AI assistance, answering a few short questions after each one (about **10-15 minutes** in total).\n\n**Data**:  \nWe record the text you enter, your interactions, and your questionnaire answers, used **for academic research only** and analyzed anonymously. Nothing that could identify you will be published.\n\n**External AI service**:  \nThe text you enter (your idea, revision instructions, free-text answers) is sent to the **OpenAI API (United States)** both to **generate** the storyboard and for **analysis** (automatic evaluation and semantic-similarity computation).  \nData sent via the API is not used to train models by default and is deleted after at most 30 days. **Please do not write names, school names, or anything identifying a real person into the idea and storyboard fields.**\n\n**Publication**:  \nYour storyboards and the text you write may be quoted, anonymized, in the paper, conference presentations and slides.\n\n**Voluntary participation**:  \nParticipation is entirely voluntary. You may stop at any time by closing the page, with no negative consequences.\n\n**Contact**:  \ng2550005@stu.musashino-u.ac.jp\n\nIf you agree, please tick the box below and begin.",
     "agree": "I have read the above and agree to take part in this study",
     "start": "Agree and begin",
-    "no_refresh": "⚠️ Please try not to refresh or use the browser's Back button. If you refresh, the current round has to be redone (scripts you already submitted and earlier rounds are kept). Staying in the same tab resumes automatically where you left off."
+    "no_refresh": "⚠️ Please try not to refresh or use the browser's Back button. If you refresh, the current round has to be redone (scripts you already submitted and earlier rounds are kept). Staying in the same tab resumes automatically where you left off.",
+    "resume_hint": "An unfinished session was found on this device",
+    "resume_link": "▸ Resume where you left off"
   },
   "intro": {
     "title": "Before you begin",
@@ -120,7 +122,7 @@
     "instr_D": "In this round the AI generates a complete script first; you can then edit it directly, or tell the AI what to change (it can be abstract, e.g. \"make it funnier\"), and polish it as many times as you like. First, write your story idea (any length or form is fine).",
     "instr_E": "In this round the AI will first ask you a few questions to understand what you want, then generate the script; afterwards you can keep being guided by the AI or edit the script directly until you are happy. First, write your story idea (any length or form is fine).",
     "intent_label": "Your story idea (any length or form)",
-    "intent_placeholder": "e.g., The main character discovers they dreamed every question on the exam the night before…",
+    "intent_placeholder": "e.g. The main character (me), at ×× (place), when ××, ×× happens…",
     "intent_scope": "🎬 First, picture a short story that fits **{total}s · {count} shots**.",
     "intent_submit": "Confirm and start creating",
     "step_intent": "Write your idea",
@@ -330,7 +332,24 @@
     "health_fallback": "Guidance fallback rate",
     "health_latency": "Gen latency med/p95",
     "health_none": "No events yet",
-    "lang_mix": "Language mix — {mix} (the formal study is ja; zh/en means a researcher test or an off-protocol session)"
+    "lang_mix": "Language mix — {mix} (ja = Japan cohort, zh = China cohort — both are study data, analysed separately by language; en means a researcher test or an off-protocol session)",
+    "sessions_title": "Sessions in progress",
+    "sessions_hint": "A sequence number is claimed at screening and is never reclaimed automatically. Release one only once you are sure the person will not return: the number passes to the next participant, and the row is kept but excluded from analysis.",
+    "active_ws": "Browser sessions currently connected: {n}",
+    "no_inprog": "No sessions in progress.",
+    "col_id": "ID",
+    "col_seq": "Seq",
+    "col_start": "Started",
+    "col_last": "Last activity",
+    "col_rounds": "Submitted",
+    "col_action": "Action",
+    "release": "Release",
+    "release_help": "Mark this row as excluded: frees the Latin-square sequence it holds, and the next participant fills that gap. The row is kept but drops out of the analysis. ⚠️ They can still finish if they return with their resume link — check “Last activity” first to be sure they are gone.",
+    "release_confirm": "Confirm release",
+    "health_unclosed": "Unclosed calls",
+    "unclosed_warn": "{n} of {total} LLM calls started with no terminating event — most likely someone is re-triggering generation (each refresh or click aborts the previous call and fires a new one). Use “Sessions in progress” to find who.",
+    "health_images": "Illustration success",
+    "images_warn": "Only {ok} of {total} storyboard illustrations were generated — most likely the image model's per-minute rate limit (failures are swallowed silently and participants see empty frames). Check your OpenAI image rate tier, or stagger participant start times."
   },
   "analysis": {
     "kept_cols": "Carried over existing columns: {cols}",

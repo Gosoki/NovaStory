@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import tempfile
 import threading
@@ -29,6 +30,10 @@ sys.path.insert(0, str(ROOT))
 
 from streamlit.testing.v1 import AppTest  # noqa: E402
 
+
+# 配图默认关闭:state._ensure_api_defaults 会把 secrets 的 OpenAI 配置灌进
+# session_state,不关的话这个"离线"脚本每跑一次都会真的发图片请求(见 imagegen 注释)。
+os.environ["NOVASTORY_NO_IMAGES"] = "1"
 from core import db, imagegen, llm, shots, state  # noqa: E402
 
 _FAILS: list[str] = []
@@ -54,8 +59,8 @@ _SCRIPT = (
     "3. 【景别】远景 【画面描写】天亮 【台词/音效】鸟叫 【时长 5 秒】"
 )
 _QS = {"questions": [
-    {"dimension": "psychology", "question": "感受?", "options": ["A", "B"], "why": ""},
-    {"dimension": "tone", "question": "基调?", "options": ["C", "D"], "why": ""},
+    {"dimension": "psychology", "question": "感受？", "options": ["A", "B"], "why": ""},
+    {"dimension": "tone", "question": "基调？", "options": ["C", "D"], "why": ""},
 ]}
 # "ok" | "raise"(断网) | "empty"(网关返回空串,无异常) | "badjson"(JSON 解析不了)
 MODE = {"stream": "ok", "json": "ok"}
@@ -89,7 +94,7 @@ def boot_app(**qp) -> AppTest:
 
 def pick_zh(at: AppTest) -> None:
     r = at.radio(key="_consent_lang")
-    r.set_value(r.options[1])          # options: [日本語, 中文, English]
+    r.set_value("中文")                # 按标签选,与 AVAILABLE_LANGS 的顺序无关
     at.run()
 
 
@@ -120,7 +125,7 @@ def safe_run(at: AppTest) -> None:
 
 def click(at: AppTest, label: str) -> None:
     hits = [b for b in at.button if b.label == label]
-    assert hits, f"按钮不存在 {label!r},现有:{[b.label for b in at.button]}"
+    assert hits, f"按钮不存在 {label!r}，现有：{[b.label for b in at.button]}"
     hits[0].click()
     safe_run(at)
 
@@ -132,11 +137,11 @@ def has_button(at: AppTest, label: str) -> bool:
 def submit_version(at: AppTest) -> None:
     """点「提交这一版」。C 的文案与 D/E 不同(§8:C 只生成一次,不能说「满意了」),
     调用方多半不关心当前是哪个条件,所以在这里认两种。"""
-    for label in ("满意了,提交这一版", "提交这一版,进入问卷"):
+    for label in ("满意了，提交这一版", "提交这一版，进入问卷"):
         if has_button(at, label):
             click(at, label)
             return
-    raise AssertionError(f"提交按钮不存在,现有:{[b.label for b in at.button]}")
+    raise AssertionError(f"提交按钮不存在，现有：{[b.label for b in at.button]}")
 
 
 def errors_of(at: AppTest) -> list[str]:
@@ -144,13 +149,13 @@ def errors_of(at: AppTest) -> list[str]:
 
 
 def run_intake(at: AppTest) -> None:
-    """同意 → 背景问卷 → 说明页(§4 之后的真实顺序);出来时已在第 1 轮。"""
+    """同意 → 背景问卷 → 说明页（§4 之后的真实顺序）；出来时已在第 1 轮。"""
     pick_zh(at)
     at.checkbox(key="_consent_agree").check().run()
     click(at, "同意并开始")
     at.selectbox[0].select("21-30 岁")
     at.selectbox[1].select("不愿透露")
-    at.selectbox[2].select("偶尔(每月几次)")
+    at.selectbox[2].select("偶尔（每月几次）")
     at.selectbox[3].select("从未用过")
     at.radio[0].set_value("从未发布过")
     at.radio[1].set_value("否")
@@ -165,7 +170,7 @@ def run_intake(at: AppTest) -> None:
 
 
 def seed_round(cond: str) -> AppTest:
-    """跳过 intake,把指定条件的第 1 轮摆到「写创意」阶段(dev 被试,不占 seq 统计)。"""
+    """跳过 intake，把指定条件的第 1 轮摆到「写创意」阶段（dev 被试，不占 seq 统计）。"""
     at = boot_app()
     pick_zh(at)
     pid, seq, _ = db.insert_participant(
@@ -181,18 +186,18 @@ def seed_round(cond: str) -> AppTest:
 
 
 def write_intent(at: AppTest) -> None:
-    at.text_area(key="_intent_input").set_value("测试用的故事创意,长度肯定够")
-    click(at, "确定,开始创作")
+    at.text_area(key="_intent_input").set_value("测试用的故事创意，长度肯定够")
+    click(at, "确定，开始创作")
 
 
 def answer_guidance(at: AppTest) -> None:
-    """每问点第一个选项 → 下一问,停在最后一问(真实交互路径)。"""
+    """每问点第一个选项 → 下一问，停在最后一问（真实交互路径）。"""
     for _ in range(20):
         bgs = [b for b in at.get("button_group") if (b.key or "").startswith("_g_opt_")]
         if bgs:
             bgs[0].set_value(bgs[0].options[0])
             safe_run(at)
-        if has_button(at, "完成作答,生成脚本"):
+        if has_button(at, "完成作答，生成脚本"):
             return
         click(at, "下一问")
     raise AssertionError("引导问题翻不完")
@@ -201,7 +206,7 @@ def answer_guidance(at: AppTest) -> None:
 # ---------------------------------------------------------------- A. 并发
 
 def section_a() -> None:
-    head("A. 多用户并发(实测现场:多人同时坐下开始)")
+    head("A. 多用户并发（实测现场：多人同时坐下开始）")
     db.DB_PATH = Path(tempfile.mkdtemp()) / "conc.db"
     db.init_db()
 
@@ -291,13 +296,13 @@ def section_a() -> None:
     with db._conn() as c:
         dup = c.execute("SELECT COUNT(*) FROM trials WHERE participant_id=? AND round_idx=3",
                         (pids[0],)).fetchone()[0]
-    ck(dup == 1, "同轮重复提交 ×10 只落 1 行(唯一索引)", f"{dup} 行")
+    ck(dup == 1, "同轮重复提交 ×10 只落 1 行（唯一索引）", f"{dup} 行")
 
 
 # ---------------------------------------------------------------- B. 断网/空返回
 
 def section_b() -> None:
-    head("B. 断网 / 网关空返回(六条生成路径:有提示吗?有出路吗?留孤儿吗?)")
+    head("B. 断网 / 网关空返回（六条生成路径：有提示吗？有出路吗？留孤儿吗？）")
     db.DB_PATH = Path(tempfile.mkdtemp()) / "fail.db"
     db.init_db()
 
@@ -306,15 +311,15 @@ def section_b() -> None:
     at = seed_round("C")
     write_intent(at)
     ck(bool(errors_of(at)) and has_button(at, "重试"),
-       "C 首次生成断网:有错误提示 + 重试按钮")
+       "C 首次生成断网：有错误提示 + 重试按钮")
 
     # B2 C 首次生成返回空串(无异常)——拥挤网关的常见形态
     MODE.update(stream="empty")
     at = seed_round("C")
     write_intent(at)
     ck(bool(errors_of(at)) and has_button(at, "重试"),
-       "C 首次生成空返回:有错误提示 + 重试按钮",
-       "空返回若静默,被试会盯着「生成完成」的空白页")
+       "C 首次生成空返回：有错误提示 + 重试按钮",
+       "空返回若静默，被试会盯着「生成完成」的空白页")
 
     # B3 D 修改请求空返回:不留孤儿、草稿还在
     MODE.update(stream="ok")
@@ -323,9 +328,9 @@ def section_b() -> None:
     MODE.update(stream="empty")
     at.session_state["_revision_input"] = "更搞笑一点"
     click(at, "告诉 AI")
-    ck(bool(errors_of(at)), "D 修改空返回:有错误提示")
+    ck(bool(errors_of(at)), "D 修改空返回：有错误提示")
     ck(len(at.session_state["r_revision_requests"]) == 0,
-       "D 修改失败不留孤儿请求", "失败的请求若落库,历史时间线会错位")
+       "D 修改失败不留孤儿请求", "失败的请求若落库，历史时间线会错位")
     ck(bool(at.session_state["r_versions"]), "D 修改失败后草稿仍在")
 
     # B4 E 引导问题生成断网:有重试
@@ -333,14 +338,14 @@ def section_b() -> None:
     at = seed_round("E")
     write_intent(at)
     ck(bool(errors_of(at)) and has_button(at, "重试"),
-       "E 引导问题断网:有错误提示 + 重试按钮")
+       "E 引导问题断网：有错误提示 + 重试按钮")
 
     # B5 E 引导 JSON 连续解析失败 → 降级为 1 道开放题
     MODE.update(json="badjson")
     at = seed_round("E")
     write_intent(at)
     ck(at.session_state["r_g_fallback"] and len(at.session_state["r_g_questions"]) == 1,
-       "E 引导 JSON 坏:降级为开放题而非卡死")
+       "E 引导 JSON 坏：降级为开放题而非卡死")
 
     # B6 E 首轮终稿空返回:提示 + 不留孤儿引导轮
     MODE.update(json="ok")
@@ -348,8 +353,8 @@ def section_b() -> None:
     write_intent(at)
     answer_guidance(at)
     MODE.update(stream="empty")
-    click(at, "完成作答,生成脚本")
-    ck(bool(errors_of(at)), "E 首轮终稿空返回:有错误提示",
+    click(at, "完成作答，生成脚本")
+    ck(bool(errors_of(at)), "E 首轮终稿空返回：有错误提示",
        "此前点了按钮毫无反应")
     ck(len(at.session_state["r_guidance_rounds"]) == 0,
        "E 终稿失败不留孤儿引导轮")
@@ -359,17 +364,17 @@ def section_b() -> None:
     at = seed_round("E")
     write_intent(at)
     answer_guidance(at)
-    click(at, "完成作答,生成脚本")
+    click(at, "完成作答，生成脚本")
     MODE.update(json="raise")
     click(at, "让 AI 继续引导")
-    ck(has_button(at, "取消,返回草稿"),
-       "E 追问断网:有「取消,返回草稿」出路", "已有草稿时绝不能被困在引导页")
+    ck(has_button(at, "取消，返回草稿"),
+       "E 追问断网：有「取消，返回草稿」出路", "已有草稿时绝不能被困在引导页")
 
     # B8 失败可事后统计
     MODE.update(json="ok")
     ev = db.load_table("events")
     kinds = ev[ev["type"] == "llm_error"]["payload_json"].fillna("").str.contains("empty")
-    ck(bool(kinds.any()), "空返回记为 llm_error{kind:'empty'},事后可统计网关空返回率")
+    ck(bool(kinds.any()), "空返回记为 llm_error{kind:'empty'}，事后可统计网关空返回率")
 
 
 # ---------------------------------------------------------------- C. 刷新/多标签
@@ -388,12 +393,12 @@ def section_c() -> None:
     fresh = boot_app()                 # 刷新 = 全新 session,URL 无 token
     ck(fresh.session_state["stage"] == "consent"
        and len(db.load_table("participants")) == n0,
-       "intake 阶段刷新:回到同意页且不产生被试行")
+       "intake 阶段刷新：回到同意页且不产生被试行")
 
     orphan = db.load_table("events")
     orphan = orphan[(orphan["round_idx"] == 0) & (orphan["participant_id"].isna())]
     ck(len(orphan) > 0, "未走完 intake 的会话留下可统计的孤儿事件",
-       f"{len(orphan)} 条 = intake 流失率的唯一来源,分析侧已过滤")
+       f"{len(orphan)} 条 = intake 流失率的唯一来源，分析侧已过滤")
 
     at = boot_app()
     run_intake(at)
@@ -403,30 +408,30 @@ def section_c() -> None:
     r = boot_app(t=token)
     ck(r.session_state["stage"] == "intro" and r.session_state["round_idx"] == 1
        and r.session_state["participant_id"] == at.session_state["participant_id"],
-       "写创意阶段刷新:续接回同一被试的第 1 轮(落在说明页,重看一遍简介再开始)")
+       "写创意阶段刷新：续接回同一被试的第 1 轮（落在说明页，重看一遍简介再开始）")
 
     write_intent(at)                                   # 生成出草稿
     r = boot_app(t=token)
     ck(r.session_state["round_idx"] == 1 and len(r.session_state["r_versions"]) == 0,
-       "有草稿时刷新:本轮从头重做(草稿不保留,设计如此)")
+       "有草稿时刷新：本轮从头重做（草稿不保留，设计如此）")
 
     submit_version(at)                                 # trial 已落库,问卷未答
     r = boot_app(t=token)
     ck(r.session_state["round_idx"] == 1 and r.session_state["r_phase"] == "questionnaire"
        and len(r.session_state["r_versions"]) >= 1 and bool(r.session_state["r_trial_id"]),
-       "trial 已交/问卷未交时刷新:恢复到问卷页(终稿原样保留,不再重做、不再二次生成)")
+       "trial 已交/问卷未交时刷新：恢复到问卷页（终稿原样保留，不再重做、不再二次生成）")
     ck(len(db.load_table("participants")) == n0 + 1,
        "反复刷新不产生第二个被试行 / 不消耗第二个 seq")
 
     a, b = boot_app(t=token), boot_app(t=token)
     ck(a.session_state["r_attempt"] != b.session_state["r_attempt"],
-       "同 token 双开:两个 session 段 id 可区分",
-       "⚠️ 并发推进仍会互相覆盖,见报告「已知残留风险」")
+       "同 token 双开：两个 session 段 id 可区分",
+       "⚠️ 并发推进仍会互相覆盖，见报告「已知残留风险」")
 
     bad = boot_app(t="deadbeefNOPE")
     ck(bad.session_state["stage"] == "consent"
        and bad.session_state["participant_id"] is None,
-       "伪造 token:回到同意页,不崩也不泄露")
+       "伪造 token：回到同意页，不崩也不泄露")
 
     u1, u2 = boot_app(), boot_app()
     run_intake(u1)
@@ -434,9 +439,9 @@ def section_c() -> None:
     write_intent(u1)
     ck(u1.session_state["participant_id"] != u2.session_state["participant_id"]
        and u1.session_state["seq"] != u2.session_state["seq"],
-       "两名被试并行:id 与 seq 均不同")
+       "两名被试并行：id 与 seq 均不同")
     ck(u2.session_state["r_intent"] == "",
-       "会话隔离:u1 写的创意没串到 u2")
+       "会话隔离：u1 写的创意没串到 u2")
 
 
 # ---------------------------------------------------------------- D. 脏数据
@@ -471,7 +476,7 @@ def section_d() -> None:
     ck(all_ok, "极端输入原样落库、parse_shots 不抛")
     with db._conn() as c:
         tbs = [r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")]
-    ck("trials" in tbs, "SQL 注入样输入后表仍在(参数化查询)")
+    ck("trials" in tbs, "SQL 注入样输入后表仍在（参数化查询）")
 
     # 分镜解析守卫(2026-09-01 §9 排版改动引入,当晚审计抓到)。共同点:兜底切分的
     # 锚点从「时长」换成了「画面描写」——后者是有内容的字段,模型会重复、被试在
@@ -481,14 +486,14 @@ def section_d() -> None:
                 "【时长】5 秒 【拍法】中景 【台词/音效】完了\n"
                 "3.\n【画面描写】冲出家门\n【时长】7 秒 【拍法】远景 【台词/音效】脚步")
     ck(len(shots.parse_shots(two_line)) == 3,
-       "一个镜头里出现两个【画面描写】:不产生幻影镜头",
-       "否则被试要给 3 镜的稿子标 4 次归属,结构完整度也被拉低")
+       "一个镜头里出现两个【画面描写】：不产生幻影镜头",
+       "否则被试要给 3 镜的稿子标 4 次归属，结构完整度也被拉低")
 
     glued = ("【画面描写】闹钟黑着\n【时长】3 秒 【拍法】特写 【台词/音效】滴答\n"
              "猛地睁眼\n【时长】5 秒 【拍法】中景 【台词/音效】完了\n"
              "【画面描写】冲出家门\n【时长】7 秒 【拍法】远景 【台词/音效】脚步")
     ck(shots.parse_shots(glued) == [],
-       "手改丢了编号又丢了中间的字段标记:诚实失败,不把两镜粘成一镜",
+       "手改丢了编号又丢了中间的字段标记：诚实失败，不把两镜粘成一镜",
        "silently-wrong 的逐镜头数据比 parse_ok=0 更坏")
 
     tail_num = ("【画面描写】倒计时开始\n【时长】3 秒 【拍法】特写 【台词/音效】倒计时 10\n"
@@ -502,7 +507,7 @@ def section_d() -> None:
     legacy = ("【时长】3 秒 【拍法】特写 【画面描写】A 【台词/音效】a\n"
               "【时长】5 秒 【拍法】中景 【画面描写】B 【台词/音效】b\n"
               "【时长】7 秒 【拍法】远景 【画面描写】C 【台词/音效】c")
-    ck(len(shots.parse_shots(legacy)) == 3, "旧的一行排版(时长在前)仍然解析得出 3 镜")
+    ck(len(shots.parse_shots(legacy)) == 3, "旧的一行排版（时长在前）仍然解析得出 3 镜")
 
     tmp = Path(tempfile.mkdtemp())
     orig_dir, orig_file = state.DATA_DIR, state.TOPICS_FILE
@@ -517,7 +522,7 @@ def section_d() -> None:
                 broken_ok &= bool(tp) and isinstance(tp[0].get("shot_count"), int)
             except Exception:  # noqa: BLE001
                 broken_ok = False
-        ck(broken_ok, "topics.json 损坏/脏字段:回退种子主题不崩",
+        ck(broken_ok, "topics.json 损坏/脏字段：回退种子主题不崩",
            "⚠️ 静默回退 → 由 deploy_check 的题库闸门在部署前拦")
     finally:
         state.DATA_DIR, state.TOPICS_FILE = orig_dir, orig_file
@@ -538,7 +543,7 @@ def section_d() -> None:
             pass    # 提交按钮点了但没进 rounds,后面的 selectbox 取不到,属预期
         after = len(db.load_table("participants"))
         ck(after == before and at.session_state["stage"] == "screening",
-           "题库不足:筛查提交被拦在 INSERT 之前,不消耗 seq",
+           "题库不足：筛查提交被拦在 INSERT 之前，不消耗 seq",
            f"被试行 {before}→{after}")
     finally:
         state.DATA_DIR, state.TOPICS_FILE = orig_dir, orig_file
@@ -547,7 +552,7 @@ def section_d() -> None:
 # ---------------------------------------------------------------- E. 后台线程
 
 def section_e() -> None:
-    head("E. 后台配图线程(API 全挂时必须 settle)")
+    head("E. 后台配图线程（API 全挂时必须 settle）")
     imagegen._ARCHIVE = Path(tempfile.mkdtemp()) / "imgs"
 
     class _SS(dict):
@@ -563,9 +568,9 @@ def section_e() -> None:
         while time.time() - t0 < 90 and not imagegen.all_attempted(999, 1, 3):
             time.sleep(0.5)
         ck(imagegen.all_attempted(999, 1, 3),
-           "配图 API 全挂:all_done 会 settle", f"{time.time() - t0:.1f}s")
+           "配图 API 全挂：all_done 会 settle", f"{time.time() - t0:.1f}s")
         ck(all(h == "" for h in imagegen.frame_htmls(999, 1, 3, "生成中…")),
-           "失败的镜降级为空画框,不永远挂着「生成中」",
+           "失败的镜降级为空画框，不永远挂着「生成中」",
            "否则问卷页 2 秒轮询永不停")
     finally:
         imagegen.st = orig_st
@@ -582,7 +587,7 @@ def section_f() -> None:
     与语言构成块一起吞进了新函数的 `if dup:` 分支 —— 平时招募进度条与 zh/en 混语告警
     **静默消失**,而一旦真出现重复邮箱(正是那条告警存在的场景)整个后台 `NameError`
     白屏。两条链当时全绿,因为谁都没渲染过这一页。"""
-    head("F. 研究员后台(监控 + 数据浏览 + 分析面板)渲染")
+    head("F. 研究员后台（监控 + 数据浏览 + 分析面板）渲染")
     db.DB_PATH = Path(tempfile.mkdtemp()) / "panel.db"
     db.init_db()
 
@@ -600,16 +605,28 @@ def section_f() -> None:
            for i in at.info) or len(at.metric) >= 4,
        "空库时给出「还没有数据」而不是空白页", f"{len(at.metric)} 张卡 / {len(at.info)} 条提示")
 
-    # 正常数据:一个 ja 完成者 + 一个 zh 完成者(应触发语言构成告警)
+    # 正常数据:一个 ja 完成者 + 一个 zh 完成者。**两者都是正式队列**(2026-09-06 拍板:
+    # 中国中专生用 zh 正式采数,分析时按 lang 分开),所以 ja+zh 不该告警。
     for lang, mail in (("ja", None), ("zh", None)):
         pid, _, _ = db.insert_participant(lang, {"age_idx": 1}, {"is_novice": True}, passed=True)
         db.make_completion_code(pid)
-    at = open_panel("有数据 · 含 zh 会话")
+    at = open_panel("有数据 · ja + zh 两个正式队列")
     prog = at.get("progress")
-    ck(len(prog) >= 1, "招募进度条在正常路径下渲染得出来(不是只在异常分支里)",
+    ck(len(prog) >= 1, "招募进度条在正常路径下渲染得出来（不是只在异常分支里）",
        f"{len(prog)} 个 progress")
     warns = " ".join(w.value for w in at.warning)
-    ck("zh" in warns, "混入 zh 会话时语言构成告警出现", warns[:70])
+    ck("zh" not in warns, "ja + zh 不再被当成异常（两个都是正式队列）", warns[:70] or "无告警")
+    # 认 "zh: 1" 这种 mix 片段,不认裸 "zh" —— 后台还有别的 caption,裸串会假阳性。
+    caps = " ".join(c.value for c in at.caption)
+    hit = next((c.value for c in at.caption if "zh: " in c.value), "")
+    ck(bool(hit), "语言构成仍以 caption 呈现（采数期看得见，只是不报警）", hit[:70] or caps[:70])
+
+    # en 才是研究员测试/脱离协议 —— 那条告警必须还在
+    pid, _, _ = db.insert_participant("en", {"age_idx": 1}, {"is_novice": True}, passed=True)
+    db.make_completion_code(pid)
+    at = open_panel("混入 en 会话")
+    warns = " ".join(w.value for w in at.warning)
+    ck("en" in warns, "混入 en 会话时语言构成告警出现", warns[:70])
 
     # 重复邮箱:那条告警存在的场景,也是曾经把整页打崩的场景
     rows = db.load_table("participants")
@@ -619,9 +636,9 @@ def section_f() -> None:
     warns = " ".join(w.value for w in at.warning)
     ck(any(ch.isdigit() for ch in warns) and ("メール" in warns or "邮箱" in warns
                                               or "email" in warns.lower()),
-       "重复邮箱触发计数告警,且整页仍然渲染得出来", warns[:80])
-    ck(len(at.get("progress")) >= 1, "重复邮箱时进度条仍在(没被吞进异常分支)")
-    ck(not any("@" in w.value for w in at.warning), "告警只报计数,不把邮箱地址显示出来")
+       "重复邮箱触发计数告警，且整页仍然渲染得出来", warns[:80])
+    ck(len(at.get("progress")) >= 1, "重复邮箱时进度条仍在（没被吞进异常分支）")
+    ck(not any("@" in w.value for w in at.warning), "告警只报计数，不把邮箱地址显示出来")
 
 
 def main() -> None:
@@ -638,7 +655,7 @@ def main() -> None:
 
     print(f"\n{'=' * 68}")
     if _FAILS:
-        print(f"❌ 实测就绪性验收未通过 —— {len(_FAILS)} 项:")
+        print(f"❌ 实测就绪性验收未通过 —— {len(_FAILS)} 项：")
         for f in _FAILS:
             print(f"   · {f}")
         print("=" * 68)

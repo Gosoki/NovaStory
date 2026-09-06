@@ -11,6 +11,7 @@ Run:  .venv/bin/python scripts/dev_smoke_e2e.py
 from __future__ import annotations
 
 import json
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -20,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from streamlit.testing.v1 import AppTest  # noqa: E402
 
 from core import db, llm  # noqa: E402
+from i18n import DEFAULT_LANG  # noqa: E402
 
 # ---------- stub LLM ----------
 
@@ -27,38 +29,38 @@ from core import db, llm  # noqa: E402
 # 全链路只证明了「解析器还认得旧格式」。旧的一行排版仍由 robustness_check 的桩覆盖。
 _SCRIPT = (
     "1.\n"
-    "【画面描写】闹钟显示23:00,主角猛地抬头\n"
+    "【画面描写】闹钟显示23:00，主角猛地抬头\n"
     "【时长】3 秒 【拍法】特写 【台词/音效】\"完了完了\"\n"
     "2.\n"
-    "【画面描写】书页快速翻动,荧光笔乱涂\n"
+    "【画面描写】书页快速翻动，荧光笔乱涂\n"
     "【时长】8 秒 【拍法】中景 【台词/音效】纸张哗哗声\n"
     "3.\n"
-    "【画面描写】天亮,主角趴在书堆里睡着\n"
+    "【画面描写】天亮，主角趴在书堆里睡着\n"
     "【时长】4 秒 【拍法】远景 【台词/音效】鸟叫"
 )
-_SCRIPT_REV = _SCRIPT.replace("完了完了", "哈哈哈,有意思")
+_SCRIPT_REV = _SCRIPT.replace("完了完了", "哈哈哈，有意思")
 
 _R1_QUESTIONS = {
     "questions": [
-        {"dimension": "psychology", "question": "主角此刻最强烈的感受是?",
+        {"dimension": "psychology", "question": "主角此刻最强烈的感受是？",
          "options": ["恐慌", "自嘲", "冷静"], "why": "情绪锚点决定表演方向"},
-        {"dimension": "turning_point", "question": "故事在哪里转折?",
+        {"dimension": "turning_point", "question": "故事在哪里转折？",
          "options": ["开场", "中段", "结尾"], "why": "决定节奏"},
-        {"dimension": "key_shot", "question": "最想让观众记住哪个画面?",
+        {"dimension": "key_shot", "question": "最想让观众记住哪个画面？",
          "options": ["翻书", "睡着", "天亮"], "why": "视觉重点"},
-        {"dimension": "tone", "question": "整体基调?",
+        {"dimension": "tone", "question": "整体基调？",
          "options": ["喜剧", "悬疑", "写实"], "why": "统一气质"},
-        {"dimension": "ending", "question": "结局走向?",
+        {"dimension": "ending", "question": "结局走向？",
          "options": ["失败", "反转", "开放"], "why": "余味"},
-        {"dimension": "sound", "question": "突出哪种声音?",
+        {"dimension": "sound", "question": "突出哪种声音？",
          "options": ["钟表声", "独白", "环境音"], "why": "氛围"},
     ]
 }
 _FU_QUESTIONS = {
     "questions": [
-        {"dimension": "pacing", "question": "第二镜是否太长?",
+        {"dimension": "pacing", "question": "第二镜是否太长？",
          "options": ["缩短", "保持", "拆成两镜"], "why": "节奏"},
-        {"dimension": "dialogue", "question": "要不要加一句结尾台词?",
+        {"dimension": "dialogue", "question": "要不要加一句结尾台词？",
          "options": ["要", "不要"], "why": "收束"},
     ]
 }
@@ -72,6 +74,10 @@ def _stub_json(system, user, *, group, user_id="", retries=None, temperature=Non
     return _R1_QUESTIONS if group == "E-guidance-r1" else _FU_QUESTIONS
 
 
+
+# 配图默认关闭:state._ensure_api_defaults 会把 secrets 的 OpenAI 配置灌进
+# session_state,不关的话这个"离线"脚本每跑一次都会真的发图片请求(见 imagegen 注释)。
+os.environ["NOVASTORY_NO_IMAGES"] = "1"
 llm.generate_stream = _stub_stream
 llm.generate_json = _stub_json
 llm._client = lambda: None
@@ -83,7 +89,7 @@ print(f"temp db: {db.DB_PATH}")
 
 _injected: dict[str, object] = {}
 
-EDIT_MARK = "\n(我手改的:结尾加一个彩蛋镜头)"
+EDIT_MARK = "\n（我手改的：结尾加一个彩蛋镜头）"
 
 
 def inject(at, key, value):
@@ -150,7 +156,7 @@ def run() -> None:
     # Participants default to ja; the researcher (and this test) work in zh — pick
     # it on the consent-page language selector (options[1] == zh), as a subject would.
     lang_radio = at.radio(key="_consent_lang")
-    lang_radio.set_value(lang_radio.options[1])
+    lang_radio.set_value("中文")      # 按标签选,与 AVAILABLE_LANGS 的顺序无关
     at.run()
     assert at.session_state["lang"] == "zh", at.session_state["lang"]
 
@@ -160,7 +166,7 @@ def run() -> None:
     assert at.session_state["stage"] == "screening", at.session_state["stage"]
     at.selectbox[0].select("21-30 岁")
     at.selectbox[1].select("不愿透露")
-    at.selectbox[2].select("偶尔(每月几次)")
+    at.selectbox[2].select("偶尔（每月几次）")
     at.selectbox[3].select("从未用过")          # aiexp (AI creative experience)
     at.radio[0].set_value("从未发布过")
     at.radio[1].set_value("否")
@@ -174,37 +180,37 @@ def run() -> None:
     btn_click(at, "提交并继续")
     # Screening lands on the briefing page; the round clock starts on its button.
     assert at.session_state["stage"] == "intro", at.session_state["stage"]
-    assert at.session_state["participant_id"], "说明页必须已经有被试身份(刷新才能续接)"
+    assert at.session_state["participant_id"], "说明页必须已经有被试身份（刷新才能续接）"
     btn_click(at, "开始")                          # intro "start" button
     assert at.session_state["stage"] == "rounds" and at.session_state["seq"] == 0
 
     # seq 0 → conditions C, D, E with topics 1, 2, 3
     # --- R1: C — one-shot ---
     at.text_area(key="_intent_input").set_value("主角发现卷子上的题目昨晚全梦到过")
-    btn_click(at, "确定,开始创作")
-    btn_click(at, "提交这一版,进入问卷")      # C 只生成一次,提交文案是中性的
+    btn_click(at, "确定，开始创作")
+    btn_click(at, "提交这一版，进入问卷")      # C 只生成一次,提交文案是中性的
     _answer_questionnaire(at, round_idx=1)
 
     # --- R2: D — revise via chat + hand-edit (attention round) ---
     at.text_area(key="_intent_input").set_value("末班车开走后他跟着夜跑团回家")
-    btn_click(at, "确定,开始创作")
+    btn_click(at, "确定，开始创作")
     inject(at, "_revision_input", "更搞笑一点")
     btn_click(at, "告诉 AI")                # → v2 (ai)
     assert at.session_state["r_n_ai_rounds"] == 1
     inject(at, "_script_edit", _SCRIPT_REV + EDIT_MARK)
-    btn_click(at, "满意了,提交这一版")       # persist → v3 (user_edit) → questionnaire
+    btn_click(at, "满意了，提交这一版")       # persist → v3 (user_edit) → questionnaire
     _answer_questionnaire(at, round_idx=2, attention=True)
 
     # --- R3: E — guidance round-1 → script → follow-up → hand-edit ---
     at.text_area(key="_intent_input").set_value("告白的话写在毕业帽内侧被风吹走")
-    btn_click(at, "确定,开始创作")
+    btn_click(at, "确定，开始创作")
     _answer_guidance(at, rnd=1, n=6, custom_idx=1, ai_idx=2)
     assert at.session_state["r_phase"] == "postgen"
     btn_click(at, "让 AI 继续引导")          # → follow-up questions
     _answer_guidance(at, rnd=2, n=2)
     assert at.session_state["r_n_ai_rounds"] == 1
     inject(at, "_script_edit", _SCRIPT_REV + EDIT_MARK)
-    btn_click(at, "满意了,提交这一版")
+    btn_click(at, "满意了，提交这一版")
     _answer_questionnaire(at, round_idx=3, ai_q=True)
 
     # --- whole-study final survey ---
@@ -230,7 +236,7 @@ def _answer_guidance(at, rnd: int, n: int, custom_idx: int = -1, ai_idx: int = -
     answers = {}
     for i in range(n):
         if i == custom_idx:
-            answers[i] = {"opt": None, "custom": "我自己写的:荒诞但温柔", "ai_decided": False}
+            answers[i] = {"opt": None, "custom": "我自己写的：荒诞但温柔", "ai_decided": False}
         elif i == ai_idx:
             answers[i] = {"opt": ai_decide_zh, "custom": "", "ai_decided": True}
         elif qs[i]["options"]:
@@ -238,7 +244,7 @@ def _answer_guidance(at, rnd: int, n: int, custom_idx: int = -1, ai_idx: int = -
     at.session_state["r_g_answers"] = answers
     at.session_state["r_g_idx"] = n - 1
     safe_run(at)  # render the last question so its finish button appears
-    btn_click(at, "完成作答,生成脚本")
+    btn_click(at, "完成作答，生成脚本")
 
 
 def _answer_final_survey(at) -> None:
@@ -289,7 +295,7 @@ def _assert_db() -> None:
     assert fs["pref_round"] == 3 and fs["reuse_round"] == 3 and fs["overall_sat"] == 6, fs
     # 2026-09-02 新增的三条(跨轮保真 / 跨轮努力 / 操纵察觉开放题)
     assert fs["closest_round"] == 3 and fs["effort_round"] == 3, fs
-    assert fs["noticed_idx"] == 2, f"操纵察觉选项没落库: {fs.get('noticed_idx')}"
+    assert fs["noticed_idx"] == 2, f"操纵察觉选项没落库：{fs.get('noticed_idx')}"
     scr = json.loads(p.iloc[0]["screening_json"])
     assert scr.get("script_confidence") == 2, scr.get("script_confidence")
 
@@ -343,12 +349,12 @@ def _assert_db() -> None:
     assert set(intake["type"]) == {
         "consent_shown", "consent_agree", "intro_shown", "intro_continue",
         "screening_shown", "screening_submit", "final_survey_shown", "final_survey_submit",
-    }, f"intake 事件不全: {sorted(set(intake['type']))}"
+    }, f"intake 事件不全：{sorted(set(intake['type']))}"
     assert intake["participant_id"].notna().all(), "intake 事件没回填 participant_id"
     assert intake["attempt"].nunique() == 1, "intake 事件的 session_id 不唯一"
     assert list(intake.sort_values("id")["seq_in_round"]) == [1, 2, 3, 4, 5, 6, 7, 8], \
-        "intake 事件序号不连续(去重逻辑漏了或重复落库)"
-    assert pd.notna(p.iloc[0]["finished_at"]), "finished_at 没写入,整场时长算不出"
+        "intake 事件序号不连续（去重逻辑漏了或重复落库）"
+    assert pd.notna(p.iloc[0]["finished_at"]), "finished_at 没写入，整场时长算不出"
 
     # the events analyzer must read the trail without counting intake as a round
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -360,8 +366,8 @@ def _assert_db() -> None:
     row = pp.loc[int(p.iloc[0]["id"])]
     for c in ("t_consent", "t_intro", "t_screening", "t_intake_total",
               "t_final_survey", "t_session_total"):
-        assert pd.notna(row[c]) and row[c] >= 0, f"时长列 {c} 算不出: {row[c]}"
-    print(f"intake ok: 同意 {row['t_consent']:.1f}s · 说明 {row['t_intro']:.1f}s · "
+        assert pd.notna(row[c]) and row[c] >= 0, f"时长列 {c} 算不出：{row[c]}"
+    print(f"intake ok：同意 {row['t_consent']:.1f}s · 说明 {row['t_intro']:.1f}s · "
           f"背景问卷 {row['t_screening']:.1f}s · 总问卷 {row['t_final_survey']:.1f}s")
 
     r3 = set(ev[ev["round_idx"] == 3]["type"])
@@ -389,7 +395,9 @@ def _url_lang_check() -> None:
     at = AppTest.from_file("app.py", default_timeout=60)
     at.query_params["lang"] = "klingon"
     at.run()
-    assert at.session_state["lang"] == "ja", "未知语言应被忽略,回落 ja"
+    # 回落到**当前的默认语言**,别硬编码 ja —— 默认语言是可以改的(2026-09-03 暂改 zh)
+    assert at.session_state["lang"] == DEFAULT_LANG, \
+        f"未知语言应被忽略，回落 {DEFAULT_LANG}(实际 {at.session_state['lang']})"
 
     # a resumed participant keeps THEIR language: ?lang= must not override it
     pid, _, token = db.insert_participant(
@@ -401,8 +409,8 @@ def _url_lang_check() -> None:
     at.run()
     assert at.session_state["participant_id"] == pid
     assert at.session_state["lang"] == "ja", \
-        f"续接被试的语言被 URL 覆盖了: {at.session_state['lang']}"
-    print("url lang ok: ?lang=en 生效 · 未知值回落 ja · 续接被试不被覆盖")
+        f"续接被试的语言被 URL 覆盖了：{at.session_state['lang']}"
+    print("url lang ok：?lang=en 生效 · 未知值回落默认语言 · 续接被试不被覆盖")
 
 
 def _resume_check() -> None:
@@ -447,7 +455,7 @@ def _redo_dangling_check() -> None:
             "SELECT trial_id FROM events WHERE participant_id=? AND round_idx=1 AND attempt='A'",
             (pid,)).fetchone()[0]
     assert dangling == 0, f"有 {dangling} 条 events 悬挂指向已删除 trial"
-    assert a_tid is None, f"旧 attempt A 的 events.trial_id 应清回 NULL,实为 {a_tid}"
+    assert a_tid is None, f"旧 attempt A 的 events.trial_id 应清回 NULL，实为 {a_tid}"
     print("redo ok: no dangling trial_id after round redo")
 
 

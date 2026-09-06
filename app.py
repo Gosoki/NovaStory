@@ -11,7 +11,8 @@ import streamlit as st
 from core import config, db, state
 from i18n import DEFAULT_LANG, t
 from views import (
-    consent, final_survey, intro, researcher, round_common, screening, sidebar,
+    _scroll, consent, final_survey, intro, researcher, round_common, screening,
+    sidebar,
 )
 
 
@@ -31,6 +32,15 @@ def main() -> None:
     if st.session_state.get("researcher_mode") and st.session_state.get("researcher_ok"):
         researcher.render()
         return
+
+    # 上一次交互若请求了「回到顶部」,在这里统一兑现 —— 每个阶段都适用,
+    # 而不是只有问卷页(rerun 不重置滚动位置,详见 views/_scroll.py)。
+    _scroll.apply_pending()
+
+    # 已入组的会话:把带续接 token 的 URL 记进浏览器,关掉标签页还能跳回来
+    # (否则重新扫码 = 第二行被试 + 吃掉一个拉丁方 seq,见 core/state 的那段注释)。
+    if st.session_state.get("participant_id"):
+        state.remember_resume_url()
 
     stage = st.session_state["stage"]
     if stage == "consent":
@@ -102,6 +112,27 @@ _DESIGN_CSS = """
     --ns-line:rgba(160,160,160,.38); --ns-soft:rgba(160,160,160,.10);
     --ns-chrome:rgba(20,24,33,.82);
   }
+}
+
+/* 手机端两条硬伤(2026-09-06 实测):
+   ① 页顶下拉 = 刷新,而刷新会把当前轮从头再来(state._attempt_resume) —— 关掉滚动链的橡皮筋;
+   ② iOS Safari 对 <16px 的输入框会自动放大整页且失焦不缩回 —— 只对触屏设备提到 16px,
+      桌面(研究员后台)维持原字号。 */
+html, body, [data-testid="stMain"], [data-testid="stAppViewContainer"]{
+  overscroll-behavior-y: contain;
+}
+/* state._bridge 的 1px 桥接 iframe(st.iframe 的 height 最小是 1):marker 容器连同
+   紧跟其后的 iframe 容器一起收掉。用 height:0+overflow 而非 display:none —— 后者
+   可能让浏览器跳过不可见 iframe 里的脚本,而那段脚本正是这个 iframe 的全部用途。 */
+.stElementContainer:has(> .stMarkdown .ns-bridge),
+.stElementContainer:has(> .stMarkdown .ns-bridge) + .stElementContainer{
+  height:0!important; min-height:0!important; margin:0!important; padding:0!important;
+  overflow:hidden!important;
+}
+@media (hover: none) and (pointer: coarse){
+  [data-testid="stTextArea"] textarea,
+  [data-testid="stTextInput"] input,
+  [data-testid="stNumberInput"] input{ font-size:16px !important; }
 }
 
 button[data-testid="stBaseButton-primary"],
@@ -176,6 +207,38 @@ header[data-testid="stHeader"] [data-testid="stExpandSidebarButton"]:active{
 .ns-anchor .a-m{text-align:center}
 .ns-anchor .a-r{text-align:right}
 
+/* PC 全屏:layout="wide" 是给絵コンテ表格留的宽度(5 列的表在 centered 的 730px 里会挤成
+   一团),但在 24 吋以上的屏幕上正文会横跨整幅 —— 一行两百多个字,眼睛读到行尾找不回行首。
+   给正文容器一个最大宽度并居中:窄屏完全不受影响(max-width 只在窗口够宽时才起作用),
+   宽屏则留出左右留白。1100px ≈ 絵コンテ表的舒适宽度上限。 */
+.stMainBlockContainer,
+[data-testid="stAppViewBlockContainer"]{max-width:1100px}
+@media (min-width:1400px){
+  .stMainBlockContainer,
+  [data-testid="stAppViewBlockContainer"]{padding-left:4rem;padding-right:4rem}
+}
+
+/* 关掉 Streamlit 的「运行中变暗」。
+
+   Streamlit 会给每个 .stElementContainer 打上 data-stale="true" 并施加
+   opacity:.33 + transition:opacity 1s ease-in .5s。它本意是「脚本在跑,内容可能过时」,
+   但对本实验有害:
+
+   ① 被试**每点一次量表选项**都是一次全量 rerun(widget 消息不带 fragmentId),于是整页
+      而不只是分镜区被标 stale —— 实测点一次选项有 12/13 个元素同时变暗。
+   ② 配图生成期间问卷页要重建整张分镜表,rerun 轻易超过 .5s 的延迟阈值,淡入就跑起来了,
+      被试看到的是「答一题、整页暗一下」。
+   ③ 更要紧的是它污染测量:本轮问卷里就有 NASA-TLX 的负荷题与挫折感题,界面反复闪烁
+      本身会推高这些评分,而闪烁频率又与条件相关(E 的分镜生成更晚)。
+
+   代价是失去加载反馈。这里可以接受:分镜画框在图片没好时显示「生成中」文字占位,
+   进度信息已经由那句话给足了,不需要再靠整页变暗来表达。
+   钩子是 data-stale 属性(1.60 的已构建产物里唯一稳定的选择器);Streamlit 升级后若失效,
+   表现只是「变暗回来了」,不会白屏。 */
+.stElementContainer[data-stale="true"]{opacity:1!important;transition:none!important}
+.stExpander summary,
+[data-baseweb="tab-list"],[data-baseweb="tab"]{opacity:1!important}
+
 @media (max-width:600px){
   /* 窄屏字阶:实测 h1 在 390px 上是 44px,一个 st.subheader 的分节标题能占掉三行屏幕。 */
   [data-testid="stHeading"] h1{font-size:1.55rem!important;line-height:1.3}
@@ -223,9 +286,13 @@ def _render_done() -> None:
     st.success(t("done.code_hint"))
     st.warning(t("done.no_repeat"))
     _contact_form()
-    if st.session_state.get("researcher_ok"):
+    # 带 ?admin=1 就够,不必先解锁:重置只清当前浏览器会话(reset_for_next 不碰数据库),
+    # 而被试的链接里没有这个参数。以前要求 researcher_ok,可解锁入口本身也在 ?admin=1 后面,
+    # 结果每跑完一遍测试都要绕回侧边栏输一次密码。
+    if st.session_state.get("researcher_ok") or sidebar.admin_requested():
         if st.button(t("done.reset"), type="primary"):
             state.reset_for_next()
+            _scroll.request()
             st.rerun()
         st.caption(t("done.reset_hint"))
 

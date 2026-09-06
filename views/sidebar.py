@@ -11,9 +11,12 @@ from views import devtools
 from views._lang import language_radio
 
 
-def _admin_requested() -> bool:
+def admin_requested() -> bool:
     """研究员入口只在网址带 ?admin=1 时渲染。以前每位被试都能看到「管理者ツール」和一个
-    无限速的口令框 —— 口令强度是唯一防线,而且被试会困惑那是什么。"""
+    无限速的口令框 —— 口令强度是唯一防线,而且被试会困惑那是什么。
+
+    app.py 也用它:完成页的「初始化所有记录」以前要求 researcher_ok,而解锁入口本身
+    藏在 ?admin=1 后面,于是研究员每跑完一遍测试都得先回去输密码才能重置。"""
     try:
         return (st.query_params.get("admin") or "") == "1"
     except Exception:  # noqa: BLE001 — headless AppTest 等无 query_params 的场景
@@ -35,7 +38,7 @@ def _client_key() -> str:
 
 
 def render() -> None:
-    if not (st.session_state.get("researcher_ok") or _admin_requested()):
+    if not (st.session_state.get("researcher_ok") or admin_requested()):
         return
     with st.sidebar:
         _researcher_section()

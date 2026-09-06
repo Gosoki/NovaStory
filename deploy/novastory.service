@@ -1,11 +1,27 @@
 # NovaStory —— 持久化 systemd 单元(替代 systemd-run 造的 transient 单元:那个不过重启、以 root 跑、绑 0.0.0.0)。
-# ⚠️ 仓库现在在 /root 下:非 root 账号进不了 /root(ProtectHome 也救不了),要用 User= 就得先把仓库搬到
-#    /opt/novastory 之类的地方并 chown。安装:
-#   sudo useradd -r -s /usr/sbin/nologin novastory
-#   sudo mv /root/coding/local/Claude/NovaStory /opt/novastory && sudo chown -R novastory:novastory /opt/novastory
-#   sudo cp /opt/novastory/deploy/novastory.service /etc/systemd/system/
-#   sudo systemctl daemon-reload && sudo systemctl enable --now novastory
-# 只监听 127.0.0.1;对外由 Caddy/nginx 反代 + TLS(DEPLOY.md §5)。研究者画面:网址加 ?admin=1。
+#
+# ⚠️⚠️ 搬家不止是搬仓库:**解释器也在 /root 下**。
+#   .venv/bin/python 是符号链接 → /root/.local/share/uv/python/cpython-3.12-…/bin/python3.12,
+#   而 /root 是 drwx------。所以就算把仓库 mv 到 /opt/novastory,User=novastory 依然读不到
+#   解释器,服务会以 203/EXEC 起不来。(.venv/bin/streamlit 的 shebang 也硬编码着旧路径。)
+#   正确顺序是先重建 venv,再装单元:
+#     sudo useradd -r -s /usr/sbin/nologin novastory
+#     sudo mv /root/coding/local/Claude/NovaStory /opt/novastory
+#     cd /opt/novastory && rm -rf .venv
+#     uv venv --python 3.12 && uv pip install -r requirements.txt \
+#         -r analysis/requirements-analysis.txt        # venv 里的 python 这时才不指向 /root
+#     sudo chown -R novastory:novastory /opt/novastory
+#     sudo cp deploy/novastory.service /etc/systemd/system/
+#     sudo systemctl daemon-reload && sudo systemctl enable --now novastory
+#   搬完还要改 root crontab 里备份那行的路径(cd /root/coding/… → cd /opt/novastory)。
+#
+# ⚠️ **`enable` 不是 `start`**:只 start 的话重启后照样起不来,与现在的 transient 单元同病。
+#
+# ⚠️ 反代在**另一台机器**上(OpenWrt,10.0.0.1 → 10.0.0.210:8501)时,下面的
+#    --server.address 127.0.0.1 会切断反代。同机反代才用 127.0.0.1;跨机就写本机内网地址
+#    (如 10.0.0.210),别用 0.0.0.0。
+#
+# 只监听回环/内网;对外由 nginx/Caddy 反代 + TLS(DEPLOY.md §5)。研究者画面:网址加 ?admin=1。
 [Unit]
 Description=NovaStory experiment app
 After=network.target
@@ -13,14 +29,20 @@ After=network.target
 [Service]
 User=novastory
 WorkingDirectory=/opt/novastory
-ExecStart=/opt/novastory/.venv/bin/streamlit run app.py \
+# 走 scripts/serve.py 而不是 streamlit 本体:它在建 app 前替换 StaticFiles.file_response,
+# 让静态资源直接发预压缩产物(Streamlit 1.60 默认让 /static/ 绕过 gzip)。实测首屏
+# 线上字节 2.50MB → 0.77MB。产物不存在时它什么都不做,服务照常起。
+ExecStartPre=/opt/novastory/.venv/bin/python /opt/novastory/scripts/precompress_static.py --quiet
+ExecStart=/opt/novastory/.venv/bin/python /opt/novastory/scripts/serve.py run app.py \
   --server.port 8501 --server.address 127.0.0.1 --server.headless true \
   --server.runOnSave false --server.fileWatcherType none
 Restart=always
 RestartSec=3
 # 最小权限:只允许写 data/ 与 backup/
 ProtectSystem=strict
-ReadWritePaths=/opt/novastory/data /opt/novastory/backup
+# .venv/.../streamlit/static 要可写,ExecStartPre 才生成得了预压缩产物。
+# 想让 .venv 保持只读的话,就删掉 ExecStartPre,改成部署时手动 `make precompress`。
+ReadWritePaths=/opt/novastory/data /opt/novastory/backup /opt/novastory/.venv
 PrivateTmp=true
 NoNewPrivileges=true
 

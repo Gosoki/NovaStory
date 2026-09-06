@@ -56,7 +56,7 @@ _SEED_TOPICS = [
         },
         "choices": {
             "ja": "中を見るか、届けるか、それとも——。",
-            "zh": "是打开看看、拿去归还,还是——。",
+            "zh": "是打开看看、拿去归还，还是——。",
             "en": "Do you peek inside, hand it in, or——?",
         },
         "shot_count": 3,
@@ -72,7 +72,7 @@ _SEED_TOPICS = [
         },
         "choices": {
             "ja": "誰かと分けるか、自分で食べるか。",
-            "zh": "是分给别人,还是自己吃掉。",
+            "zh": "是分给别人，还是自己吃掉。",
             "en": "Share it with someone, or keep it for yourself?",
         },
         "shot_count": 3,
@@ -83,12 +83,12 @@ _SEED_TOPICS = [
                   "en": "The First Step in an Unfamiliar Town"},
         "scenario": {
             "ja": "見慣れない街に降り立った、最初の一歩。",
-            "zh": "降落在陌生的街道,迈出第一步。",
+            "zh": "降落在陌生的街道，迈出第一步。",
             "en": "Your first step after arriving in an unfamiliar town.",
         },
         "choices": {
             "ja": "地図を見るか、匂いをたどるか、誰かに声をかけるか。",
-            "zh": "是看地图、循着气味走,还是开口问路。",
+            "zh": "是看地图、循着气味走，还是开口问路。",
             "en": "Do you check a map, follow a scent, or call out to someone?",
         },
         "shot_count": 3,
@@ -300,6 +300,7 @@ def _restore_round_from_trial(tr: dict) -> None:
         st.session_state[f"r_{col}"] = int(tr.get(col) or 0)
     st.session_state["r_trial_id"] = tr.get("id")
     st.session_state["r_phase"] = "questionnaire"
+    st.session_state["_scroll_top"] = True
 
 
 def _json_copy(v):
@@ -318,6 +319,92 @@ def _ensure_api_defaults() -> None:
         st.session_state["model"] = chosen["model"]
         st.session_state["api_key"] = chosen["api_key"]
         st.session_state["api_preset_name"] = chosen.get("name", "")
+
+
+# ---------------- resume across a closed tab (2026-09-06) ----------------
+# 关掉标签页再扫码,URL 里没有 ?t=,screening 就会无条件 insert 第二行被试并吃掉
+# 一个拉丁方 seq(Playwright 实测:12 段会话 = 12 行 = 12 个 seq)。教室里几十台手机
+# 这几乎必然发生,后果是孤儿行 + 把后面所有人的条件轮转挪位。
+# 对策:把带 token 的 URL 存进浏览器 localStorage,同意页无 token 时跳回去。
+# 注:components 的 iframe 带 allow-same-origin,window.parent.localStorage 可用(已实测)。
+
+_RESUME_KEY = "novastory_resume_url"
+
+_RESUME_BAR_JS = """
+try{
+  var w = window.parent, d = w.document;
+  var saved = w.localStorage.getItem('%(key)s');
+  if (saved && w.location.href.indexOf('t=') < 0 && !d.getElementById('ns-resume-bar')) {
+    var bar = d.createElement('div');
+    bar.id = 'ns-resume-bar';
+    bar.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:99999;'
+      + 'background:#fff7ed;border-top:2px solid #ea580c;padding:10px 14px;'
+      + 'font:400 13px/1.5 system-ui,-apple-system,sans-serif;text-align:center;'
+      + 'color:#7c2d12;box-shadow:0 -4px 14px -8px rgba(0,0,0,.35)';
+    var hint = d.createElement('div');
+    hint.textContent = %(hint)s;
+    var a = d.createElement('a');
+    a.href = saved;
+    a.textContent = %(label)s;
+    a.style.cssText = 'color:#c2410c;font-weight:700;font-size:15px;text-decoration:none';
+    bar.appendChild(hint);
+    bar.appendChild(a);
+    d.body.appendChild(bar);
+  }
+}catch(e){}
+"""
+
+
+def _bridge(script: str) -> None:
+    """跑一段只操作 window.parent 的 JS。零高度,不占版面。
+
+    用 `st.iframe` 而非 `components.v1.html` —— 后者 2026-06-01 起已标为待移除,
+    每次渲染都会往日志里刷一条 deprecation。两者拿到的 sandbox 权限相同。
+    height 最小是 1(0 会抛 StreamlitInvalidHeightError),那 1px 由 app.py 的
+    `.ns-bridge` 规则收掉 —— 用 height:0 而不是 display:none,免得浏览器把
+    不可见 iframe 里的脚本也一并优化掉。"""
+    try:
+        st.markdown('<div class="ns-bridge"></div>', unsafe_allow_html=True)
+        st.iframe(f"<script>{script}</script>", height=1)
+    except Exception:  # noqa: BLE001 — headless AppTest 没有 iframe 运行时
+        pass
+
+
+def remember_resume_url() -> None:
+    """把当前带 ?t= 的 URL 记进 localStorage(每次渲染覆盖,总是最新的那条)。"""
+    _bridge(
+        "try{var u=window.parent.location.href;"
+        f"if(u.indexOf('t=')>-1)window.parent.localStorage.setItem('{_RESUME_KEY}',u);"
+        "}catch(e){}"
+    )
+
+
+def offer_resume(label: str, hint: str) -> None:
+    """同意页:localStorage 有存档而 URL 没 token 时,在页面底部给一条「继续上次」。
+
+    两个坑都踩过了,别改回去:
+    ① **不能自动跳转** —— components 的 iframe sandbox 有 allow-same-origin(读得到
+       parent 的 localStorage)却没有 allow-top-navigation,`parent.location.replace`
+       会被拦(实测 "Unsafe attempt to initiate navigation")。
+    ② **不能在 iframe 里画 UI** —— srcdoc 里只有 <script>,执行时 `document.body`
+       还是 null,而且外层容器高度被 Python 侧的 height=0 钉死。
+    所以把条子插进 **parent 的 body**:那是 Streamlit 重绘范围之外(#root 里才是),
+    链接由 parent 自己导航,同源同页,不需要新标签。"""
+    # 全程 createElement + textContent:不拼 HTML,就没有引号转义,也没有注入面。
+    _bridge(_RESUME_BAR_JS % {
+        "key": _RESUME_KEY,
+        "label": json.dumps(label),
+        "hint": json.dumps(hint),
+    })
+
+
+def forget_resume_url() -> None:
+    """清掉存档。同一台设备换人做时必须清,否则第二个人会被跳进第一个人的会话。"""
+    _bridge(
+        "try{var w=window.parent;"
+        f"w.localStorage.removeItem('{_RESUME_KEY}');"
+        "}catch(e){}"
+    )
 
 
 # ---------------- assignment & round flow ----------------
@@ -420,6 +507,7 @@ def reset_for_next() -> None:
         st.query_params.clear()
     except Exception:
         pass
+    forget_resume_url()   # 同上,但清的是浏览器那份存档
     init_state()
     st.session_state.update(keep)
 

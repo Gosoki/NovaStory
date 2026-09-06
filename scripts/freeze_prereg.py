@@ -85,12 +85,22 @@ def _sha256_file(p: Path) -> str:
     return hashlib.sha256(p.read_bytes()).hexdigest()
 
 
+# git 命令失败时的哨兵。必须能区分「查出来是空的」和「根本没查成」——
+# 前者意味着工作树干净,后者什么也不意味着。早先两种情况都返回 ""(而且不看 returncode),
+# 于是 git 一旦不可用,产物就会写下 worktree_clean=true。这份产物是内部冻结的全部防御力,
+# 把「git 挂了」记成「工作树干净」等于伪造证据。
+GIT_FAILED = "<git-command-failed>"
+
+
 def _git(*args: str) -> str:
     try:
-        return subprocess.run(["git", *args], cwd=ROOT, capture_output=True,
-                              text=True, timeout=30).stdout.strip()
-    except Exception:  # noqa: BLE001
-        return ""
+        r = subprocess.run(["git", *args], cwd=ROOT, capture_output=True,
+                           text=True, timeout=30)
+    except Exception:  # noqa: BLE001 — git 缺失 / 超时 / 权限
+        return GIT_FAILED
+    if r.returncode != 0:      # 非 git 仓库、损坏的 HEAD、锁冲突……
+        return GIT_FAILED
+    return r.stdout.strip()
 
 
 def collect_knobs() -> dict:
@@ -132,10 +142,12 @@ def build() -> dict:
     # 已跟踪的改动 + 未跟踪的新文件。不解析 porcelain 的状态前缀 —— 前缀宽度随
     # 状态组合变化(重命名带 "->"、路径含空格会被引号包起来),切错一个字符就得到
     # 一个看着像路径的错路径。
-    dirty = "\n".join(x for x in (
+    _parts = (
         _git("diff", "--name-only", "HEAD"),
         _git("ls-files", "--others", "--exclude-standard"),
-    ) if x)
+    )
+    git_ok = GIT_FAILED not in _parts
+    dirty = "\n".join(x for x in _parts if x) if git_ok else GIT_FAILED
     payload = {
         "_what": "NovaStory 分析计划冻结产物(内部冻结,非第三方预注册 —— B3)",
         "_self_sha256_rule": "sha256 of this JSON serialized with sort_keys=True, indent=1, ensure_ascii=False, "
@@ -148,8 +160,10 @@ def build() -> dict:
         "git": {
             "head": _git("rev-parse", "HEAD"),
             "branch": _git("rev-parse", "--abbrev-ref", "HEAD"),
-            "worktree_clean": dirty == "",
-            "dirty_files": sorted(set(dirty.splitlines())) if dirty else [],
+            # 查不出来时写 null,不写 true —— 读产物的人(包括半年后的自己)必须能
+            # 分辨「确认干净」与「无从确认」。
+            "worktree_clean": (dirty == "") if git_ok else None,
+            "dirty_files": (sorted(set(dirty.splitlines())) if dirty else []) if git_ok else None,
         },
         "python": sys.version.split()[0],
         "packages": _installed_packages(),

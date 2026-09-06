@@ -7,7 +7,7 @@ import streamlit as st
 
 from core import config, prompts, state
 from i18n import get_lang, t
-from views import _postgen, group_c, group_d, group_e, guidance, questionnaire
+from views import _postgen, _scroll, group_c, group_d, group_e, guidance, questionnaire
 
 
 def render() -> None:
@@ -157,4 +157,5 @@ def _render_intent(cond: str, topic: dict) -> None:
         st.session_state["r_intent"] = val
         state.log_event("intent_submit", {"chars": len(val)})
         st.session_state["r_phase"] = "pipeline"
+        _scroll.request()   # 提交创意 → 开始生成:整页换内容
         st.rerun()

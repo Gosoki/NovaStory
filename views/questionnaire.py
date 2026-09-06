@@ -7,7 +7,7 @@ import streamlit as st
 from analysis import prereg
 from core import db, imagegen, shots, state
 from i18n import get_lang, t
-from views import _scale, _storyboard
+from views import _scale, _scroll, _storyboard
 
 _OWN_ITEMS = 3          # q.own1..own3 (trimmed for session length)
 _SOA_ITEMS = 2          # q.soa1..soa2
@@ -152,7 +152,15 @@ _SB_SCROLL_JS = f"""
     // Compare against the slot's OWN inline value, not against the previous
     // measurement — a new slot whose sheet happens to be exactly as tall as the
     // last round's would otherwise never get its placeholder height back.
-    if (natH && slot.style.height !== natH + 'px') slot.style.height = natH + 'px';
+    //
+    // 死区 1px:offsetHeight 是**取整**的,而配图逐张到达时表格的实际高度会有亚像素
+    // 变化,取整后在相邻两个整数间来回跳。没有死区的话每个 tick 都会改写 slot 高度,
+    // 下方整块问卷就跟着上下抖 1px —— 被试看到的是文字在「闪」,像页面一直在加载。
+    // 新 slot 的 style.height 是空串,parseFloat 得 NaN → 归 0,差值必然 >1,
+    // 所以「新节点拿回占位高度」这条仍然成立;真实的高度变化(图片让表格长高几十像素、
+    // 下一轮脚本更长)也远超死区,照样生效。
+    var curH = parseFloat(slot.style.height) || 0;
+    if (natH && Math.abs(natH - curH) > 1) slot.style.height = natH + 'px';
     return natH > 0;
   }}
 
@@ -449,6 +457,7 @@ def render() -> None:
             st.error(t("errors.unanswered", items=" / ".join(missing)))
             return
         _submit(ridx, answers, shot_annotations)
+        _scroll.request()
         st.rerun()
 
 

@@ -19,37 +19,37 @@ from views import questionnaire as _q
 TEST_INTENTS = {
     "拾った切符（誰かの落とし物）": {
         "ja": "落とし物の切符を拾った主人公。改札の向こうへ走り、息を切らして落とし主に手渡す。",
-        "zh": "主角捡到一张别人掉的车票,追到检票口外,气喘吁吁地还给失主。",
+        "zh": "主角捡到一张别人掉的车票，追到检票口外，气喘吁吁地还给失主。",
         "en": "The hero picks up a dropped train ticket, chases past the gate, and hands it back out of breath.",
     },
     "最後のひと口（分け合う/独り占め）": {
         "ja": "最後のひと口を前に、主人公は「どうぞ」と差し出す。相手は一瞬ためらい、半分に割って返す。",
-        "zh": "面对最后一口,主角说「你吃吧」递了过去;对方愣了一下,掰成两半还回来。",
+        "zh": "面对最后一口，主角说「你吃吧」递了过去；对方愣了一下，掰成两半还回来。",
         "en": "Facing the last bite, the hero offers it; the other hesitates, then breaks it in half and hands one back.",
     },
     "はじめての街の、最初の一歩": {
         "ja": "見知らぬ街に降り立った主人公。地図をしまい、匂いのするほうへ最初の一歩を踏み出す。",
-        "zh": "主角刚到陌生的街,收起地图,朝着有香味的方向迈出第一步。",
+        "zh": "主角刚到陌生的街，收起地图，朝着有香味的方向迈出第一步。",
         "en": "Just arrived in an unfamiliar town, the hero puts the map away and takes a first step toward a good smell.",
     },
 }
 _FALLBACK_INTENT = {
     "ja": "主人公は、ごく普通の一日の中で、どうにも説明のつかない小さな出来事に気づく。",
-    "zh": "主角在最普通的一天里,发现了一件完全说不通的小事。",
+    "zh": "主角在最普通的一天里，发现了一件完全说不通的小事。",
     "en": "On an utterly ordinary day, the hero notices one small thing that makes no sense at all.",
 }
 EDIT_SNIPPET = {
-    "ja": "\n（手直し:ラストで反転——主人公はこの一部始終を動画にして投稿し、バズる。）",
-    "zh": "\n(我的修改:结局反转——主角把这一切拍成视频发到了网上,火了)",
+    "ja": "\n（手直し：ラストで反転——主人公はこの一部始終を動画にして投稿し、バズる。）",
+    "zh": "\n（我的修改：结局反转——主角把这一切拍成视频发到了网上，火了）",
     "en": "\n(My edit: twist ending — the hero films the whole thing, posts it, and it goes viral.)",
 }
 REVISION_SAMPLE = {
     "ja": "（テスト）全体をもっとコミカルに。最後のカットに小さなどんでん返しを足して。",
-    "zh": "(测试)整体更搞笑一点,最后一镜加个反转",
+    "zh": "（测试）整体更搞笑一点，最后一镜加个反转",
     "en": "(test) Make the whole thing funnier and add a small twist in the last shot.",
 }
-_G_CUSTOM = {"ja": "（テスト）自分で書いた方向性", "zh": "(测试)我自己写的方向", "en": "(test) a direction I wrote myself"}
-_G_OPEN = {"ja": "（テスト）自由回答", "zh": "(测试)开放回答", "en": "(test) free-text answer"}
+_G_CUSTOM = {"ja": "（テスト）自分で書いた方向性", "zh": "（测试）我自己写的方向", "en": "(test) a direction I wrote myself"}
+_G_OPEN = {"ja": "（テスト）自由回答", "zh": "（测试）开放回答", "en": "(test) free-text answer"}
 
 
 def _session_text(d: dict) -> str:

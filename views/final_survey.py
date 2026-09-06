@@ -7,7 +7,7 @@ import streamlit as st
 
 from core import config, db, state
 from i18n import get_lang, t
-from views import _scale
+from views import _scale, _scroll
 
 # Whole-study questionnaire shown once, after all rounds are finished and before
 # the completion code. Captures cross-condition preference + behavioral intent +
@@ -92,4 +92,5 @@ def render() -> None:
         )
         state.log_intake_event("final_survey_submit")
         st.session_state["stage"] = "done"
+        _scroll.request()   # 总问卷 → 完成页:整页换内容
         st.rerun()

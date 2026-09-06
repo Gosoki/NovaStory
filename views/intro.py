@@ -8,7 +8,7 @@ import streamlit as st
 
 from core import state
 from i18n import get_lang, t
-from views import _storyboard
+from views import _scroll, _storyboard
 
 # "How it works" page. Shown once, AFTER the background questionnaire and
 # immediately before round 1 (2026-09-01 §4: the two pages were swapped so the
@@ -32,20 +32,20 @@ _SAMPLE = {
         "【秒数】5秒 【カメラ】クローズアップ 【セリフ・音】静かな寝室。アラームは鳴らない\n"
         "2.\n"
         "【画面】主人公が慌てて起き上がり、時計を見て驚く\n"
-        "【秒数】6秒 【カメラ】引き 【セリフ・音】「えっ、もうこんな時間!?」と焦った声\n"
+        "【秒数】6秒 【カメラ】引き 【セリフ・音】「えっ、もうこんな時間！?」と焦った声\n"
         "3.\n"
         "【画面】外へ飛び出して全速力で走る主人公\n"
         "【秒数】4秒 【カメラ】動き 【セリフ・音】息を切らしながら「間に合わなきゃ！」"
     ),
     "zh": (
         "1.\n"
-        "【画面描写】主角在床上睡着,床头的闹钟停着没响\n"
-        "【时长】5 秒 【拍法】特写 【台词/音效】安静的房间,随后响起“嘀嗒”的钟声\n"
+        "【画面描写】主角在床上睡着，床头的闹钟停着没响\n"
+        "【时长】5 秒 【拍法】特写 【台词/音效】安静的房间，随后响起“嘀嗒”的钟声\n"
         "2.\n"
-        "【画面描写】镜头推进,一个人头发凌乱、慌忙起床抓起衣服,表情焦急\n"
-        "【时长】6 秒 【拍法】推镜头 【台词/音效】自言自语:“怎么会睡过头了！”\n"
+        "【画面描写】镜头推进，一个人头发凌乱、慌忙起床抓起衣服，表情焦急\n"
+        "【时长】6 秒 【拍法】推镜头 【台词/音效】自言自语：“怎么会睡过头了！”\n"
         "3.\n"
-        "【画面描写】人物匆忙奔出房门,手里提着包,背景模糊成街道\n"
+        "【画面描写】人物匆忙奔出房门，手里提着包，背景模糊成街道\n"
         "【时长】4 秒 【拍法】动镜头 【台词/音效】急促的脚步声与喘息声"
     ),
     "en": (
@@ -143,4 +143,5 @@ def render() -> None:
         # participant on this page with the clock already running would fold the
         # whole briefing into round 1's reading time.
         state.start_rounds()
+        _scroll.request()   # 说明 → 第 1 轮:整页换内容
         st.rerun()

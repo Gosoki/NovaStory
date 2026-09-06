@@ -5,7 +5,7 @@ import streamlit as st
 from analysis import prereg
 from core import config, db, state
 from i18n import DEFAULT_LANG, t
-from views import _scale, consent
+from views import _scale, _scroll, consent
 
 # Indices of the correct quiz options. Nobody is gated on these anymore —
 # novice status is recorded as a covariate (screening_json["is_novice"]) and
@@ -167,4 +167,5 @@ def render() -> None:
     db.attach_intake_events(pid, st.session_state.get("session_id", ""))
     # → the how-it-works briefing; the round clock starts when they leave it.
     state.enter_intro(pid, seq, token)
+    _scroll.request()   # 筛查 → 说明页:整页换内容
     st.rerun()

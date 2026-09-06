@@ -16,6 +16,12 @@ gatherUsageStats = false
 # the app itself adds — here, none.)
 toolbarMode = "minimal"
 
+# 出错时不要把 Python 栈打给被试。默认是 "full" —— 而 views/ 与 core/(除 db.py 外)没有
+# 任何一处捕获 sqlite3.OperationalError,磁盘满、库权限变化、写锁超时这类意外会直接把
+# 整段 traceback(含文件路径)糊在被试屏幕上,既吓人又泄露部署细节。"none" 只显示一句
+# 通用错误,细节仍照常写进服务端日志,研究员那边不受影响。
+showErrorDetails = "none"
+
 # Theme: blue accent that FOLLOWS each participant's system light/dark preference.
 # Streamlit auto-switches (and shows the ☰ → Settings toggle) ONLY when BOTH
 # [theme.light] and [theme.dark] are defined; a bare [theme] would lock the app

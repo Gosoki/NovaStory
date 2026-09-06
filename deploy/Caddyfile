@@ -1,0 +1,38 @@
+# NovaStory 反向代理(HTTPS + HTTP/2)。⚠️ 还没启用 —— 需要先有域名,归部署拍板项。
+#
+# 为什么值得做:首屏是 122 个请求。HTTP/1.1 每域名只能开 6 条连接,于是要跑约 21 轮往返;
+# 被试链路 RTT 200ms 时,光往返就 4 秒左右,比传输本身还贵。HTTP/2 把这 122 个请求
+# 多路复用进一条连接,那 4 秒基本消失。浏览器只在 HTTPS 下启用 HTTP/2,所以域名+证书是前提。
+#
+# 实测(模拟 200ms / 4Mbps,预压缩已生效):
+#   HTTP/1.1  6.4s   ← 现状
+#   HTTP/2    预计约 2.5s(往返从 ~21 轮降到几轮;未实测,缺域名)
+#
+# 安装:
+#   sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https curl
+#   curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/gpg.key | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+#   curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt | sudo tee /etc/apt/sources.list.d/caddy-stable.list
+#   sudo apt update && sudo apt install caddy
+#   sudo cp deploy/Caddyfile /etc/caddy/Caddyfile   # 把下面的域名换成真域名
+#   sudo systemctl reload caddy
+# 之后 app 只监听 127.0.0.1:8501(deploy/novastory.service 已经是这样),对外只留 443。
+
+example.invalid {
+	# Caddy 自动申请并续期 Let's Encrypt 证书,同时自动开 HTTP/2(和 HTTP/3)。
+	encode zstd gzip
+
+	# WebSocket 是 Streamlit 的命脉(所有交互走它),Caddy 默认就会升级协议,
+	# 但超时要放宽:被试在等 LLM 生成时连接会长时间静默。
+	reverse_proxy 127.0.0.1:8501 {
+		flush_interval -1
+	}
+
+	# 研究者后台靠 ?admin=1 + 口令。真要收紧的话在这里按 IP 限制:
+	# @admin query admin=1
+	# handle @admin { @allowed remote_ip 203.0.113.0/24 ... }
+
+	log {
+		output file /var/log/caddy/novastory.log
+		# 被试 IP 属于个人信息,同意书没说要存。生产环境建议整段删掉或改 skip。
+	}
+}

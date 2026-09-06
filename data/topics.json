@@ -12,7 +12,7 @@
     },
     "choices": {
       "ja": "中を見るか、届けるか、それとも——。",
-      "zh": "是打开看看、拿去归还,还是——。",
+      "zh": "是打开看看、拿去归还，还是——。",
       "en": "Do you peek inside, hand it in, or——?"
     },
     "shot_count": 3,
@@ -31,7 +31,7 @@
     },
     "choices": {
       "ja": "誰かと分けるか、自分で食べるか。",
-      "zh": "是分给别人,还是自己吃掉。",
+      "zh": "是分给别人，还是自己吃掉。",
       "en": "Share it with someone, or keep it for yourself?"
     },
     "shot_count": 3,
@@ -45,12 +45,12 @@
     },
     "scenario": {
       "ja": "見慣れない街に降り立った、最初の一歩。",
-      "zh": "降落在陌生的街道,迈出第一步。",
+      "zh": "降落在陌生的街道，迈出第一步。",
       "en": "Your first step after arriving in an unfamiliar town."
     },
     "choices": {
       "ja": "地図を見るか、匂いをたどるか、誰かに声をかけるか。",
-      "zh": "是看地图、循着气味走,还是开口问路。",
+      "zh": "是看地图、循着气味走，还是开口问路。",
       "en": "Do you check a map, follow a scent, or call out to someone?"
     },
     "shot_count": 3,

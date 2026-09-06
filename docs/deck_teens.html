@@ -1,0 +1,600 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NovaStory ── AI 动手之前，先问你一句</title>
+<style>
+  :root{
+    /* 浅色 · 教室投影向：暖白底 + 高对比墨色 + 活力橙 */
+    --bg:#faf7f1; --panel:#ffffff; --panel-2:#f3efe6;
+    --ink:#17171c; --ink-2:#3f3b34; --muted:#756f64; --faint:#9a9288;
+    --brand:#e0552a; --brand-soft:#f6a11f; --teal:#0b8a80; --blue:#2456c4;
+    --line:#e2dbcd; --line-2:#cfc6b4;
+    --sans:"PingFang SC","Microsoft YaHei","Hiragino Sans GB","Source Han Sans SC","Noto Sans SC",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    --serif:"Songti SC","STSong","Source Han Serif SC","Noto Serif SC",serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,"Courier New",monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);overflow:hidden;
+       -webkit-font-smoothing:antialiased;letter-spacing:.005em}
+
+  .stage{position:fixed;inset:0}
+  .slide{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;
+         padding:min(6vh,64px) min(7vw,96px);
+         opacity:0;visibility:hidden;transform:translateY(12px);
+         transition:opacity .38s ease,transform .38s ease,visibility .38s;
+         background:var(--bg)}
+  .slide.active{opacity:1;visibility:visible;transform:none}
+  .slide>*{opacity:0;animation:rise .5s ease forwards}
+  .slide.active>*:nth-child(1){animation-delay:.06s}
+  .slide.active>*:nth-child(2){animation-delay:.14s}
+  .slide.active>*:nth-child(3){animation-delay:.22s}
+  .slide.active>*:nth-child(4){animation-delay:.30s}
+  .slide.active>*:nth-child(5){animation-delay:.38s}
+  .slide.active>*:nth-child(6){animation-delay:.46s}
+  .slide:not(.active)>*{animation:none;opacity:0}
+  @keyframes rise{to{opacity:1;transform:none}}
+
+  /* ── 通用排版 ── */
+  .kicker{font-size:clamp(.9rem,1.5vw,1.15rem);letter-spacing:.14em;color:var(--brand);
+          font-weight:700;margin-bottom:clamp(12px,2.2vh,22px);display:flex;align-items:center;gap:12px}
+  .kicker::before{content:"";width:30px;height:3px;background:var(--brand);border-radius:2px}
+  h1{font-weight:800;line-height:1.16;letter-spacing:-.01em}
+  h2{font-size:clamp(2.1rem,4.8vw,3.7rem);font-weight:800;line-height:1.24;
+     margin-bottom:clamp(14px,2.8vh,30px);text-wrap:balance}
+  .lead{font-size:clamp(1.3rem,2.3vw,1.95rem);color:var(--ink-2);line-height:1.62;max-width:30em}
+  .big{font-size:clamp(2.4rem,5.6vw,4.6rem);font-weight:800;line-height:1.28;text-wrap:balance}
+  .muted{color:var(--muted)} .faint{color:var(--faint)}
+  .brand{color:var(--brand)} .teal{color:var(--teal)} .blue{color:var(--blue)}
+  b,strong{font-weight:800}
+  em{font-style:normal;background:linear-gradient(transparent 62%,#ffd9a8 62%);font-weight:700}
+  .hl{background:linear-gradient(transparent 58%,#ffc9a6 58%);font-weight:800}
+  ul{list-style:none}
+  li{position:relative;padding-left:1.4em;margin:.55em 0;
+     font-size:clamp(1.25rem,2vw,1.75rem);line-height:1.52;color:var(--ink-2)}
+  li::before{content:"●";position:absolute;left:0;color:var(--brand);font-size:.62em;top:.42em}
+  .cite{font-size:clamp(.9rem,1.3vw,1.1rem);color:var(--faint);margin-top:clamp(12px,2.2vh,24px);
+        max-width:46em;line-height:1.55}
+  .note{font-size:clamp(1rem,1.5vw,1.28rem);color:var(--muted);line-height:1.6;
+        background:var(--panel-2);border-left:4px solid var(--brand-soft);
+        padding:.7em 1em;border-radius:0 8px 8px 0;margin-top:clamp(12px,2vh,22px)}
+
+  /* ── 版式原语 ── */
+  .cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:clamp(14px,2vw,28px)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:clamp(16px,2.4vw,34px);align-items:start}
+  .card{background:var(--panel);border:2px solid var(--line);border-radius:14px;
+        padding:clamp(14px,2vw,24px);box-shadow:0 3px 14px -8px rgba(0,0,0,.18)}
+  .card h3{font-size:clamp(1.15rem,1.8vw,1.5rem);font-weight:800;margin-bottom:.45em;color:var(--ink)}
+  .card p{font-size:clamp(1rem,1.5vw,1.28rem);color:var(--ink-2);line-height:1.58}
+  .card .tag{display:inline-block;font-size:.82em;font-weight:800;color:#fff;background:var(--brand);
+             padding:.16em .6em;border-radius:6px;margin-bottom:.5em}
+  .frame{background:var(--panel);border:2px dashed var(--line-2);border-radius:12px;
+         padding:clamp(12px,1.8vw,22px);font-family:var(--mono);font-size:clamp(.92rem,1.35vw,1.15rem);
+         color:var(--ink-2);line-height:1.7}
+
+  /* 三条路 C/D/E */
+  .lanes{display:grid;grid-template-columns:repeat(3,1fr);gap:clamp(12px,1.8vw,24px)}
+  .lane{background:var(--panel);border:2px solid var(--line);border-radius:14px;
+        padding:clamp(12px,1.8vw,22px);display:flex;flex-direction:column;gap:.5em}
+  .lane .code{font-size:clamp(1.5rem,2.6vw,2.3rem);font-weight:800;line-height:1}
+  .lane .name{font-size:clamp(1.05rem,1.7vw,1.42rem);font-weight:800;color:var(--ink)}
+  .lane .desc{font-size:clamp(.95rem,1.4vw,1.2rem);color:var(--ink-2);line-height:1.55}
+  .lane.C{border-color:#d9cfc0} .lane.C .code{color:#a2988a}
+  .lane.D{border-color:#a9c2e8} .lane.D .code{color:var(--blue)}
+  .lane.E{border-color:var(--brand);border-width:3px;background:#fff6ef}
+  .lane.E .code{color:var(--brand)}
+
+  /* 步骤条 */
+  .steps{display:flex;flex-wrap:wrap;gap:clamp(8px,1.2vw,16px);margin-top:clamp(10px,1.8vh,20px)}
+  .step{flex:1 1 150px;background:var(--panel);border:2px solid var(--line);border-radius:12px;
+        padding:clamp(10px,1.4vw,18px)}
+  .step .n{display:inline-flex;align-items:center;justify-content:center;width:1.9em;height:1.9em;
+           border-radius:50%;background:var(--brand);color:#fff;font-weight:800;
+           font-size:clamp(.9rem,1.3vw,1.1rem);margin-bottom:.4em}
+  .step .t{font-size:clamp(1rem,1.5vw,1.28rem);font-weight:700;color:var(--ink);line-height:1.4}
+  .step .m{font-size:clamp(.85rem,1.2vw,1.02rem);color:var(--muted);margin-top:.25em}
+
+  /* 概念柱状图 */
+  .chart{display:flex;align-items:flex-end;gap:clamp(18px,3vw,52px);height:clamp(180px,30vh,300px);
+         padding:0 clamp(8px,2vw,32px);border-bottom:3px solid var(--line-2)}
+  .bar{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:.5em;height:100%}
+  .bar .fill{width:100%;border-radius:10px 10px 0 0;background:var(--line-2)}
+  .bar.C .fill{background:#d9cfc0} .bar.D .fill{background:#8fb0e0} .bar.E .fill{background:var(--brand)}
+  .bar .lbl{font-size:clamp(1rem,1.6vw,1.35rem);font-weight:800;color:var(--ink-2)}
+
+  /* 三问 */
+  .rqrow{display:grid;grid-template-columns:repeat(3,1fr);gap:clamp(14px,2.2vw,30px)}
+  .rq{border-top:5px solid var(--brand);padding-top:clamp(10px,1.6vh,18px)}
+  .rq .q{font-size:clamp(1.25rem,2.1vw,1.8rem);font-weight:800;line-height:1.34;margin-bottom:.3em}
+  .rq .s{font-size:clamp(.95rem,1.4vw,1.18rem);color:var(--muted);line-height:1.55}
+
+  /* 分镜示例表 */
+  .sbtable{width:100%;border-collapse:collapse;background:var(--panel);
+           border:2px solid var(--line-2);border-radius:10px;overflow:hidden;
+           font-size:clamp(.88rem,1.35vw,1.14rem)}
+  .sbtable th{background:var(--panel-2);font-weight:800;color:var(--ink);
+              padding:.55em .7em;text-align:left;border-bottom:2px solid var(--line-2)}
+  .sbtable td{padding:.55em .7em;border-bottom:1px solid var(--line);color:var(--ink-2);line-height:1.5;vertical-align:top}
+  .sbtable tr:last-child td{border-bottom:none}
+  .sbtable .no{font-weight:800;color:var(--brand);width:3em}
+
+  /* 封面 */
+  .cover{background:linear-gradient(160deg,#fff8f0 0%,var(--bg) 55%)}
+  .cover h1{font-size:clamp(2.6rem,6.4vw,5.4rem)}
+  .cover .sub{font-size:clamp(1.2rem,2.2vw,1.85rem);color:var(--ink-2);margin-top:clamp(14px,2.6vh,28px);line-height:1.6}
+  .meta{display:flex;flex-wrap:wrap;gap:10px;margin-top:clamp(18px,3.2vh,38px)}
+  .chip{font-size:clamp(.86rem,1.3vw,1.06rem);font-weight:700;color:var(--ink-2);
+        background:var(--panel);border:2px solid var(--line-2);border-radius:999px;padding:.34em .95em}
+
+
+  /* ── 图解组件 ── */
+  /* 打字机:一个字一个字蹦出来,循环 */
+  /* 打字机:靠一份 visibility:hidden 的同文本占位撑出**精确**宽度,跑动的那层
+     absolute 覆在上面、width 从 0 动到 100%。用 ch 估算会多出一截空白(实测 34ch
+     比文字宽 45px),用 max-content 又不能插值 —— 只有这个写法是准的。 */
+  .tw-wrap{position:relative;display:inline-block;max-width:100%;
+    font-family:var(--mono);font-size:clamp(1.15rem,2.1vw,1.8rem);font-weight:700;color:var(--ink)}
+  .tw-wrap .ghost{visibility:hidden;white-space:nowrap}
+  .tw-wrap .run{position:absolute;left:0;top:0;white-space:nowrap;overflow:hidden;
+    border-right:3px solid var(--brand);width:0;animation:type 9s steps(17) infinite}
+  @keyframes type{0%{width:0}62%{width:100%}88%{width:100%}100%{width:0}}
+
+  /* 扩散去噪:噪点层分步淡出,露出底下的图 */
+  .diffuse{position:relative;aspect-ratio:16/9;border-radius:10px;overflow:hidden;
+    border:2px solid var(--line-2)}
+  .diffuse .clear{position:absolute;inset:0}
+  .diffuse .noise{position:absolute;inset:0;animation:denoise 6s steps(12) infinite;
+    background:repeating-conic-gradient(#2e2e2e 0% 25%, #d8d8d8 0% 50%);background-size:3px 3px}
+  @keyframes denoise{0%,6%{opacity:1}88%,100%{opacity:0}}
+  .diffuse .tick{position:absolute;right:8px;bottom:6px;font:700 11px var(--mono);
+    color:#fff;background:rgba(0,0,0,.45);padding:2px 7px;border-radius:20px}
+
+
+  /* 纯 CSS 画的「成品图」:一眼能认出是张风景,才看得出噪点在退去 */
+  .pic{position:absolute;inset:0;background:linear-gradient(180deg,#79b7e6 0%,#bcd9ea 46%,#f6d9a6 72%,#eaa877 100%)}
+  .pic .sun{position:absolute;right:20%;top:14%;width:15%;aspect-ratio:1;border-radius:50%;
+    background:#fff3c8;box-shadow:0 0 26px 6px rgba(255,224,138,.75)}
+  .pic .mt-a{position:absolute;left:-6%;bottom:12%;width:62%;height:52%;background:#5d7f96;
+    clip-path:polygon(0 100%,46% 0,100% 100%)}
+  .pic .mt-b{position:absolute;right:-8%;bottom:12%;width:68%;height:40%;background:#89a9bd;
+    clip-path:polygon(0 100%,52% 0,100% 100%)}
+  .pic .ground{position:absolute;left:0;right:0;bottom:0;height:12%;background:#5e7d5f}
+  .pic .bird{position:absolute;width:7%;height:3%;border-top:2px solid #3c4a52;border-radius:50%;
+    transform:rotate(-12deg)}
+
+  /* 静态去噪序列(PDF 导出时动画是静止的,靠这排把过程说清楚) */
+  .seq{display:grid;grid-template-columns:repeat(4,1fr);gap:clamp(5px,.7vw,10px);margin-top:.45em}
+  .seq .fr{position:relative;aspect-ratio:4/3;border-radius:7px;overflow:hidden;border:1.5px solid var(--line-2)}
+  .seq .fr .nz{position:absolute;inset:0;
+    background:repeating-conic-gradient(#2e2e2e 0% 25%, #d8d8d8 0% 50%);background-size:3px 3px}
+  .seq .cap{text-align:center;font:700 clamp(.68rem,1vw,.84rem)/1.5 var(--mono);color:var(--muted);margin-top:.2em}
+
+
+  /* 纯 CSS 的「一张图」:同一个背景 + 一只可换色的猫,用来演示「只改猫、背景不动」 */
+  .shot{position:relative;width:100%;aspect-ratio:4/3;border-radius:7px;overflow:hidden;
+    border:1.5px solid var(--line-2);
+    background:linear-gradient(180deg,#c3e2f4 0%,#dff0d0 58%,#a9cd8c 100%)}
+  .shot .sun2{position:absolute;right:12%;top:10%;width:17%;aspect-ratio:1;border-radius:50%;
+    background:#fff0bd}
+  .shot .hill{position:absolute;left:-10%;bottom:16%;width:70%;height:30%;background:#9fc182;
+    border-radius:50% 50% 0 0}
+  .shot .cat-h{position:absolute;left:50%;bottom:34%;transform:translateX(-50%);
+    width:30%;aspect-ratio:1;background:var(--fur);
+    clip-path:polygon(6% 44%,0 4%,32% 24%,68% 24%,100% 4%,94% 44%,88% 78%,50% 100%,12% 78%)}
+  .shot .cat-b{position:absolute;left:50%;bottom:8%;transform:translateX(-50%);
+    width:36%;aspect-ratio:1.5/1;background:var(--fur);border-radius:44% 44% 12% 12%}
+  .shot .eye{position:absolute;width:4.5%;aspect-ratio:1;border-radius:50%;background:#22252b;bottom:52%}
+  .shot .tail{position:absolute;right:26%;bottom:9%;width:16%;height:20%;
+    border:3px solid var(--fur);border-left:none;border-bottom:none;border-radius:0 70% 0 0}
+  .shot .badge{position:absolute;left:6px;top:6px;font:800 10px var(--mono);color:#fff;
+    background:rgba(0,0,0,.42);padding:1px 6px;border-radius:20px}
+
+  /* 词块:演示「把你的话切开、逐块读懂」 */
+  .toks{display:flex;flex-wrap:wrap;gap:4px;margin:.15em 0}
+  .tok{font-size:clamp(.72rem,1.05vw,.92rem);font-weight:700;padding:.16em .5em;border-radius:5px;
+    background:var(--panel-2);color:var(--muted);border:1px solid var(--line)}
+  .tok.on{background:rgba(224,85,42,.14);color:var(--brand);border-color:var(--brand)}
+  /* 横向流程图 */
+  .flow{display:flex;align-items:stretch;gap:0;flex-wrap:nowrap}
+  .flow .node{flex:1;background:var(--panel);border:2px solid var(--line);border-radius:12px;
+    padding:clamp(10px,1.5vw,18px);display:flex;flex-direction:column;gap:.28em;min-width:0}
+  .flow .node.on{border-color:var(--brand);background:#fff6ef}
+  .flow .node.on2{border-color:var(--blue);background:#f2f6fe}
+  .flow .node .cap{font-size:clamp(.78rem,1.1vw,.95rem);font-weight:800;letter-spacing:.04em;
+    color:var(--brand);text-transform:uppercase}
+  .flow .node.on2 .cap{color:var(--blue)}
+  .flow .node .ttl{font-size:clamp(1rem,1.55vw,1.32rem);font-weight:800;line-height:1.35;color:var(--ink)}
+  .flow .node .sub{font-size:clamp(.85rem,1.2vw,1.05rem);color:var(--muted);line-height:1.45}
+  .flow .arrow{flex:0 0 auto;align-self:center;padding:0 clamp(4px,.9vw,12px);
+    color:var(--line-2);font-size:clamp(1.3rem,2.2vw,2rem);font-weight:800}
+
+  /* 循环箭头(接龙那页) */
+  .loop{display:flex;align-items:center;justify-content:center;gap:clamp(8px,1.4vw,18px);
+    flex-wrap:wrap;margin-top:clamp(10px,1.8vh,20px)}
+  .loop .cell{background:var(--panel);border:2px solid var(--line);border-radius:999px;
+    padding:.45em 1em;font-size:clamp(.95rem,1.45vw,1.22rem);font-weight:700;color:var(--ink-2)}
+  .loop .cell.hot{border-color:var(--brand);color:var(--brand)}
+  .loop .to{color:var(--brand);font-weight:800;font-size:clamp(1.1rem,1.7vw,1.5rem)}
+
+  /* 概率条(讲「按分数抽」) */
+  .probs{display:flex;flex-direction:column;gap:.34em}
+  .prob{display:flex;align-items:center;gap:.6em;font-size:clamp(.92rem,1.35vw,1.14rem)}
+  .prob .bar{height:1.15em;border-radius:4px;background:var(--line-2);flex:0 0 auto}
+  .prob.top .bar{background:var(--brand)}
+  .prob .txt{color:var(--ink-2);white-space:nowrap}
+
+  @media (prefers-reduced-motion:reduce){
+    .tw-wrap .run{animation:none;width:100%;border-right:none}
+    .diffuse .noise{animation:none;opacity:.12}
+  }
+
+  /* 页码 + 进度条（原版这几个元素没样式，这里补齐） */
+  .progress{position:fixed;left:0;top:0;height:4px;background:var(--brand);z-index:50;
+            width:0;transition:width .32s ease}
+  .pageno{position:fixed;right:clamp(14px,2vw,26px);bottom:clamp(12px,2vh,22px);z-index:50;
+          font-family:var(--mono);font-size:clamp(.8rem,1.15vw,.98rem);color:var(--faint);letter-spacing:.06em}
+
+  @media (max-width:820px){
+    .grid2,.lanes,.rqrow{grid-template-columns:1fr}
+    .slide{padding:clamp(20px,5vh,40px) clamp(18px,6vw,36px);justify-content:flex-start;overflow-y:auto}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .slide,.slide>*{transition:none;animation:none;opacity:1}
+    .slide:not(.active){display:none}
+  }
+  @media print{
+    @page{size:1280px 720px;margin:0}
+    body{overflow:visible}
+    .progress,.pageno{display:none}
+    .stage{position:static}
+    .slide{position:relative;page-break-after:always;opacity:1!important;visibility:visible!important;
+           transform:none!important;height:720px;width:1280px}
+    .slide>*{opacity:1!important;animation:none!important}
+  }
+</style>
+</head>
+<body>
+<div class="progress" id="prog"></div>
+<div class="pageno"><span id="cutNo">01</span> / <span id="cutTot">00</span></div>
+<div class="stage">
+<!-- ========== 开场 ========== -->
+
+<section class="slide cover">
+  <div class="kicker">NovaStory · 一个还没收数据的研究</div>
+  <h1>你说一句，<br>AI 做一版——<br><span class="brand">中间它替你定了多少？</span></h1>
+  <p class="sub">今天聊两件事：<br>
+    AI 到底怎么「生成」东西　·　以及，我现在在做的研究</p>
+</section>
+
+<section class="slide">
+  <div class="kicker">先问你们一个问题</div>
+  <h2>有没有过这种时候——<br><em>脑子里有画面，嘴上说不出来</em></h2>
+  <div class="grid2">
+    <div class="card">
+      <p>你想剪一条视频，脑子里那个感觉特别清楚。<br><br>
+      可你跟 AI 说的只有一句：<br>
+      <strong class="frame" style="display:block;margin-top:.6em">"帮我写个搞笑的短剧本"</strong></p>
+    </div>
+    <div class="card">
+      <p>它秒出一版。<br><br>
+      看着挺完整，读着挺顺。<br><br>
+      <strong class="brand">但就是差点意思。</strong></p>
+    </div>
+  </div>
+  <p class="note">我们先搞清楚：为什么会差这点意思。</p>
+</section>
+<!-- ========== 生成式 AI 快速入门（5 页） ========== -->
+
+<section class="slide">
+  <div class="kicker">AI 到底在干嘛 · 1</div>
+  <h2>它在跟你玩<em>接龙</em></h2>
+  <div class="card" style="border-color:var(--brand);padding:clamp(18px,2.6vw,32px)">
+    <div class="tw-wrap">
+      <span class="ghost">今天天气不错，适合出去拍点素材……</span>
+      <span class="run">今天天气不错，适合出去拍点素材……</span>
+    </div>
+  </div>
+  <div class="loop">
+    <span class="cell hot">猜下一个字</span><span class="to">→</span>
+    <span class="cell">自己接上，不问你</span><span class="to">→</span>
+    <span class="cell">整句从头看一遍</span><span class="to">→</span>
+    <span class="cell" style="border-style:dashed;border-color:var(--brand);color:var(--brand)">↺ 回到第一步，接着猜</span>
+  </div>
+  <p class="lead" style="margin-top:.7em">一个字一个字，蹦出一整篇。<br>
+    <strong>它手里没有现成答案</strong>——不是搜出来的，是当场一个一个算的。</p>
+  <p class="note">每个候选字都带一个「可能性分数」，<strong class="brand">按分数抽一个</strong>。抽就带运气，所以同一句话问两遍，答得不一样。</p>
+</section>
+
+<section class="slide">
+  <div class="kicker">AI 到底在干嘛 · 2</div>
+  <h2>它编得<em>跟真的一样</em></h2>
+  <div class="grid2">
+    <div class="card" style="border-color:#d94a3a;background:#fff5f3">
+      <p style="font-size:clamp(1.05rem,1.6vw,1.35rem)"><strong>你问：</strong>介绍一下我们学校</p>
+      <p style="margin-top:.5em;font-size:clamp(1.05rem,1.6vw,1.35rem)"><strong>它答：</strong>创办于
+        <span style="text-decoration:underline wavy #d94a3a">1958 年</span>，占地
+        <span style="text-decoration:underline wavy #d94a3a">200 亩</span>，在校生
+        <span style="text-decoration:underline wavy #d94a3a">3000 余人</span></p>
+      <p class="muted" style="margin-top:.5em">数字是<strong>接出来的</strong>，不是查出来的</p>
+    </div>
+    <div class="card">
+      <h3>为什么会这样</h3>
+      <div class="probs" style="margin-top:.5em">
+        <div class="prob top"><span class="bar" style="width:52%"></span><span class="txt">创办于…… <strong>52%</strong></span></div>
+        <div class="prob"><span class="bar" style="width:23%"></span><span class="txt">位于…… 23%</span></div>
+        <div class="prob"><span class="bar" style="width:11%"></span><span class="txt">我不太清楚 11%</span></div>
+      </div>
+      <p style="margin-top:.6em">它不确定的时候，<strong class="brand">默认动作是接着往下写</strong>，不是停下来。</p>
+    </div>
+  </div>
+  <p class="note">所以拿它写实训报告：年份、数字、法条，<strong>必须自己核一遍</strong>。最后拍板的人只能是你。</p>
+</section>
+
+<section class="slide">
+  <div class="kicker">AI 到底在干嘛 · 3</div>
+  <h2>画图是<em>从雪花点里擦出来的</em></h2>
+  <div class="cols">
+    <div class="card" style="text-align:center">
+      <div class="diffuse">
+        <div class="clear pic">
+          <span class="sun"></span><span class="mt-b"></span><span class="mt-a"></span>
+          <span class="bird" style="left:16%;top:26%"></span>
+          <span class="bird" style="left:26%;top:20%;width:5%"></span>
+          <span class="ground"></span>
+        </div>
+        <div class="noise"></div>
+        <div class="tick">去噪中…</div>
+      </div>
+      <div class="seq">
+        <div><div class="fr"><div class="clear pic"><span class="sun"></span><span class="mt-b"></span><span class="mt-a"></span><span class="ground"></span></div><div class="nz" style="opacity:1"></div></div><div class="cap">1</div></div>
+        <div><div class="fr"><div class="clear pic"><span class="sun"></span><span class="mt-b"></span><span class="mt-a"></span><span class="ground"></span></div><div class="nz" style="opacity:.62"></div></div><div class="cap">8</div></div>
+        <div><div class="fr"><div class="clear pic"><span class="sun"></span><span class="mt-b"></span><span class="mt-a"></span><span class="ground"></span></div><div class="nz" style="opacity:.26"></div></div><div class="cap">16</div></div>
+        <div><div class="fr"><div class="clear pic"><span class="sun"></span><span class="mt-b"></span><span class="mt-a"></span><span class="ground"></span></div></div><div class="cap">25</div></div>
+      </div>
+      <p class="muted" style="margin-top:.35em;font-size:clamp(.85rem,1.2vw,1.02rem)">上面那张一直在循环演示</p>
+    </div>
+    <div class="card">
+      <h3>① 先糊一团噪点</h3>
+      <p>纯随机，什么都不是。</p>
+      <h3 style="margin-top:.7em">② 一遍遍擦</h3>
+      <p>每擦一遍问一次：<br><strong>这更像你说的那句话吗？</strong></p>
+      <h3 style="margin-top:.7em">③ 擦几十遍，出图</h3>
+      <p>这张图<strong class="brand">世界上原本不存在</strong>。</p>
+    </div>
+  </div>
+  <p class="note">文字是「往下接」，图是「往干净里擦」——<strong>两套完全不同的机制</strong>。</p>
+</section>
+
+<section class="slide">
+  <div class="kicker">AI 到底在干嘛 · 4</div>
+  <h2>那为什么现在能<br><em>说人话指挥它画</em>？</h2>
+  <div class="flow">
+    <div class="node">
+      <div class="cap">原图 + 你说的</div>
+      <div class="shot" style="--fur:#8f9296">
+        <span class="sun2"></span><span class="hill"></span>
+        <span class="tail"></span><span class="cat-b"></span><span class="cat-h"></span>
+        <span class="eye" style="left:44%"></span><span class="eye" style="left:53%"></span>
+        <span class="badge">原图</span>
+      </div>
+      <div class="sub" style="margin-top:.3em">「把这只猫换成橘色的，<strong>背景别动</strong>」</div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="node on">
+      <div class="cap">① 读懂 · 自回归</div>
+      <div class="ttl">跟接龙同一套</div>
+      <div class="toks">
+        <span class="tok">把</span><span class="tok on">这只猫</span><span class="tok">换成</span><span class="tok on">橘色</span><span class="tok">的</span><span class="tok on">背景别动</span>
+      </div>
+      <div class="sub">一个字一个字读你的话，标出<strong>哪只</strong>、<strong>换什么</strong>、<strong>什么别动</strong></div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="node on2">
+      <div class="cap">② 渲染 · 扩散</div>
+      <div class="ttl">跟上一页同一套</div>
+      <div class="shot" style="--fur:#e08a3c">
+        <span class="sun2"></span><span class="hill"></span>
+        <span class="tail"></span><span class="cat-b"></span><span class="cat-h"></span>
+        <span class="eye" style="left:44%"></span><span class="eye" style="left:53%"></span>
+        <span style="position:absolute;inset:0;opacity:.55;
+          background:repeating-conic-gradient(#2e2e2e 0% 25%, #d8d8d8 0% 50%);background-size:3px 3px"></span>
+        <span class="badge" style="background:rgba(37,86,196,.85)">擦到一半</span>
+      </div>
+      <div class="sub" style="margin-top:.3em">拿这份「译文」当条件，从噪点里一遍遍擦</div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="node">
+      <div class="cap">出图</div>
+      <div class="shot" style="--fur:#e08a3c">
+        <span class="sun2"></span><span class="hill"></span>
+        <span class="tail"></span><span class="cat-b"></span><span class="cat-h"></span>
+        <span class="eye" style="left:44%"></span><span class="eye" style="left:53%"></span>
+        <span class="badge" style="background:rgba(224,85,42,.85)">结果</span>
+      </div>
+      <div class="sub" style="margin-top:.3em"><strong>只有猫变了</strong>，太阳、山、草地一模一样</div>
+    </div>
+  </div>
+  <p class="lead" style="margin-top:.8em">前面是<strong>听得懂人话的翻译官</strong>，后面是<strong>照着译文动笔的画师</strong>——<br>
+    Qwen3 这类新模型，就是把这两半拼在了一起。</p>
+</section>
+
+<section class="slide">
+  <div class="kicker">AI 到底在干嘛 · 5</div>
+  <h2>但两套都有<em>同一个毛病</em></h2>
+  <table class="sbtable">
+    <tr><th style="width:34%">你说的</th><th>它替你定的</th></tr>
+    <tr><td rowspan="7" style="vertical-align:middle;font-size:1.2em;font-weight:800;color:var(--ink)">帮我做条<br>招生开场视频</td>
+        <td>时长 30 秒 <span class="faint">· 你没说</span></td></tr>
+    <tr><td>城市航拍空镜 <span class="faint">· 你没说</span></td></tr>
+    <tr><td>激昂鼓点 BGM <span class="faint">· 你没说</span></td></tr>
+    <tr><td>蓝色科技风 <span class="faint">· 你没说</span></td></tr>
+    <tr><td>16:9 横屏 <span class="faint">· 你没说</span></td></tr>
+    <tr><td>男声旁白 <span class="faint">· 你没说</span></td></tr>
+    <tr><td>结尾打校徽 <span class="faint">· 你没说</span></td></tr>
+  </table>
+  <p class="note">你说了 <strong>1 行</strong>，它自己定了 <strong class="brand">7 项</strong>，全程<strong>没问过你一句</strong>。</p>
+</section>
+<!-- ========== 为什么想搞这个（新增） ========== -->
+
+<section class="slide">
+  <div class="kicker">说说我为什么搞这个</div>
+  <h2>这事我自己<em>撞上过</em></h2>
+  <div class="grid2">
+    <div class="card" style="border-color:var(--brand)">
+      <span class="tag">教授说的</span>
+      <p style="font-size:clamp(1.15rem,1.9vw,1.6rem);font-weight:700;color:var(--ink);line-height:1.5">
+        「做个小短片，<br>把你的研究讲一下就行。」</p>
+      <p class="muted" style="margin-top:.6em">然后就没有然后了。</p>
+    </div>
+    <div class="card">
+      <span class="tag" style="background:var(--muted)">我不知道的</span>
+      <p>多长？　给谁看？<br>
+         要严肃还是要好玩？<br>
+         开头放什么？结尾停在哪？<br>
+         <span class="faint">——他没说，我也没问，<br>因为我根本不知道该问什么。</span></p>
+    </div>
+  </div>
+  <p class="lead" style="margin-top:.7em">我不是学影视的。<br>
+    于是我打开 AI，敲了一句「帮我写个介绍研究的短片脚本」。</p>
+  <p class="note">三秒出稿，读着挺顺。<strong class="brand">可我自己都看得出来——这玩意儿谁做出来都一样。</strong></p>
+</section>
+<!-- ========== 我在做什么研究 ========== -->
+
+<section class="slide">
+  <div class="kicker">这就是我的研究</div>
+  <h2>我做的方向是<br><em>人与 AI 交互</em></h2>
+  <div class="grid2" style="margin-bottom:.7em">
+    <div class="card" style="opacity:.62">
+      <span class="tag" style="background:var(--muted)">不是这个</span>
+      <p style="font-size:clamp(1.05rem,1.6vw,1.35rem)">怎么让 AI <strong>更聪明</strong><br>
+        <span class="faint">——那是另一拨人的事</span></p>
+    </div>
+    <div class="card" style="border-color:var(--brand)">
+      <span class="tag">是这个</span>
+      <p style="font-size:clamp(1.05rem,1.6vw,1.35rem)">怎么让 AI <strong class="brand">更懂你要什么</strong></p>
+    </div>
+  </div>
+  <p class="lead muted" style="margin-bottom:.5em">具体到这个实验，我们在比三种做法：</p>
+  <div class="steps">
+    <div class="step"><div class="n">A</div><div class="t">一句话直接出</div></div>
+    <div class="step"><div class="n">B</div><div class="t">先出一版，你再改</div></div>
+    <div class="step"><div class="n">C</div><div class="t">先答几道题，再出</div></div>
+  </div>
+  <p class="note">同一个人，同一天，三个题目，三种做法各走一遍。<strong>哪种更像你心里那个，现在真没定论。</strong></p>
+</section>
+
+<section class="slide">
+  <div class="kicker">研究问题</div>
+  <h2>我想知道的是：<em>这三个问题</em></h2>
+  <div class="rqrow">
+    <div class="rq">
+      <div class="q">① 像不像？</div>
+      <div class="s">你脑子里那个，和 AI 做出来的，差多远。</div>
+    </div>
+    <div class="rq">
+      <div class="q">② 算不算你的？</div>
+      <div class="s">这份作品，你觉得是「我做的」，还是「AI 做的」。</div>
+    </div>
+    <div class="rq">
+      <div class="q">③ 力气花在哪？</div>
+      <div class="s">你的时间，是花在开工前，还是花在出稿后。</div>
+    </div>
+  </div>
+  <p class="note">这三件事，<strong>三种做法谁高谁低，现在都没有答案</strong>。</p>
+</section>
+<!-- ========== 参加 + 收尾 ========== -->
+
+<section class="slide">
+  <div class="kicker">参加的话，你要做什么</div>
+  <h2>三轮，一轮一种做法</h2>
+  <div class="steps">
+    <div class="step"><div class="n">1</div><div class="t">看说明<br>打个勾</div></div>
+    <div class="step"><div class="n">2</div><div class="t">问卷调查</div></div>
+    <div class="step"><div class="n">3</div><div class="t">看题目<br>打字写你的想法</div></div>
+    <div class="step"><div class="n">4</div><div class="t">AI 出稿</div></div>
+    <div class="step"><div class="n">5</div><div class="t">看稿<br>回答问卷调查</div></div>
+    <div class="step"><div class="n">6</div><div class="t">换题目换做法<br>再来两轮</div></div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">现在，拿出手机</div>
+  <h2>扫这个码，或者输这个网址</h2>
+  <div class="grid2">
+    <div class="card" style="text-align:center;padding:clamp(20px,3vw,40px)">
+      <div style="width:min(46vw,300px);aspect-ratio:1;margin:0 auto;background:var(--panel-2);
+                  border:3px dashed var(--line-2);border-radius:14px;display:flex;
+                  align-items:center;justify-content:center;color:var(--faint);
+                  font-size:clamp(1rem,1.6vw,1.3rem);line-height:1.6">
+        〔二维码占位〕<br>部署后生成
+      </div>
+    </div>
+    <div>
+      <p class="lead" style="margin-bottom:.6em">网址：</p>
+      <div class="frame" style="font-size:clamp(1.05rem,1.9vw,1.6rem);font-weight:700;color:var(--brand)">
+        〔待填〕/?lang=zh
+      </div>
+      <ul style="margin-top:.7em">
+        <li>链接自带 <strong>?lang=zh</strong>，打开就是中文</li>
+        <li>一路做到<strong>拿到 8 位完成码</strong>才算完成</li>
+        <li>做不完也没关系，随时可以关掉</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <div class="kicker">谢谢</div>
+  <p class="big">你今天写的每一句，<br><span class="hl">都会变成这个研究的一行数据。</span></p>
+</section>
+</div>
+
+<script>
+  const slides = [...document.querySelectorAll('.slide')];
+  const cutNo = document.getElementById('cutNo');
+  const cutTot = document.getElementById('cutTot');
+  const prog = document.getElementById('prog');
+  cutTot.textContent = String(slides.length).padStart(2,'0');
+
+  let i = 0;
+  function show(n){
+    i = Math.max(0, Math.min(slides.length-1, n));
+    slides.forEach((s,k)=>s.classList.toggle('active', k===i));
+    cutNo.textContent = String(i+1).padStart(2,'0');
+    prog.style.width = ((i+1)/slides.length*100)+'%';
+    location.hash = i+1;
+  }
+  function next(){ show(i+1); }
+  function prev(){ show(i-1); }
+
+  document.addEventListener('keydown', e=>{
+    if(['ArrowRight','ArrowDown','PageDown',' '].includes(e.key)){ e.preventDefault(); next(); }
+    else if(['ArrowLeft','ArrowUp','PageUp'].includes(e.key)){ e.preventDefault(); prev(); }
+    else if(e.key==='Home'){ show(0); }
+    else if(e.key==='End'){ show(slides.length-1); }
+    else if(e.key==='f'||e.key==='F'){
+      if(!document.fullscreenElement) document.documentElement.requestFullscreen?.();
+      else document.exitFullscreen?.();
+    }
+  });
+  // 点击翻页：右 65% 前进 / 左 35% 后退；链接按钮除外
+  document.addEventListener('click', e=>{
+    if(e.target.closest('a,button,kbd')) return;
+    (e.clientX > innerWidth*0.35) ? next() : prev();
+  });
+  // 触屏滑动
+  let sx=null;
+  addEventListener('touchstart',e=>sx=e.touches[0].clientX,{passive:true});
+  addEventListener('touchend',e=>{ if(sx==null)return; const dx=e.changedTouches[0].clientX-sx;
+    if(Math.abs(dx)>45){ dx<0?next():prev(); } sx=null; });
+  // 支持浏览器前进/后退
+  addEventListener('hashchange',()=>{ const n=parseInt(location.hash.slice(1));
+    if(Number.isFinite(n)&&n-1!==i) show(n-1); });
+
+  const start = parseInt(location.hash.slice(1));
+  show(Number.isFinite(start)&&start>0 ? start-1 : 0);
+</script>
+</body>
+</html>

@@ -63,6 +63,7 @@ def render() -> None:
         return
 
     _overview(parts)
+    _sessions(parts, trials)
     _data_health(trials, dev_ids)
     _balance(trials)
     _progress(parts)
@@ -87,14 +88,74 @@ def _overview(parts: pd.DataFrame) -> None:
     # 主分析人群是 novice 子集(B1):上面那条绿了不等于分析 N 够了。招募够不够看这个数
     # (power_sim 的子集功效表:N=18 → MDES dz 0.71)。
     st.caption(t("monitor.novice_done", n=int(nov_flags.sum())))
-    # 语言构成:正式研究是 ja,出现 zh/en 说明是研究员测试或脱离协议的会话 —— 采数期
-    # 就要看见,不能等到分析时才发现(那时已无法补救)。
+    # 语言构成:ja=日本队列、zh=中国队列,两者都是正式数据(2026-09-06 拍板,分析时按
+    # lang 分开即可);只有 en 才是研究员测试或脱离协议的会话 —— 采数期就要看见,
+    # 不能等到分析时才发现(那时已无法补救)。
     if "lang" in parts and len(parts):
         mix = parts["lang"].fillna("ja").value_counts().to_dict()
         line = " / ".join(f"{k}: {v}" for k, v in mix.items())
-        (st.caption if set(mix) <= {"ja"} else st.warning)(
+        (st.caption if set(mix) <= {"ja", "zh"} else st.warning)(
             t("monitor.lang_mix", mix=line))
     _dup_contacts(parts)
+
+
+def _jst(x) -> str:
+    """库里是不带时区的服务器本地时间(UTC);面板一律按被试所在的 JST 显示。"""
+    ts = pd.to_datetime(x, errors="coerce")
+    return "—" if pd.isna(ts) else (ts + pd.Timedelta(hours=9)).strftime("%m-%d %H:%M")
+
+
+def _sessions(parts: pd.DataFrame, trials: pd.DataFrame) -> None:
+    """在跑的会话:开始时间、最后活动、已交轮数,以及释放序号的入口。
+
+    为什么需要它:拉丁方序号在**通过筛查那一刻**就被占住,而且没有任何自动回收 ——
+    关掉页面再也不回来的人,序号照占。18 个 Williams 序列要平衡就得让每格人数相等,
+    被弃号占着的格子会一直缺人。释放把该行标成 dev,序号让给下一位(见 db.release_participant)。
+    """
+    if "status" not in parts:
+        return
+    live = parts[parts["status"] == "in_progress"].copy()
+    st.markdown(f"**{t('monitor.sessions_title')}**")
+
+    # 当前真正连着的 WebSocket 数(内部 API,拿不到就不显示 —— 它只是参考,不影响功能)
+    try:
+        from streamlit.runtime import get_instance
+        n_ws = len(get_instance()._session_mgr.list_active_sessions())
+        st.caption(t("monitor.active_ws", n=n_ws))
+    except Exception:  # noqa: BLE001
+        pass
+
+    if live.empty:
+        st.caption(t("monitor.no_inprog"))
+        return
+
+    ev = db.load_table("events")
+    last_seen = (ev.groupby("participant_id")["ts"].max()
+                 if {"participant_id", "ts"} <= set(ev.columns) else pd.Series(dtype=str))
+    n_rounds = (trials.groupby("participant_id").size()
+                if "participant_id" in trials else pd.Series(dtype=int))
+
+    st.caption(t("monitor.sessions_hint"))
+    hdr = st.columns([1, 1, 2.2, 2.2, 1.2, 1.4])
+    for col, key in zip(hdr, ("col_id", "col_seq", "col_start", "col_last",
+                              "col_rounds", "col_action")):
+        col.caption(t(f"monitor.{key}"))
+    for _, r in live.sort_values("created_at").iterrows():
+        pid = int(r["id"])
+        c = st.columns([1, 1, 2.2, 2.2, 1.2, 1.4])
+        c[0].write(f"#{pid}")
+        c[1].write("—" if pd.isna(r.get("seq")) else str(int(r["seq"])))
+        # 与本面板的每日完成图同口径:库里存的是 UTC,这里 +9h 显示成被试所在的日本时间,
+        # 否则研究员看到的「最后活动」会比实际早 9 小时,判断人走没走时会误判。
+        c[2].write(_jst(r.get("created_at")))
+        c[3].write(_jst(last_seen.get(pid)))
+        c[4].write(f"{int(n_rounds.get(pid, 0))}/{config.N_ROUNDS}")
+        with c[5].popover(t("monitor.release")):
+            st.caption(t("monitor.release_help"))
+            if st.button(t("monitor.release_confirm"), key=f"_rel_{pid}",
+                         type="primary", width="stretch"):
+                db.release_participant(pid)
+                st.rerun()
 
 
 def _dup_contacts(parts: pd.DataFrame) -> None:
@@ -131,9 +192,30 @@ def _data_health(trials: pd.DataFrame, dev_ids: set[int] = frozenset()) -> None:
     typ = ev["type"] if "type" in ev else pd.Series(dtype=str)
     pj = ev["payload_json"] if "payload_json" in ev else pd.Series(dtype=str)
 
-    parse_fail = float((trials["parse_ok"] == 0).mean()) if "parse_ok" in trials and len(trials) else float("nan")
+    # parse_ok 为 NULL(老行 / 未回填)时,`== 0` 得 False,会被算成"解析成功" —— 于是
+    # 整列全空也显示 0%,把"没测到"说成"没问题"。先转数值,全空就显示「—」。
+    po = pd.to_numeric(trials["parse_ok"], errors="coerce") if "parse_ok" in trials else pd.Series(dtype=float)
+    parse_fail = float((po == 0).mean()) if po.notna().any() else float("nan")
+
     n_start = int((typ == "llm_start").sum())
-    err_rate = (int((typ == "llm_error").sum()) / n_start) if n_start else float("nan")
+    n_done = int((typ == "llm_done").sum())
+    n_err = int((typ == "llm_error").sum())
+    err_rate = (n_err / n_start) if n_start else float("nan")
+    # **发起了却没有任何终止事件**的调用。失控重试正是这个形态:被试(或断线)反复触发
+    # 生成,每次 rerun 打断上一次流式调用并重新发起,于是只留下 llm_start ——
+    # 一条 llm_error 都没有,按 err_rate 看是 0% 完美。生产库里已经真实发生过一次:
+    # 单人 7 分钟 86 条 llm_start 对 1 条 llm_done,而面板当时显示错误率 0%。
+    unclosed = max(n_start - n_done - n_err, 0)
+    unclosed_rate = (unclosed / n_start) if n_start else float("nan")
+
+    # 配图成功率。core/imagegen.py 的 worker 用 `except Exception: pass` 吞掉一切失败
+    # (429 限额、超时、内容策略),只写一个 .done 标记就算"试过了" —— 被试看到的是空白画框,
+    # 而这里此前一个字都不显示。配图是主观 DV 的测量情境(被试答题时看着它),
+    # 大批失败必须在采数期就看见,不能等分析时才从 images_ready 里对出来。
+    img = pj[typ == "images_ready"].map(_loads)
+    n_shot_tot = sum(int(p.get("n_shots") or 0) for p in img)
+    n_shot_ok = sum(int(p.get("n_ok") or 0) for p in img)
+    img_rate = (n_shot_ok / n_shot_tot) if n_shot_tot else float("nan")
     gs = pj[typ == "guidance_shown"]
     fb_rate = gs.map(lambda x: bool(_loads(x).get("fallback"))).mean() if len(gs) else float("nan")
     done_pay = pj[typ == "llm_done"].map(_loads)
@@ -144,12 +226,20 @@ def _data_health(trials: pd.DataFrame, dev_ids: set[int] = frozenset()) -> None:
 
     def _pct(x):
         return "—" if pd.isna(x) else f"{x:.0%}"
-    c = st.columns(4)
+    c = st.columns(6)
     c[0].metric(t("monitor.health_parse"), _pct(parse_fail))
     c[1].metric(t("monitor.health_llm_err"), _pct(err_rate))
-    c[2].metric(t("monitor.health_fallback"), _pct(fb_rate))
-    c[3].metric(t("monitor.health_latency"),
+    c[2].metric(t("monitor.health_unclosed"), _pct(unclosed_rate))
+    c[3].metric(t("monitor.health_images"), _pct(img_rate))
+    c[4].metric(t("monitor.health_fallback"), _pct(fb_rate))
+    c[5].metric(t("monitor.health_latency"),
                 "—" if pd.isna(med) else f"{med:.0f}/{p95:.0f}s")
+    # 掉到八成以下多半是撞了 gpt-image-1-mini 的分钟限额(30 人同步提交时约 45 张/分钟)。
+    if n_shot_tot >= 6 and img_rate < 0.8:
+        st.warning(t("monitor.images_warn", ok=n_shot_ok, total=n_shot_tot))
+    # 少量未闭合是正常的(被试正在生成中、或刚好关了页面);持续偏高说明有人在反复触发。
+    if n_start >= 10 and unclosed_rate > 0.25:
+        st.warning(t("monitor.unclosed_warn", n=unclosed, total=n_start))
     if len(fps) > 1:
         # B7:服务端 build 在采数中途换了 —— 输出本身不可逐字复现,这是唯一能报告的漂移证据
         st.warning(t("monitor.fingerprint_drift", n=len(fps)))
@@ -192,7 +282,12 @@ def _progress(parts: pd.DataFrame) -> None:
         if "created_at" in parts and (parts.get("status") == "done").any():
             date_col = t("monitor.col_date")
             d = parts[parts["status"] == "done"].copy()
-            d[date_col] = pd.to_datetime(d["created_at"], errors="coerce").dt.date
+            # 库里的时间戳是 datetime.now() 写的服务器本地时间,而这台机器是 Etc/UTC;
+            # 被试在日本(UTC+9)。直接按 UTC 日期分组的话,日本时间 09:00 之前完成的人
+            # 会被算进前一天 —— 每天的完成人数就都是错的。按 JST 归日再统计。
+            # (只影响这张按日图:所有时长指标都是两个时间戳相减,与时区无关。)
+            d[date_col] = (pd.to_datetime(d["created_at"], errors="coerce")
+                           + pd.Timedelta(hours=9)).dt.date
             daily = d.dropna(subset=[date_col]).groupby(date_col).size()
             st.bar_chart(daily, height=220) if len(daily) else st.caption(t("monitor.none"))
         else:

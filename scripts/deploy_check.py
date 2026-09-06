@@ -151,20 +151,70 @@ def check_baseline(sec: dict) -> None:
         add(Y, "机器基线", "无 data/baseline/ → 保真复合的 embedding 腿(占一半权重)拿不到。"
                           "正式模型快照定下来后跑 `make baseline`;基线**必须与采数同模型**,事后补不回来。")
         return
-    models = set()
+    # 逐行读,不只看首行:中途换过配置续跑的文件,首行是干净的、后面才是脏的。
+    # 顺便一趟数出每题份数与空稿数。
+    from analysis import prereg
+    from core import config as _cfg
+
+    models, langs, counts, empties = set(), set(), {}, {}
     for f in files:
-        first = next((l for l in f.read_text(encoding="utf-8").splitlines() if l.strip()), "")
-        if first:
-            models.add(json.loads(first).get("model") or "?")
+        n = n_empty = 0
+        for line in f.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            try:
+                rec = json.loads(line)
+            except ValueError:
+                add(R, "机器基线", f"{f.name} 有无法解析的行 → 删掉重跑 make baseline。")
+                return
+            n += 1
+            models.add(rec.get("model") or "?")
+            langs.add(rec.get("lang") or "?")     # 旧文件没有这个字段,会记成 "?"
+            if not (rec.get("text") or "").strip():
+                n_empty += 1
+        counts[f.name], empties[f.name] = n, n_empty
+
     cfg0 = (sec.get("api_configs") or [{}])[0]
     want = cfg0.get("model", "")
-    if len(models) > 1:
+    short = {k: v for k, v in counts.items() if v < prereg.MIN_BASELINE_PER_TOPIC}
+    blank = {k: v for k, v in empties.items() if v}
+
+    if len(files) < _cfg.N_ROUNDS:
+        # 只生成了一部分题:embed 会对缺题的被试整轮拿不到 Δ,而绿灯会让人以为已经齐了。
+        have = {f.name for f in files}
+        add(R, "机器基线", f"只有 {len(files)}/{_cfg.N_ROUNDS} 题有基线(缺 "
+                          f"{[f'topic{i}.jsonl' for i in range(_cfg.N_ROUNDS) if f'topic{i}.jsonl' not in have]})"
+                          " → 补跑 make baseline。")
+    elif blank:
+        # 空稿会把该题质心整体拉偏,且下游不会报警。baseline_gen 现在拒绝写空行,
+        # 这条是为更早生成的文件兜底。
+        add(R, "机器基线", f"基线含空稿({blank}) → 这些行会污染 Δ 的零点,删掉对应文件重跑。")
+    elif short:
+        add(R, "机器基线", f"每题份数不足 {prereg.MIN_BASELINE_PER_TOPIC}(实际 {short}) → "
+                          "质心样本太少,Δ 的零点不稳,补跑 make baseline。")
+    elif len(models) > 1:
         add(R, "机器基线", f"data/baseline/ 混了多个模型 {sorted(models)} —— 删掉重跑 make baseline。")
     elif want and models != {want}:
         add(R, "机器基线", f"基线用 {sorted(models)} 生成,但正式模型是 '{want}' → Δ 的零点与产出不同源,"
                           "embed.py 会硬失败。用正式快照重跑 `make baseline`。")
+    elif len(langs) > 1:
+        # 三种语言的输出文件同名,拿 --lang zh 试跑过再补 ja 就会混进同一个质心。
+        add(R, "机器基线", f"基线混了多种语言 {sorted(langs)} → 删掉重跑 make baseline。")
+    elif langs and langs != {embed_lang()}:
+        add(Y, "机器基线", f"基线语言 {sorted(langs)} != 分析基准 {embed_lang()}(旧文件无 lang 字段时显示 '?')。"
+                          "被试是日本人,正式基线应当用 ja 生成。")
     else:
-        add(G, "机器基线", f"{len(files)} 题基线就位,模型 {sorted(models)} 与正式模型一致。")
+        add(G, "机器基线", f"{len(files)} 题基线就位,每题 {sorted(counts.values())} 份,"
+                          f"模型 {sorted(models)} 与正式模型一致。")
+
+
+def embed_lang() -> str:
+    """analysis/embed.py 认定的基线语言 —— 只对同语言被试算 Δ。"""
+    try:
+        from analysis import embed
+        return getattr(embed, "BASELINE_LANG", "ja")
+    except Exception:  # noqa: BLE001 — 缺分析依赖时不该拖垮整张闸门
+        return "ja"
 
 
 def check_topics() -> None:
@@ -215,7 +265,32 @@ def check_topics() -> None:
             bad.append(f"#{i + 1}.shot_count={t.get('shot_count')}")
         if not (3 <= t.get("total_seconds", 0) <= 300):
             bad.append(f"#{i + 1}.total_seconds={t.get('total_seconds')}")
-    if gone:
+    # 前 N_ROUNDS 题必须互不相同。三种题目轮转 (0,1,2)/(1,2,0)/(2,0,1) 只保证下标不重,
+    # 内容重不重从来没人查:复制一条题目当模板改到一半就保存,每位被试都会在两个轮次拿到
+    # 同一道题,而第二次写作带着巨大的结转优势。这一条在 plan_for_seq、应用界面、
+    # 分析管线里全程沉默,只能收数后翻 trials 才发现 —— 那时样本已经用掉。
+    # 查重放在闸门而不是运行路径:后者会炸在一个已经吃掉 seq 的被试脸上。
+    dup, dup_title = [], []
+    for a in range(len(used)):
+        for b in range(a + 1, len(used)):
+            for field in ("title", "scenario", "choices"):
+                va, vb = used[a].get(field), used[b].get(field)
+                for lg in ("ja", "zh", "en"):
+                    xa = (va.get(lg) if isinstance(va, dict) else va) or ""
+                    xb = (vb.get(lg) if isinstance(vb, dict) else vb) or ""
+                    if xa.strip() and xa.strip() == xb.strip():
+                        dup.append(f"#{a + 1}≡#{b + 1} 的 {field}.{lg}")
+                        if field == "title":
+                            dup_title.append(f"#{a + 1}≡#{b + 1}")
+
+    if dup:
+        # 标题重复格外要命:analysis/embed.py 的 title2idx 是以标题为键的字典,
+        # 两题同名会静默塌成一个键,那一题的所有 trial 都被配到另一题的基线上,Δ 的零点直接错配。
+        extra = ("；**标题重复**会让 analysis/embed.py 的 title2idx 静默塌键,"
+                 "该题的 Δ 会拿另一题的基线当零点。" if dup_title else "")
+        add(R, "题库 topics.json", f"前 {config.N_ROUNDS} 题里有内容重复:{' · '.join(dup[:4])}"
+                                   f" → 每位被试会在两个轮次拿到同一道题,轮间不可比{extra}")
+    elif gone:
         add(R, "题库 topics.json", f"字段整个缺失:{' · '.join(gone[:4])} —— 无语言可回退,"
                                    f"该题的情境在**模型 prompt 与题目卡上都会少半句**"
                                    f"(题目卡的浅色括号行直接消失),被试跑的不是你以为的题面。")
@@ -256,13 +331,19 @@ def check_consent() -> None:
 
 def check_freeze() -> None:
     """冻结产物(docs/paper/prereg_frozen.json)是「分析计划在见数据之前就定了」的全部证据。
-    没有 → 黄灯(采数前必须 make freeze);有但与当前代码不一致 → 红灯(那是协议偏离)。"""
+    没有 → **红灯**;有但与当前代码不一致 → 红灯(那是协议偏离)。
+
+    为什么「不存在」也是红:这道闸门的用途就是「发链接之前跑一遍」,而冻结与机器基线同属
+    **事后补不回来**的一类 —— 第一条真被试数据一旦入库,「计划是在见数据之前定的」这句话就
+    永久失去证据(B3 拍板不做第三方预注册,内部冻结是唯一的防 HARKing 材料)。
+    早先给黄灯的话,三个红灯清掉后闸门会 exit 0 放行,等于默许在没有冻结的情况下开始采数。"""
     import contextlib, io
     spec = importlib.util.spec_from_file_location("freeze_prereg", ROOT / "scripts" / "freeze_prereg.py")
     freeze_prereg = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(freeze_prereg)
     if not freeze_prereg.OUT.exists():
-        add(Y, "冻结产物", "docs/paper/prereg_frozen.json 不存在 → 采数前必须 `make freeze`(先清干净工作树)。")
+        add(R, "冻结产物", "docs/paper/prereg_frozen.json 不存在 → 采数前**必须** `make freeze`(先清干净工作树)。"
+                          "第一条真数据入库后就再也补不出「计划早于数据」的证据。")
         return
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
@@ -274,8 +355,135 @@ def check_freeze() -> None:
                           "看 `make freeze-check` 的逐条差异。")
 
 
-def check_runtime() -> None:
-    """运行时(不只是文件与配置):单元是否持久、是否 root、是否绑 0.0.0.0、有没有 :443 监听者。
+def check_default_lang() -> None:
+    """正式研究の被験者は日本人。既定言語が ja でないまま公開すると、リンクを開いた被験者が
+    いきなり中国語/英語の画面を見ることになる —— 採取が始まってからでは取り返せない類。"""
+    from i18n import translator as T
+    if T.DEFAULT_LANG == "ja" and T.AVAILABLE_LANGS[0] == "ja":
+        add(G, "既定言語", "ja(正式研究の言語)。")
+    else:
+        add(Y, "既定言語", f"既定 ={T.DEFAULT_LANG} / 選択肢の先頭 ={T.AVAILABLE_LANGS[0]} —— "
+                          "研究者テスト用の暫定設定。被験者は日本人なので、リンクを配る前に "
+                          "i18n/translator.py を ja 先頭へ戻すこと。")
+
+
+# check_public 的结论,供 check_static_gzip 判断严重性:压缩既可以来自 app(serve.py 的
+# 预压缩),也可以来自反代(nginx gzip)。只要被试收到的是压缩过的字节,目的就已经达到,
+# 后端那条只是「还能更省 CPU」的优化,不该再算红灯。
+_PUBLIC_COMPRESSED: bool | None = None
+
+
+def _public_url(sec: dict) -> str:
+    """被试实际打开的地址。没配就返回空串。"""
+    return str(sec.get("public_url", "")).rstrip("/")
+
+
+def _fetch(url: str, gzip_ok: bool = True) -> tuple[int, dict, bytes]:
+    """取一个 URL,返回 (状态码, 小写键的响应头, 正文)。
+    不用 requests(未必装),urllib 也不会自作主张解压,所以 content-encoding 能原样看到。"""
+    import urllib.request
+    req = urllib.request.Request(url, headers={
+        "Accept-Encoding": "gzip" if gzip_ok else "identity",
+        "User-Agent": "novastory-deploy-check",
+    })
+    with urllib.request.urlopen(req, timeout=15) as r:
+        # 压缩后没有 content-length,得靠实际字节数报大小,所以要读得够多。
+        return r.status, {k.lower(): v for k, v in r.headers.items()}, r.read(4_000_000)
+
+
+def check_public(sec: dict) -> None:
+    """从**外面**看这个站是什么样:HTTPS 通不通、静态资源压没压。
+
+    这一项存在的理由:反代未必在本机(本项目就是 nginx 在另一台机器上),所以
+    「本机有没有进程监听 443」既证明不了有 HTTPS,也证明不了没有 —— 只能真去访问一次。
+    压缩同理:app 侧发不发预压缩产物,和被试最终收到什么,中间还隔着一层反代。"""
+    url = _public_url(sec)
+    if not url:
+        add(Y, "对外地址", "secrets.toml 没配 public_url → 无法验证被试实际拿到的是什么。"
+                          '填一行 public_url = "https://你的域名" 后,本闸门会实测 HTTPS 与压缩。')
+        return
+    if not url.startswith("https://"):
+        add(R, "对外地址", f"{url} 不是 HTTPS → 被试的自由文本与同意记录明文过网。")
+        return
+    try:
+        _, _, home = _fetch(url + "/", gzip_ok=False)
+    except Exception as e:  # noqa: BLE001
+        add(R, "对外地址", f"{url} 打不开({type(e).__name__}) → 被试也打不开。")
+        return
+
+    m = re.search(rb"/static/js/index\.[A-Za-z0-9_-]+\.js", home)
+    if not m:
+        add(Y, "对外地址", f"{url} 可访问,但没能从首页找到主 JS,压缩情况未验证。")
+        return
+    asset = url + m.group(0).decode()
+    try:
+        _, h, body = _fetch(asset, gzip_ok=True)
+    except Exception as e:  # noqa: BLE001
+        add(Y, "对外地址", f"{url} 首页可访问,但静态资源取不到({type(e).__name__})。")
+        return
+
+    global _PUBLIC_COMPRESSED
+    enc = h.get("content-encoding", "")
+    _PUBLIC_COMPRESSED = bool(enc)
+    # 压缩后 nginx 用 chunked 传输,没有 content-length —— 退回按实际读到的字节数报。
+    size = int(h.get("content-length", 0) or 0) or len(body)
+    if enc:
+        add(G, "对外地址", f"{url} HTTPS 正常,静态资源以 {enc} 传输({size // 1024} KB)。")
+    else:
+        # 首屏约 2 MB 的 JS 全以原文过网。实测这一条在高延迟链路上值 3 秒以上。
+        add(R, "对外地址", f"{url} 静态资源未压缩(主 JS {size // 1024} KB 原文)→ "
+                          "反代上开 gzip(注意 gzip_types 要含 application/javascript、"
+                          "gzip_proxied 要设 any),见 DEPLOY.md §4.5。")
+
+
+def _check_script_mode() -> None:
+    """没有 systemd 单元时的运行形态:服务由 scripts/start.sh 起的普通后台进程。
+
+    这条路是**明确选择**的(用户不装 systemd),所以不判红;但要替它盯住 systemd 本来
+    白送的那两件事:① 进程真的在跑吗 ② 机器重启后能自己起来吗。后者靠 crontab 的
+    @reboot 兜底 —— 没有它的话,一次重启就是整站消失且无人知晓。"""
+    import shutil, subprocess
+    pid_file = ROOT / "data" / "novastory.pid"
+    alive = False
+    if pid_file.exists():
+        try:
+            pid = int(pid_file.read_text().strip())
+            alive = (Path("/proc") / str(pid)).exists()
+        except (ValueError, OSError):
+            alive = False
+    if not alive:
+        # 端口上还有别的东西也算在跑(比如手工敲的 streamlit run)
+        try:
+            ss = subprocess.run(["ss", "-ltn"], capture_output=True, text=True, timeout=10).stdout
+            alive = bool(re.search(r":8501\s", ss))
+        except Exception:  # noqa: BLE001
+            pass
+    if not alive:
+        add(R, "运行时", "既没有 systemd 单元,8501 上也没有进程 → 站是停的。"
+                        "起服务:`scripts/start.sh`。")
+        return
+
+    cron = ""
+    if shutil.which("crontab"):
+        try:
+            cron = subprocess.run(["crontab", "-l"], capture_output=True, text=True, timeout=10).stdout
+        except Exception:  # noqa: BLE001
+            pass
+    boot = [l for l in cron.splitlines()
+            if "@reboot" in l and "start.sh" in l and not l.lstrip().startswith("#")]
+    if not boot:
+        add(R, "运行时", "以普通后台进程运行(非 systemd),但 crontab 里没有 @reboot 自启 → "
+                        "机器一重启站就没了且无告警。加一行:"
+                        f"`@reboot sleep 20 && cd {ROOT} && scripts/start.sh >> data/serve.log 2>&1`")
+    elif f"cd {ROOT}" not in boot[0]:
+        add(R, "运行时", f"@reboot 那行缺 `cd {ROOT}` → cron 从 $HOME 起步,日志重定向会失败。")
+    else:
+        add(G, "运行时", "以普通后台进程运行(非 systemd),进程在、@reboot 自启已配置。"
+                        "⚠️ 以 root 跑且绑 0.0.0.0 —— 已知并接受的取舍(见 docs/paper/07)。")
+
+
+def check_runtime(sec: dict) -> None:
+    """运行时(不只是文件与配置):单元是否持久、是否 root、是否绑 0.0.0.0、有没有 HTTPS。
     以前闸门对这四件事一无所知,而它们恰是 DEPLOY.md §2/§5 的全部内容。非 Linux / 无 systemctl 时跳过。"""
     import shutil, subprocess
     if shutil.which("systemctl") is None:
@@ -283,31 +491,76 @@ def check_runtime() -> None:
         return
     try:
         out = subprocess.run(["systemctl", "show", "novastory.service", "-p", "FragmentPath", "-p", "User",
-                              "-p", "ExecStart", "-p", "ActiveState"], capture_output=True, text=True, timeout=10).stdout
+                              "-p", "ExecStart", "-p", "ActiveState", "-p", "UnitFileState"],
+                             capture_output=True, text=True, timeout=10).stdout
     except Exception:  # noqa: BLE001
         out = ""
     props = dict(l.split("=", 1) for l in out.splitlines() if "=" in l)
     if props.get("ActiveState") != "active":
-        add(Y, "运行时", "novastory.service 未运行(本机没部署?)。")
+        _check_script_mode()      # 不用 systemd 时,服务是 scripts/start.sh 起的
         return
     bad = []
     if props.get("FragmentPath", "").startswith("/run/systemd/transient"):
         bad.append("transient 单元(重启即消失)→ 用 deploy/novastory.service 安装持久单元")
+    elif props.get("UnitFileState") != "enabled":
+        # 装了持久单元却只 `start` 没 `enable`:现在跑得好好的,重启后一样起不来,
+        # 而 FragmentPath 已经不在 /run 下,上面那条查不出来。
+        bad.append(f"单元未 enable(UnitFileState={props.get('UnitFileState') or '?'})→ "
+                   "重启后不会自启,`systemctl enable novastory`")
     if props.get("User", "") in ("", "root"):   # systemd 不设 User= 时回显为空 = root
         bad.append("以 root 运行 → 单元里设 User=<非 root 账号>(仓库须搬出 /root)")
     exec_ = props.get("ExecStart", "")
     if "0.0.0.0" in exec_ or "--server.address" not in exec_:
         bad.append("监听 0.0.0.0(或未指定地址)→ --server.address 127.0.0.1,外部走反代")
-    try:
-        ss = subprocess.run(["ss", "-ltn"], capture_output=True, text=True, timeout=10).stdout
-        if not re.search(r":443\s", ss):
-            bad.append("没有任何进程监听 :443 → 无 HTTPS 反代(Caddy/nginx)")
-    except Exception:  # noqa: BLE001
-        pass
+    # HTTPS 交给 check_public 从外面实测。反代常常不在本机(本项目就是),
+    # 「本机没有 443 监听者」并不等于没有 HTTPS —— 以前这里会因此误报一个红灯。
+    if not _public_url(sec):
+        try:
+            ss = subprocess.run(["ss", "-ltn"], capture_output=True, text=True, timeout=10).stdout
+            if not re.search(r":443\s", ss):
+                bad.append("本机无 :443 监听者,且未配 public_url → 无法确认有 HTTPS 反代")
+        except Exception:  # noqa: BLE001
+            pass
     if bad:
         add(R, "运行时", " · ".join(bad))
     else:
-        add(G, "运行时", "持久单元、非 root、只听 127.0.0.1、有 :443 监听者。")
+        add(G, "运行时", "持久单元、非 root、只听 127.0.0.1。")
+
+
+def check_static_gzip() -> None:
+    """静态资源有没有真在压缩传输。两件事都要成立才算数:预压缩产物是最新的,而且
+    服务确实是用 scripts/serve.py 起的 —— 只满足一个,被试拿到的还是 2.5MB 原文 JS。"""
+    import shutil, subprocess
+    try:
+        rc = subprocess.run([sys.executable, str(ROOT / "scripts" / "precompress_static.py"), "--check"],
+                            capture_output=True, text=True, timeout=60).returncode
+    except Exception:  # noqa: BLE001
+        add(Y, "静态压缩", "无法执行 precompress_static.py --check。")
+        return
+    if rc != 0:
+        add(R, "静态压缩", "预压缩产物缺失或落后于 Streamlit 静态文件 → 跑 `make precompress`。")
+        return
+    # 产物在也没用,得看启动入口。transient/未部署的机器上查不到就只给黄灯。
+    if shutil.which("systemctl") is None:
+        add(Y, "静态压缩", "预压缩产物是最新的;无 systemctl,没法确认服务是否用 serve.py 起。")
+        return
+    try:
+        out = subprocess.run(["systemctl", "show", "novastory.service", "-p", "ExecStart", "-p", "ActiveState"],
+                             capture_output=True, text=True, timeout=10).stdout
+    except Exception:  # noqa: BLE001
+        out = ""
+    props = dict(l.split("=", 1) for l in out.splitlines() if "=" in l)
+    if props.get("ActiveState") != "active":
+        add(Y, "静态压缩", "预压缩产物是最新的;服务未运行,无法确认启动入口。")
+    elif "serve.py" in props.get("ExecStart", ""):
+        add(G, "静态压缩", "预压缩产物最新,且服务经 serve.py 启动(首屏 2.50MB → 0.77MB)。")
+    elif _PUBLIC_COMPRESSED:
+        # 压缩已由反代承担,被试收到的就是压缩过的字节 —— 目的达到了,这条降为优化建议。
+        add(Y, "静态压缩", "线上压缩由反代承担(见「对外地址」),已达标。改用 serve.py 启动可再省下"
+                           "反代每次现场压缩的 CPU,并换成 level 9 的预压缩产物 —— 属优化,不阻断采数。")
+    else:
+        add(R, "静态压缩", "服务不是用 scripts/serve.py 起的,反代也没压 → 静态资源以原文发送,"
+                           "预压缩产物白生成了(见 deploy/novastory.service)。")
 
 
 def check_backup() -> None:
@@ -328,10 +581,19 @@ def check_backup() -> None:
         cron = subprocess.run(["crontab", "-l"], capture_output=True, text=True, timeout=10).stdout
     except Exception:  # noqa: BLE001
         cron = ""
-    if "backup_db.sh" in cron:
-        add(G, "备份脚本", "实跑通过且已进 cron;确认异地还有一份。")
-    else:
+    # 光有 backup_db.sh 这几个字不算数:cron 的工作目录是 $HOME,写成相对路径又没 cd 的话,
+    # 脚本根本找不到、每天静默失败,而这里照样会亮绿灯 —— 实测踩过。所以要求那一行要么
+    # 先 cd 进项目、要么用绝对路径调脚本。
+    lines = [l for l in cron.splitlines()
+             if "backup_db.sh" in l and not l.lstrip().startswith("#")]
+    if not lines:
         add(Y, "备份脚本", "实跑通过,但 crontab 里没有 backup_db.sh → 加每日一次(+ 每场后),并异地同步一份。")
+    elif any(f"cd {ROOT}" in l or str(ROOT / "scripts" / "backup_db.sh") in l for l in lines):
+        add(G, "备份脚本", "实跑通过、已进 cron 且路径可用;确认异地还有一份。")
+    else:
+        add(R, "备份脚本", f"cron 里有 backup_db.sh 但**路径跑不通**({lines[0].strip()[:60]}…)→ "
+                          f"cron 从 $HOME 起步,相对路径找不到脚本且不会报错。"
+                          f"改成 `cd {ROOT} && scripts/backup_db.sh …` 或用绝对路径。")
 
 
 def main() -> None:
@@ -350,7 +612,10 @@ def main() -> None:
     check_topics()
     check_consent()
     check_freeze()
-    check_runtime()
+    check_default_lang()
+    check_runtime(sec)
+    check_public(sec)
+    check_static_gzip()
     check_backup()
     check_analysis_deps()
 

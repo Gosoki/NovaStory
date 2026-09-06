@@ -126,10 +126,15 @@ tr.sb-blank .sb-frame .lbl{display:none}
    Implemented as a WIDTH CAP, not `zoom`. `zoom` scales lengths but not an
    auto-width block's share of its parent: the sheet would have stayed full
    width while its 0.86rem type shrank to ~6.9px — unreadable CJK, on the one
-   page whose whole job is to show what the AI produces. A max-width halves the
+   page whose whole job is to show what the AI produces. A width cap shrinks the
    footprint (which is what "缩小50%" is asking for) and leaves the type alone,
-   and it degrades correctly on a phone instead of needing its own opt-out. */
-.sb-mini .sb-sheet{max-width:50%}
+   and it degrades correctly on a phone instead of needing its own opt-out.
+
+   ⚠️ 用**绝对上限**而不是百分比:原来写 50%,那是在正文容器还是全宽(~1856px)时定的,
+   50% ≈ 928px 正好。2026-09-03 给正文加了 max-width:1100px 之后,同样的 50% 变成 486px ——
+   表格被压到 5 列 32/63/149/127/82px,「编号」表头竖排成两个字、「台词」列一行只放三四个字。
+   720px 是这张 5 列表的可读下限(实测列宽 48/96/227/193/124),窄屏由 min(100%) 接管。 */
+.sb-mini .sb-sheet{max-width:min(100%, 720px)}
 @media (max-width:900px){.sb-mini .sb-sheet{max-width:100%}}
 @media (max-width:900px){:root.sb-js .sb-slot.sb-pin{display:contents}
   :root.sb-js .sb-sheet.sb-pin{position:static;transform:none!important;opacity:1!important;

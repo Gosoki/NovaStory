@@ -491,7 +491,8 @@ def main() -> None:
     print(f"    未满足人数(按子项): {fails}\n")
     if "lang" in pt.columns:
         mix = pt.groupby("lang")["participant_id"].nunique().to_dict()
-        note = "" if set(mix) <= {"ja"} else "   ⚠️ 非 ja 会话(研究员测试/脱离协议)——分析前确认是否剔除"
+        # ja=日本队列 / zh=中国队列,都是正式数据(2026-09-06);只有 en 才要确认剔除。
+        note = "" if set(mix) <= {"ja", "zh"} else "   ⚠️ 出现 en 会话(研究员测试/脱离协议)——分析前确认是否剔除"
         print(f"=== 被试语言构成(人数)=== {mix}{note}\n")
     have = [c for c in _SUMMARY_COLS if c in pt.columns]
     print("=== 按条件均值(核心对比 C/D/E)===")

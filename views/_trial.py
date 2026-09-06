@@ -53,3 +53,6 @@ def submit_trial(final_text: str) -> None:
         st.session_state.get("r_attempt"),
     )
     st.session_state["r_phase"] = "questionnaire"
+    # 提交后进问卷:Streamlit 是单页应用,rerun **不会**重置滚动位置,被试会落在
+    # 问卷中间(刚才那颗提交按钮所在的高度)。让问卷页自己滚回顶部。
+    st.session_state["_scroll_top"] = True

@@ -226,12 +226,21 @@ def insert_participant(
             # must not shift real participants' Latin-square rotation.
             # json_valid 先行:一行非法 JSON(手改库 / 写入中断)会让 json_extract 抛错,
             # 整条 COUNT 崩 → 阻断之后**所有**新被试入库。非法 JSON 的行按真被试计。
-            n = conn.execute(
-                "SELECT COUNT(*) FROM participants WHERE passed=1"
+            # 取**当前用得最少**的那个格子(平局取编号小的),而不是「总人数 % 18」。
+            # 两者在没有空缺时逐个等价:空库→0、1 人后→1、…、18 人后→0,轮转完全一样。
+            # 区别只在有人被释放之后(monitor 面板的「释放」把行标成 dev,不再计入):
+            #   · 旧的计数法:13 人占了 0-12,释放掉 seq=5 那个,下一个人算 12%18=12 —— 12
+            #     已经有人了,于是重复,而 5 的空缺永远没人补。
+            #   · 现在:5 是唯一还空着的格子,下一个人正好补上。
+            # 也因此,释放中途退出的被试不再破坏 Williams 平衡。
+            rows = conn.execute(
+                "SELECT seq, COUNT(*) FROM participants WHERE passed=1 AND seq IS NOT NULL"
                 " AND (json_valid(screening_json) = 0"
                 "      OR COALESCE(json_extract(screening_json, '$.dev'), 0) != 1)"
-            ).fetchone()[0]
-            seq = n % config.LATIN_SQUARE_N  # 18 Williams seqs (#1)
+                " GROUP BY seq"
+            ).fetchall()
+            used = {int(r[0]): int(r[1]) for r in rows if r[0] is not None}
+            seq = min(range(config.LATIN_SQUARE_N), key=lambda k: (used.get(k, 0), k))
         cur = conn.execute(
             "INSERT INTO participants"
             " (created_at, lang, seq, demographics_json, screening_json, passed, token, status)"
@@ -240,6 +249,35 @@ def insert_participant(
              int(passed), token, "in_progress" if passed else "screened_out"),
         )
         return int(cur.lastrowid), seq, token
+
+
+def release_participant(pid: int) -> bool:
+    """释放一位被试占用的拉丁方序号:把 screening_json.dev 置 1,数据整行保留。
+
+    为什么是「标记」而不是「删除」:删行会让后续被试的序号算错(见 insert_participant),
+    也毁掉已经采到的那部分数据。标记成 dev 之后,这一行同时从三处退出——
+    序号分配(insert_participant)、分析纳入(v3.included_participants)、监控面板统计,
+    与研究员用 devtools 注入的测试行走同一条排除路径,口径一致。
+
+    ⚠️ 被释放者的 token 仍然有效:他若拿着 ?t= 链接回来,还能把流程走完,但数据不再进分析。
+    所以只对**确认不会回来**的会话用(面板里按最后活动时间判断)。
+    """
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT screening_json FROM participants WHERE id=?", (pid,)).fetchone()
+        if row is None:
+            return False
+        try:
+            d = json.loads(row[0]) if row[0] else {}
+        except (ValueError, TypeError):
+            d = {}
+        if not isinstance(d, dict):
+            d = {}
+        d["dev"] = True
+        d["released_at"] = _now()      # 留痕:事后能分辨「研究员释放」与「devtools 注入」
+        conn.execute("UPDATE participants SET screening_json=? WHERE id=?",
+                     (_dumps(d), pid))
+    return True
 
 
 def get_participant_by_token(token: str) -> Optional[dict]:

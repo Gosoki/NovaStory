@@ -4,7 +4,7 @@
 PY := .venv/bin/python
 .DEFAULT_GOAL := help
 
-.PHONY: help dev baseline norming v3 events pilot embed judge stats stats-all power figures analysis smoke robust smoke-e2e i18n freeze freeze-check
+.PHONY: help dev baseline norming v3 events pilot embed judge stats stats-all power figures analysis smoke robust smoke-e2e i18n freeze freeze-check precompress serve
 
 dev:        ## 本地开发起服务(热重载;生产 config.toml 默认关)
 	.venv/bin/streamlit run app.py --server.runOnSave true --server.fileWatcherType auto
@@ -55,13 +55,25 @@ smoke:      ## 分析链路回归自测(合成 N=36 跑完整条链并断言;临
 	$(PY) scripts/analysis_smoke.py
 
 smoke-e2e:  ## 被试全流程 E2E(正常路径:consent→3轮→完成码 + intake埋点/?lang=/续接/重做)
-	$(PY) scripts/dev_smoke_e2e.py
+	NOVASTORY_NO_IMAGES=1 $(PY) scripts/dev_smoke_e2e.py
 
 robust:     ## 实测就绪性验收(出事时扛不扛得住:并发/断网/刷新/脏数据/后台线程)→ docs/paper/12
-	$(PY) scripts/robustness_check.py
+	NOVASTORY_NO_IMAGES=1 $(PY) scripts/robustness_check.py
 
 i18n:       ## 三语键树 + 占位符一致性(CLAUDE.md §0.3 硬约束①;改完文案必跑)
 	$(PY) scripts/i18n_check.py
+
+# ↓ 静态资源加速。Streamlit 1.60 主动让 /static/ 绕过 gzip(它按局域网压测调的),
+#   跨境链路上首屏 2.5MB 原文 JS 因此成了主要成本。预压缩把线上字节降到 0.77MB。
+#   产物在 .venv 里(不进 git),所以**装完依赖或升级 Streamlit 后要重跑**;
+#   忘了也不会发错内容 —— serve.py 比对 mtime,产物过期就回退发原文。
+precompress: ## 预压缩 Streamlit 静态资源(gzip);装/升级 streamlit 后必跑,make serve 会自动带上
+	$(PY) scripts/precompress_static.py
+
+serve:      ## 生产方式起服务(预压缩 + 静态资源 gzip;正式部署见 deploy/novastory.service)
+	$(PY) scripts/precompress_static.py --quiet
+	$(PY) scripts/serve.py run app.py --server.port 8501 --server.address 127.0.0.1 \
+	  --server.headless true --server.runOnSave false --server.fileWatcherType none
 
 # 真数据到手后的完整链路。events 必须排在 v3 之后(它把事件层列合入 v3 写的 CSV);
 # events / embed / judge 互不依赖(三者都是「先删自己的列再 merge」,顺序无关),但都得在 v3

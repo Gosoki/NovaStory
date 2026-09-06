@@ -36,7 +36,14 @@ def render_editable(topic: dict, cond: str) -> None:
         key="_script_edit",
         height=320,
         label_visibility="collapsed",
-        max_chars=4000,   # 一份 3 镜分镜 ≈ 300-600 字;硬上限只防整段粘贴撑爆 difflib / script_versions
+        # 上限必须高到 AI 稿绝无可能触到。第 27-28 行把 current_script() 灌进这个 key,
+        # 而 text_area 会按 max_chars **截断**灌进来的值并写回 session_state ——
+        # 于是 persist_pending_edit 看到「内容变了」,把模型话痨造成的截断记成一次
+        # user_edit,hand_edit_chars 凭空多出几千字。那是「努力再分配」主图的指标,
+        # 被伪造了不会有任何报错。原值 4000 离一份 3 镜分镜(≈300-600 字)太近。
+        # 取 20000 与 state._edit_chars 的 difflib 退化阈值对齐:防整段粘贴的作用还在,
+        # 而二次方爆炸本来就由那道退化分支兜底,不靠这个上限。
+        max_chars=20000,
     )
     st.caption(t("postgen.edit_hint"))
 

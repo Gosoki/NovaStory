@@ -14,6 +14,12 @@ from core import config
 
 LOG_PATH = Path(__file__).resolve().parent.parent / "data" / "llm.log"
 
+# 单次生成的输出上限。不传的话,限流器可能按模型的最大输出(gpt-5.4-mini 是 128k)预留 TPM
+# 额度 —— 一个请求就能吃掉 Tier 1 全部 TPM 的四分之一,几个并发就开始 429。实测最长的一版
+# E 终稿才 1623 token,2000 留了足够裕量。顺带也是「模型话痨把编辑框撑爆」的第二道保险。
+# 只对 OpenAI 传:第三方网关未必认这个较新的参数名(与下面 response_format 的处理同理)。
+MAX_OUTPUT_TOKENS = 2000
+
 # Per-request timeout (seconds). The OpenAI SDK defaults to ~600s, so a congested
 # free gateway (edgefn returns 503 "渠道繁忙"/ChannelNotEnough) can hang a single
 # request for ~10 min before erroring — a participant would stare at a spinner the
@@ -254,6 +260,8 @@ def generate_stream(
             stream = client.chat.completions.create(
                 model=model, messages=messages, temperature=temperature, stream=True,
                 seed=seed, stream_options={"include_usage": True},
+                **({"max_completion_tokens": MAX_OUTPUT_TOKENS}
+                   if "openai.com" in (base_url or "") else {}),
             )
             for chunk in stream:
                 if getattr(chunk, "system_fingerprint", None):
@@ -346,6 +354,7 @@ def generate_json(
         kwargs = {}
         if "openai.com" in (st.session_state.get("base_url") or ""):
             kwargs["response_format"] = {"type": "json_object"}
+            kwargs["max_completion_tokens"] = MAX_OUTPUT_TOKENS
         try:
             resp = client.chat.completions.create(
                 model=model,

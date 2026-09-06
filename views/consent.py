@@ -6,6 +6,7 @@ from datetime import datetime
 import streamlit as st
 
 from core import state
+from views import _scroll
 from i18n import DEFAULT_LANG, t
 from views._lang import language_radio
 
@@ -22,6 +23,9 @@ def proof_now() -> dict:
 
 
 def render() -> None:
+    # 关掉标签页后重新扫码时 URL 里已经没有 ?t=,直接往下走就会 insert 第二行被试
+    # 并吃掉一个拉丁方 seq(见 core/state 那段注释)。这台浏览器存过会话就给个入口。
+    state.offer_resume(t("consent.resume_link"), t("consent.resume_hint"))
     state.log_intake_event("consent_shown")
     # Subject picks their language once, here, before consenting. After this it is
     # not shown to the subject anywhere (only admins can switch it) — keeps a
@@ -50,4 +54,5 @@ def render() -> None:
         # the last thing read before round 1 rather than being pushed out of
         # memory by a 13-item form (2026-09-01 §4).
         st.session_state["stage"] = "screening"
+        _scroll.request()   # 同意 → 筛查:整页换内容
         st.rerun()
