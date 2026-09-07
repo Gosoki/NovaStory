@@ -349,7 +349,15 @@
     "health_unclosed": "未闭合调用",
     "unclosed_warn": "有 {n}/{total} 次 LLM 调用只发起、没有任何结束事件 —— 多半是有人在反复触发生成(每次刷新/点击都会打断上一次并重发)。看「进行中的会话」定位是谁。",
     "health_images": "配图成功率",
-    "images_warn": "分镜配图只成功 {ok}/{total} 张 —— 多半撞上了图片模型的每分钟限额(失败会被静默吞掉,被试看到空白画框)。检查 OpenAI 后台的 image 限额档位,或把被试入场时间错开。"
+    "images_warn": "分镜配图只成功 {ok}/{total} 张 —— 多半撞上了图片模型的每分钟限额(失败会被静默吞掉,被试看到空白画框)。检查 OpenAI 后台的 image 限额档位,或把被试入场时间错开。",
+    "usage_title": "API 用量",
+    "usage_calls": "文本调用",
+    "usage_prompt": "输入 token",
+    "usage_completion": "输出 token",
+    "usage_images": "已生成配图",
+    "usage_per_head": "按 {n} 位走完的被试算:人均 {calls} 次调用、{tok} token、{img} 张图(进行中的人还会继续用,不计入均值)",
+    "usage_by_group": "按调用类型:{detail}",
+    "usage_note": "只统计文本调用的 token;配图走另一条路不记 token,按张数计(选型时实测约 $0.0022/张)。折算金额请对照 OpenAI 当期价格表。"
   },
   "analysis": {
     "kept_cols": "接回既有列：{cols}",

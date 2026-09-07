@@ -349,7 +349,15 @@
     "health_unclosed": "Unclosed calls",
     "unclosed_warn": "{n} of {total} LLM calls started with no terminating event — most likely someone is re-triggering generation (each refresh or click aborts the previous call and fires a new one). Use “Sessions in progress” to find who.",
     "health_images": "Illustration success",
-    "images_warn": "Only {ok} of {total} storyboard illustrations were generated — most likely the image model's per-minute rate limit (failures are swallowed silently and participants see empty frames). Check your OpenAI image rate tier, or stagger participant start times."
+    "images_warn": "Only {ok} of {total} storyboard illustrations were generated — most likely the image model's per-minute rate limit (failures are swallowed silently and participants see empty frames). Check your OpenAI image rate tier, or stagger participant start times.",
+    "usage_title": "API usage",
+    "usage_calls": "Text calls",
+    "usage_prompt": "Input tokens",
+    "usage_completion": "Output tokens",
+    "usage_images": "Illustrations made",
+    "usage_per_head": "Over {n} completed participants: {calls} calls, {tok} tokens, {img} images each (in-progress sessions are excluded — they will use more)",
+    "usage_by_group": "By call type: {detail}",
+    "usage_note": "Token counts cover text calls only; illustrations go through a separate path that records no tokens, so they are counted per image (~$0.0022 each as measured during model selection). Convert to cost using OpenAI's current price list."
   },
   "analysis": {
     "kept_cols": "Carried over existing columns: {cols}",

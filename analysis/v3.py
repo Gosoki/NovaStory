@@ -198,7 +198,8 @@ def _duration_sec(raw) -> float:
     return float(m.group()) if m else np.nan
 
 
-def structural_legs(final_output: str, total_seconds: float | None = None) -> dict:
+def structural_legs(final_output: str, total_seconds: float | None = None,
+                    shot_count: int | None = None) -> dict:
     """任务规格符合度(客观质量下界):镜数、字段齐全率、是否达标。
 
     `spec_ok` = **「15s 且 3 镜」达标**(docs/paper/03 §4 的第三个成分)。此前只判镜数,
@@ -207,7 +208,11 @@ def structural_legs(final_output: str, total_seconds: float | None = None) -> di
     (不硬编码 15,题目表里就是这个字段),容差 ±SPEC_TOL_SEC。
     时长解析不出来 → 无法核验 → 记 0(客观**下界**的一贯口径:不能证明达标就不算达标),
     而不是记缺失——否则解析越烂、分数越高。
-    `shots_ok`(仅镜数)保留作描述性列,不再是 H4 的成分。"""
+    `shots_ok`(仅镜数)保留作描述性列,不再是 H4 的成分。
+
+    镜数目标与总秒数同样**取自题目**(`shot_count`),不硬编码 3 —— 时长早就这么做了,
+    镜数却一直写死,题库一改(题目表里 shot_count 允许 1..12)判定就会集体失准。
+    缺失时退回 3(现有三题的值),并与时长同一口径:无法核验不算达标。"""
     shots = parse_shots(_text(final_output))
     n = len(shots)
     if not n:
@@ -220,11 +225,12 @@ def structural_legs(final_output: str, total_seconds: float | None = None) -> di
     target = total_seconds if total_seconds else None
     dur_ok = (target is not None and not np.isnan(dur_total)
               and abs(dur_total - target) <= SPEC_TOL_SEC)
+    want_n = int(shot_count) if shot_count else 3
     return {"n_shots": n, "field_completeness": float(comp),
             "parse_ok": int(any(s.get("visual") for s in shots)),
-            "shots_ok": int(n == 3),
+            "shots_ok": int(n == want_n),
             "dur_total": dur_total,
-            "spec_ok": int(n == 3 and dur_ok)}
+            "spec_ok": int(n == want_n and dur_ok)}
 
 
 def shot_fidelity(shot_annotations_json) -> dict:
@@ -391,7 +397,9 @@ def per_trial(df: pd.DataFrame) -> pd.DataFrame:
                                      "fs_pref_cond", "fs_reuse_cond", "fs_closest_cond",
                                      "fs_effort_cond")},
         }
-        m.update(structural_legs(r.get("final_output"), _topic_seconds(r.get("topic_json"))))
+        m.update(structural_legs(r.get("final_output"),
+                                 _topic_seconds(r.get("topic_json")),
+                                 _topic_shots(r.get("topic_json"))))
         m.update(shot_fidelity(r.get("shot_annotations_json")))
         m.update(guidance_dose(r.get("guidance_json")))
         m.update(version_evo(r.get("script_versions"), r.get("final_output")))
@@ -399,6 +407,17 @@ def per_trial(df: pd.DataFrame) -> pd.DataFrame:
         m.update(behavioral_metrics(r))
         rows.append(m)
     return pd.DataFrame(rows)
+
+
+def _topic_shots(topic_json) -> int | None:
+    """题目要求的镜数;缺失/脏值 → None(structural_legs 退回 3)。
+    与 _topic_seconds 同一口径:规格达标要照**这道题**的要求判,不是照写死的 3。"""
+    t = _loads(topic_json, {})
+    try:
+        n = int(t.get("shot_count")) if isinstance(t, dict) else None
+    except (TypeError, ValueError):
+        return None
+    return n if n and n > 0 else None
 
 
 def _topic_seconds(topic_json) -> float | None:

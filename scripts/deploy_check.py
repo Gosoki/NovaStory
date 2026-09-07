@@ -560,7 +560,21 @@ def check_static_gzip() -> None:
         out = ""
     props = dict(l.split("=", 1) for l in out.splitlines() if "=" in l)
     if props.get("ActiveState") != "active":
-        add(Y, "静态压缩", "预压缩产物是最新的;服务未运行,无法确认启动入口。")
+        # 不用 systemd 时服务是 scripts/start.sh 起的普通进程 —— 从进程命令行看启动入口,
+        # 而不是一句「服务未运行」了事(它明明在跑)。
+        try:
+            out2 = subprocess.run(["pgrep", "-af", "serve.py run app.py"],
+                                  capture_output=True, text=True, timeout=10).stdout
+        except Exception:  # noqa: BLE001
+            out2 = ""
+        lines = [l for l in out2.splitlines() if "/scripts/serve.py" in l]
+        if lines:
+            add(G, "静态压缩", "预压缩产物最新,且服务经 serve.py 启动(首屏 2.50MB → 0.77MB)。")
+        elif _PUBLIC_COMPRESSED:
+            add(Y, "静态压缩", "线上压缩由反代承担(见「对外地址」),已达标。改用 serve.py 启动可再省下"
+                               "反代每次现场压缩的 CPU —— 属优化,不阻断采数。")
+        else:
+            add(Y, "静态压缩", "预压缩产物是最新的;没找到 serve.py 进程,无法确认启动入口。")
     elif "serve.py" in props.get("ExecStart", ""):
         add(G, "静态压缩", "预压缩产物最新,且服务经 serve.py 启动(首屏 2.50MB → 0.77MB)。")
     elif _PUBLIC_COMPRESSED:

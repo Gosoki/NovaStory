@@ -98,9 +98,15 @@ def round_metrics(g: pd.DataFrame) -> dict:
              if isinstance(p.get("elapsed"), (int, float))]
     toks = [(p.get("usage") or {}).get("total_tokens") for p in done]
     toks = [t for t in toks if isinstance(t, (int, float))]
-    # B7 可追溯性:seed / system_fingerprint 落在 llm_done.repro 里,此前无人读。同一轮里出现
-    # >1 个 fingerprint = 服务端 build 在采数中途换了,论文里的「模型漂移检测」靠这一列说话。
-    fps = {(p.get("repro") or {}).get("system_fingerprint") for p in done}
+    # B7 可追溯性:同一轮里出现 >1 个模型身份 = 服务端在采数中途换了,
+    # 论文里的「模型漂移检测」靠这一列说话。
+    # ⚠️ 不能只看 system_fingerprint:**正式快照 gpt-5.4-mini 根本不返回它**
+    # (实测归档库 25/25 条全是 None),于是这一列恒为 0/1,漂移检测形同虚设。
+    # 服务端回显的 model 才是那个模型下唯一可用的身份证据 —— 优先 fingerprint,
+    # 没有就退到 served_model,两者都空才不计。
+    fps = {((p.get("repro") or {}).get("system_fingerprint")
+            or (p.get("repro") or {}).get("served_model")) for p in done}
+    fps.discard(None)
     fps.discard(None)
     return {
         "t_questionnaire": t_q,

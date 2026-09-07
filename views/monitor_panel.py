@@ -65,6 +65,7 @@ def render() -> None:
     _overview(parts)
     _sessions(parts, trials)
     _data_health(trials, dev_ids)
+    _usage(dev_ids)
     _balance(trials)
     _progress(parts)
     _descriptive(trials)
@@ -219,7 +220,10 @@ def _data_health(trials: pd.DataFrame, dev_ids: set[int] = frozenset()) -> None:
     gs = pj[typ == "guidance_shown"]
     fb_rate = gs.map(lambda x: bool(_loads(x).get("fallback"))).mean() if len(gs) else float("nan")
     done_pay = pj[typ == "llm_done"].map(_loads)
-    fps = {(p.get("repro") or {}).get("system_fingerprint") for p in done_pay} - {None}
+    # 与 analysis/events 同口径:正式模型不返回 system_fingerprint,退到 served_model,
+    # 否则这条告警永远不会触发(而它正是采数中途换模型的唯一预警)。
+    fps = {((p.get("repro") or {}).get("system_fingerprint")
+            or (p.get("repro") or {}).get("served_model")) for p in done_pay} - {None}
     el = done_pay.map(lambda p: p.get("elapsed"))
     el = pd.to_numeric(el, errors="coerce").dropna()
     med, p95 = (el.median(), el.quantile(0.95)) if len(el) else (float("nan"), float("nan"))
@@ -243,6 +247,64 @@ def _data_health(trials: pd.DataFrame, dev_ids: set[int] = frozenset()) -> None:
     if len(fps) > 1:
         # B7:服务端 build 在采数中途换了 —— 输出本身不可逐字复现,这是唯一能报告的漂移证据
         st.warning(t("monitor.fingerprint_drift", n=len(fps)))
+
+
+def _usage(dev_ids: set[int] = frozenset()) -> None:
+    """API 用量。数据一直在记(llm_done 的 payload.usage 由 core/llm._stash_usage 塞进去),
+    只是此前面板一个字都不显示 —— 采数期看不到用量,撞限额或跑超预算都只能事后从账单发现。
+
+    ⚠️ 只覆盖**文本**调用。配图走 core/imagegen 的另一条路,那边不记 usage,
+    所以这里用「已生成张数」代替(单价见 imagegen 的选型注释,约 $0.0022/张)。"""
+    ev = db.load_table("events")
+    if ev.empty or "type" not in ev:
+        return
+    if dev_ids and "participant_id" in ev:
+        ev = ev[~ev["participant_id"].isin(dev_ids)]
+    pj = ev["payload_json"] if "payload_json" in ev else pd.Series(dtype=str)
+    done_pay = pj[ev["type"] == "llm_done"].map(_loads)
+    if done_pay.empty:
+        return
+
+    st.markdown(f"**{t('monitor.usage_title')}**")
+    p_tok = sum(int((d.get("usage") or {}).get("prompt") or 0) for d in done_pay)
+    c_tok = sum(int((d.get("usage") or {}).get("completion") or 0) for d in done_pay)
+    n_call = len(done_pay)
+    img = pj[ev["type"] == "images_ready"].map(_loads)
+    n_img = sum(int(d.get("n_ok") or 0) for d in img)
+    # 人均必须**分子分母同源**:总量含未完成者的消耗,拿它去除以完成人数会把人均抬得离谱
+    # (实测归档库:25 次调用 ÷ 3 位完成者 = 8.3 次/人,而完成者实际只用了 8 次)。
+    # 所以人均单独用「完成者自己的事件」重算一遍。
+    parts = db.load_table("participants")
+    done_ids = (set(parts.loc[parts["status"] == "done", "id"].astype(int))
+                if "status" in parts and "id" in parts else set())
+    n_done = len(done_ids)
+    if n_done and "participant_id" in ev:
+        mine = ev["participant_id"].isin(done_ids)
+        d_pay = pj[mine & (ev["type"] == "llm_done")].map(_loads)
+        d_img = pj[mine & (ev["type"] == "images_ready")].map(_loads)
+        h_calls = len(d_pay)
+        h_tok = sum(int((d.get("usage") or {}).get("prompt") or 0)
+                    + int((d.get("usage") or {}).get("completion") or 0) for d in d_pay)
+        h_img = sum(int(d.get("n_ok") or 0) for d in d_img)
+    else:
+        h_calls = h_tok = h_img = 0
+
+    c = st.columns(4)
+    c[0].metric(t("monitor.usage_calls"), f"{n_call:,}")
+    c[1].metric(t("monitor.usage_prompt"), f"{p_tok:,}")
+    c[2].metric(t("monitor.usage_completion"), f"{c_tok:,}")
+    c[3].metric(t("monitor.usage_images"), f"{n_img:,}")
+    if n_done:
+        st.caption(t("monitor.usage_per_head", n=n_done,
+                     calls=f"{h_calls / n_done:.1f}",
+                     tok=f"{h_tok / n_done:,.0f}",
+                     img=f"{h_img / n_done:.1f}"))
+    # 按调用类型拆开:E 的引导是额外一轮调用,想知道 E 贵多少就看这里
+    by_group = pd.Series([d.get("group", "?") for d in done_pay]).value_counts()
+    if len(by_group):
+        st.caption(t("monitor.usage_by_group",
+                     detail=" · ".join(f"{k} {v}" for k, v in by_group.items())))
+    st.caption(t("monitor.usage_note"))
 
 
 def _balance(trials: pd.DataFrame) -> None:

@@ -78,6 +78,16 @@ HASHED_FILES = [
     "views/guidance.py",
     "views/_streaming.py",
     "views/_trial.py",
+    # 2026-09-07 补齐:下面这些同样「改了就改数据」,而 prereg/v3/stats 的哈希都不会动。
+    "views/_scale.py",         # 7 点量表的渲染与取值 —— 所有主观 DV 的测量工具本身
+    "views/final_survey.py",   # 总问卷的题目与选项(pref/reuse/closest/effort/overall/noticed)
+    "views/round_common.py",   # 题目卡怎么呈现 + 创意输入的校验(MIN_INTENT_CHARS 在这里生效)
+    "views/_first_gen.py",     # C/D 首次生成的流程
+    "core/llm.py",             # 温度 / 超时 / 重试 / max_completion_tokens —— 生成行为本身
+    "core/imagegen.py",        # 配图是**被试答问卷时看着的东西**,属测量情境
+    "analysis/norming.py",     # 题目开放度的算法 ——「三题可比」这个前提的证据来源
+    # 故意**不**纳入 analysis/figures.py 与 power_sim.py:它们不改变任何一个数,
+    # 纳进来只会让「改了个配色」被 freeze-check 报成协议偏离。
 ]
 
 
@@ -195,7 +205,11 @@ def check(path: Path) -> int:
         print(f"⛔ 冻结产物不存在:{path}\n   采数前必须先跑一次 --write。")
         return 1
     frozen = json.loads(path.read_text(encoding="utf-8"))
-    cur = build()
+    # 当前值要先过一遍 JSON 往返再比:产物是 JSON,而 JSON 没有元组。
+    # stats._PAIRS 这类 [("E","D"),…] 写进去是数组、读回来是 list,与内存里的 tuple
+    # 永远不相等 —— 于是**产物刚写完就自我校验失败**,make freeze-check 恒红,
+    # 而部署闸门会把它报成「协议偏离」。实测撞到过:第一次 --write 后立刻 --check 就红。
+    cur = json.loads(json.dumps(build(), ensure_ascii=False, sort_keys=True, default=str))
     bad = []
 
     # 双向比对:冻结后**新增**的常量 / 旋钮 / 文件也算偏离(以前只遍历冻结产物里已有的键,
