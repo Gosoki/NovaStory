@@ -111,20 +111,24 @@ def _baseline_texts(topic_idx: int, topics: list) -> list[str]:
         raise SystemExit(f"{p} 内记录的 topic_idx={bad} 与文件名不符 —— 基线与题目错配,"
                          "删掉 data/baseline/ 重跑 make baseline")
     from core import prompts as _prompts  # noqa: PLC0415 — avoid a UI import at module load
-    scen = [_prompts.scenario_text(t, BASELINE_LANG, with_note=False) for t in topics]
+    scen = [_prompts.scenario_text(t, BASELINE_LANG) for t in topics]
     seed = (recs[0].get("seed") or "").strip()
     if seed and seed != scen[topic_idx]:
         if seed in scen:
             raise SystemExit(f"{p} 是用第 {scen.index(seed)} 题的情境生成的 —— topics.json 已被"
                              "重排/改写,基线与题目错配,删掉 data/baseline/ 重跑 make baseline")
-        # 2026-09-02 之前生成的基线,seed 里带着那句写给模型看的元指令
-        # (「以上の分岐はあくまで例です…」)。那批基线的「假装的用户创意」被污染过,
-        # Δ 的零点量的不是「纯 AI 会写成什么样」——必须硬失败,不能只警告一句。
-        old_style = [_prompts.scenario_text(t, BASELINE_LANG, with_note=True) for t in topics]
-        if seed in old_style:
+        # seed 对不上任何一题的情境 = 这份基线是用**旧口径**生成的。历史上有过两版:
+        #   · 2026-09-02 前:seed 里还带着「以上の分岐はあくまで例です…」那句元指令;
+        #   · 2026-09-06 前:seed = 情境 + 分支列表(choices)。
+        # 现口径只发情境主干(见 prompts.scenario_text 的说明)。任何一版旧基线的
+        # 「假装的用户创意」都与被试稿不同源,Δ 的零点量的不是同一件事 —— 必须硬失败,
+        # 不能只警告一句。基线本来就必须与采数同模型重跑,不存在"将就用"的选项。
+        if any(seed.startswith(x) for x in scen if x):
             raise SystemExit(
-                f"{p.name} 是 2026-09-02 seed 变更**之前**生成的(seed 里含元指令),"
-                "Δ 的零点被污染 —— 删掉 data/baseline/ 重跑 make baseline")
+                f"{p.name} 的 seed 以第 {[i for i, x in enumerate(scen) if x and seed.startswith(x)][0]} "
+                "题的情境开头但更长 —— 是 2026-09-06 口径变更**之前**生成的"
+                "(seed 里含分支列表/元指令),Δ 的零点与被试稿不同源。"
+                "删掉 data/baseline/ 用正式模型重跑 make baseline。")
         print(f"⚠️ {p.name} 的 seed 不是任何题的情境(可能用了 --seeds-file):题目身份只能按"
               "文件序号信任,请确认 topics.json 自生成基线以来未改动。")
     return [r["text"] for r in recs]

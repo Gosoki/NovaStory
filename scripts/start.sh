@@ -82,11 +82,22 @@ fi
 # 静态资源预压缩(幂等;产物已是最新时几乎瞬间返回)
 "$PY" "$ROOT/scripts/precompress_static.py" --quiet 2>>"$LOG"
 
-nohup "$PY" "$ROOT/scripts/serve.py" run app.py \
+# setsid 让服务**脱离当前会话与进程组**,自成会话领导者、被 init 收养。
+# 只用 nohup 不够:调用方的 shell 被清理时,信号是发给整个进程组的,nohup 只挡 SIGHUP。
+# 实测踩过 —— 用 nohup 起完、验证 200,过一阵整站 502,日志里没有任何 traceback,
+# 就是被外部信号杀的。
+setsid nohup "$PY" "$ROOT/scripts/serve.py" run app.py \
   --server.port "$PORT" --server.address "$ADDR" --server.headless true \
   --server.runOnSave false --server.fileWatcherType none \
-  >>"$LOG" 2>&1 &
-echo $! > "$PIDFILE"
+  >>"$LOG" 2>&1 < /dev/null &
+# setsid 会 fork 后自身退出,所以 $! 拿到的是包装进程而不是最终的 python。
+# 等它出现后按命令行反查真实 pid。
+for _ in $(seq 1 20); do
+  real="$(pgrep -f "$ROOT/scripts/serve.py run app.py" | head -1)"
+  [ -n "$real" ] && break
+  sleep 0.5
+done
+[ -n "${real:-}" ] && echo "$real" > "$PIDFILE"
 
 # 等它真的起来再报成功 —— 只打印 pid 不算数
 for _ in $(seq 1 40); do

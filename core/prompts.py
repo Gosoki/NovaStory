@@ -64,37 +64,26 @@ def situation_lang(topic: dict, lang: str) -> str:
     return _norm(lang)
 
 
-def scenario_text(topic: dict, lang: str, *, with_note: bool = True) -> str:
-    """Full situation text = the setup sentence + the "which will you do?" list.
+def scenario_text(topic: dict, lang: str) -> str:
+    """发给模型的情境 = **只有 setup 那一句**,不含分支列表。
 
-    They are two fields in topics.json since 2026-09-01 (§15) so the UI can grey
-    the choice list out and mark it as non-binding; the model still sees the same
-    sentence sequence it saw before, so generation is unchanged."""
+    2026-09-06 拍板:分支列表(choices)是给**人**的脚手架 —— 题目卡把它括进浅色括号、
+    注明「别的展开也可以」,用途是降低空白页焦虑。它不该同时成为模型的约束:
+    模型看到那三条分支就会被锚在上面,被试写了列表之外的走向也会被往回拉,
+    而这个偏差**与条件相关**(D/E 能把稿子改回来,C 不能)→ 系统性压低 C 的保真,
+    偏偏保真是 H1 的主终点。
+
+    此前的缓解办法是在 prompt 里补一句「以上分支只是例子,以用户创意为准」,
+    但那只是缓解;既然还没采数,直接不把列表发给模型 —— 根除而不是缓解。
+    **被试端不受影响**:题目卡的分支照常显示(views/round_common.py 走
+    state.topic_text(topic, "choices"),与本函数是两条独立的路)。
+
+    顺带解决:机器基线拿本函数的返回值当「假装的用户创意」,旧口径下
+    「状況」行与「創意」行都塞着同一串分支文本,情境等于发了两遍,
+    而被试稿只发一遍 —— 基线与被试稿的题目暴露量本来是不对等的。
+    """
     key = situation_lang(topic, lang)
-    scenario = _localize(topic.get("scenario", ""), key).strip()
-    choices = _localize(topic.get("choices", ""), key).strip()
-    if not choices:
-        return scenario
-    # 选择列表要**明确标成例子**。题目卡自 2026-09-01(§15)起把它括进浅色括号并注明
-    # 「别的展开也可以」,而 prompt 这边原样断言,两边就不一致了:被试写了列表之外的
-    # 走向,模型仍被锚在列表上,生成结果会往回拉。这个偏差还与条件相关 —— D/E 能把稿子
-    # 改回来,C 不能 —— 于是会**系统性地压低 C 的保真**,而保真恰好是 H1 的主终点。
-    sep = " " if key == "en" else ""
-    if not with_note:
-        # with_note=False 给的是「这道题的情境本身」,不含那句写给模型看的元指令。
-        # 机器基线用它当**假装的用户创意**(scripts/baseline_gen.py 的 seed),
-        # embed 又靠这个字符串反查基线属于哪道题 —— 把「以上的分支只是例子」当成
-        # 用户的创意喂进去,基线质心量的就不是「纯 AI 会写成什么样」了。
-        return f"{scenario}{sep}{choices}"
-    note = _CHOICE_NOTE[key if key in _CHOICE_NOTE else "ja"]
-    return f"{scenario}{sep}{choices}{sep}{note}"
-
-
-_CHOICE_NOTE = {
-    "zh": "(以上的分支只是例子;若用户的创意走向别处,以用户的创意为准。)",
-    "en": "(Those branches are only examples; if the user's idea goes somewhere else, follow the user's idea.)",
-    "ja": "(上の分岐はあくまで例です。ユーザーのアイデアが別の展開なら、そちらを優先してください。)",
-}
+    return _localize(topic.get("scenario", ""), key).strip()
 
 
 def _topic_block(topic: dict, intent: str, lang: str) -> str:

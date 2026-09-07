@@ -230,6 +230,30 @@
     .diffuse .noise{animation:none;opacity:.12}
   }
 
+  /* 内嵌视频:横竖屏都靠 max-height 兜住,不撑破版面 */
+  .clip{display:block;margin:clamp(10px,1.8vh,20px) auto 0;
+    max-width:min(100%,880px);max-height:52vh;border-radius:12px;
+    border:2px solid var(--line-2);background:#000;
+    box-shadow:0 8px 26px -16px rgba(0,0,0,.45)}
+  .clip-cap{text-align:center;font-size:clamp(.85rem,1.2vw,1.02rem);color:var(--faint);
+    margin-top:.45em}
+  /* 实验链接二维码(内联 SVG,不依赖任何外部文件/网络) */
+  /* 尺寸跟着视口走,不设 px 上限 —— 教室投影分辨率越高,码就越大;
+     用 px 封顶会让 4K 投影上的码只剩屏宽的 8%,后排扫不到。 */
+  .qr{display:block;width:min(34vw,46vh);height:auto;margin:0 auto;
+    border-radius:10px;border:2px solid var(--line-2);background:#fff}
+  /* 封面的活动总标题:压在钩子标题上方,用细线托住,不跟 h1 抢视觉重心 */
+  .cover-title{font-size:clamp(1.02rem,1.95vw,1.58rem);font-weight:800;color:var(--ink-2);
+    letter-spacing:.02em;line-height:1.5;padding-bottom:clamp(10px,1.6vh,18px);
+    margin-bottom:clamp(14px,2.4vh,26px);border-bottom:2px solid var(--line-2);
+    max-width:min(100%,30em)}
+  .cover-title .em{color:var(--brand)}
+  /* 讲师现场演示入口:小字、靠右,学生看到也无妨(点进去只有一个密码框) */
+  .demo-link{display:inline-block;margin-top:clamp(10px,1.8vh,20px);
+    font-size:clamp(.82rem,1.15vw,1rem);font-weight:700;color:var(--muted);
+    text-decoration:none;border:1.5px dashed var(--line-2);border-radius:8px;
+    padding:.34em .8em;background:var(--panel)}
+  .demo-link:hover{color:var(--brand);border-color:var(--brand)}
   /* 页码 + 进度条（原版这几个元素没样式，这里补齐） */
   .progress{position:fixed;left:0;top:0;height:4px;background:var(--brand);z-index:50;
             width:0;transition:width .32s ease}
@@ -262,6 +286,7 @@
 <!-- ========== 开场 ========== -->
 
 <section class="slide cover">
+  <div class="cover-title">AI 赋能，提升创作效率<br class="nl"><span class="em">—— AI 视频生成技术分享会</span></div>
   <div class="kicker">NovaStory · 一个还没收数据的研究</div>
   <h1>你说一句，<br>AI 做一版——<br><span class="brand">中间它替你定了多少？</span></h1>
   <p class="sub">今天聊两件事：<br>
@@ -517,6 +542,10 @@
     <div class="step"><div class="n">5</div><div class="t">看稿<br>回答问卷调查</div></div>
     <div class="step"><div class="n">6</div><div class="t">换题目换做法<br>再来两轮</div></div>
   </div>
+  <div style="text-align:right">
+    <a class="demo-link" href="https://test.jp.wuzuxi.com/?admin=1&amp;lang=zh"
+       target="_blank" rel="noopener">▸ 现场演示入口（研究员用 · 需口令）</a>
+  </div>
 </section>
 
 <section class="slide">
@@ -524,20 +553,16 @@
   <h2>扫这个码，或者输这个网址</h2>
   <div class="grid2">
     <div class="card" style="text-align:center;padding:clamp(20px,3vw,40px)">
-      <div style="width:min(46vw,300px);aspect-ratio:1;margin:0 auto;background:var(--panel-2);
-                  border:3px dashed var(--line-2);border-radius:14px;display:flex;
-                  align-items:center;justify-content:center;color:var(--faint);
-                  font-size:clamp(1rem,1.6vw,1.3rem);line-height:1.6">
-        〔二维码占位〕<br>部署后生成
-      </div>
+      <svg class="qr" viewBox="0 0 43 43" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges" role="img" aria-label="实验链接二维码"><rect width="43" height="43" fill="#fff"/><path d="M3 3h7v1h-7zM12 3h1v1h-1zM16 3h1v1h-1zM19 3h4v1h-4zM24 3h1v1h-1zM26 3h1v1h-1zM28 3h2v1h-2zM31 3h1v1h-1zM33 3h7v1h-7zM3 4h1v1h-1zM9 4h1v1h-1zM12 4h1v1h-1zM15 4h3v1h-3zM19 4h2v1h-2zM22 4h4v1h-4zM27 4h1v1h-1zM31 4h1v1h-1zM33 4h1v1h-1zM39 4h1v1h-1zM3 5h1v1h-1zM5 5h3v1h-3zM9 5h1v1h-1zM13 5h1v1h-1zM15 5h3v1h-3zM19 5h1v1h-1zM22 5h2v1h-2zM26 5h1v1h-1zM28 5h1v1h-1zM33 5h1v1h-1zM35 5h3v1h-3zM39 5h1v1h-1zM3 6h1v1h-1zM5 6h3v1h-3zM9 6h1v1h-1zM12 6h1v1h-1zM15 6h1v1h-1zM17 6h2v1h-2zM21 6h1v1h-1zM23 6h1v1h-1zM28 6h3v1h-3zM33 6h1v1h-1zM35 6h3v1h-3zM39 6h1v1h-1zM3 7h1v1h-1zM5 7h3v1h-3zM9 7h1v1h-1zM11 7h4v1h-4zM19 7h1v1h-1zM21 7h1v1h-1zM25 7h1v1h-1zM27 7h4v1h-4zM33 7h1v1h-1zM35 7h3v1h-3zM39 7h1v1h-1zM3 8h1v1h-1zM9 8h1v1h-1zM13 8h3v1h-3zM17 8h3v1h-3zM21 8h2v1h-2zM25 8h1v1h-1zM27 8h1v1h-1zM29 8h1v1h-1zM33 8h1v1h-1zM39 8h1v1h-1zM3 9h7v1h-7zM11 9h1v1h-1zM13 9h1v1h-1zM15 9h1v1h-1zM17 9h1v1h-1zM19 9h1v1h-1zM21 9h1v1h-1zM23 9h1v1h-1zM25 9h1v1h-1zM27 9h1v1h-1zM29 9h1v1h-1zM31 9h1v1h-1zM33 9h7v1h-7zM11 10h2v1h-2zM14 10h1v1h-1zM17 10h2v1h-2zM20 10h1v1h-1zM22 10h1v1h-1zM25 10h7v1h-7zM5 11h2v1h-2zM9 11h3v1h-3zM15 11h2v1h-2zM18 11h1v1h-1zM21 11h1v1h-1zM23 11h1v1h-1zM26 11h1v1h-1zM28 11h3v1h-3zM32 11h2v1h-2zM35 11h1v1h-1zM3 12h1v1h-1zM5 12h4v1h-4zM13 12h3v1h-3zM19 12h2v1h-2zM22 12h1v1h-1zM25 12h4v1h-4zM30 12h1v1h-1zM33 12h5v1h-5zM5 13h5v1h-5zM11 13h1v1h-1zM16 13h1v1h-1zM21 13h1v1h-1zM23 13h1v1h-1zM25 13h1v1h-1zM28 13h1v1h-1zM31 13h2v1h-2zM37 13h2v1h-2zM4 14h1v1h-1zM6 14h2v1h-2zM10 14h2v1h-2zM13 14h1v1h-1zM16 14h7v1h-7zM28 14h2v1h-2zM31 14h1v1h-1zM35 14h4v1h-4zM6 15h1v1h-1zM8 15h2v1h-2zM11 15h3v1h-3zM15 15h1v1h-1zM17 15h1v1h-1zM21 15h1v1h-1zM26 15h5v1h-5zM32 15h2v1h-2zM35 15h3v1h-3zM4 16h5v1h-5zM10 16h1v1h-1zM12 16h3v1h-3zM21 16h3v1h-3zM25 16h2v1h-2zM28 16h1v1h-1zM30 16h2v1h-2zM33 16h3v1h-3zM37 16h1v1h-1zM39 16h1v1h-1zM4 17h2v1h-2zM9 17h1v1h-1zM11 17h1v1h-1zM13 17h1v1h-1zM15 17h3v1h-3zM20 17h3v1h-3zM25 17h3v1h-3zM35 17h1v1h-1zM37 17h2v1h-2zM3 18h4v1h-4zM8 18h1v1h-1zM10 18h2v1h-2zM13 18h1v1h-1zM15 18h4v1h-4zM20 18h1v1h-1zM22 18h1v1h-1zM26 18h2v1h-2zM31 18h1v1h-1zM33 18h3v1h-3zM38 18h1v1h-1zM3 19h1v1h-1zM5 19h2v1h-2zM9 19h5v1h-5zM16 19h3v1h-3zM20 19h2v1h-2zM23 19h2v1h-2zM28 19h1v1h-1zM30 19h3v1h-3zM34 19h1v1h-1zM36 19h3v1h-3zM3 20h1v1h-1zM5 20h1v1h-1zM8 20h1v1h-1zM11 20h1v1h-1zM14 20h3v1h-3zM19 20h1v1h-1zM21 20h1v1h-1zM23 20h2v1h-2zM28 20h3v1h-3zM33 20h1v1h-1zM36 20h2v1h-2zM39 20h1v1h-1zM6 21h4v1h-4zM11 21h1v1h-1zM14 21h1v1h-1zM20 21h4v1h-4zM26 21h1v1h-1zM30 21h3v1h-3zM35 21h2v1h-2zM38 21h2v1h-2zM3 22h1v1h-1zM5 22h2v1h-2zM11 22h2v1h-2zM15 22h1v1h-1zM19 22h2v1h-2zM24 22h4v1h-4zM30 22h2v1h-2zM39 22h1v1h-1zM3 23h4v1h-4zM8 23h3v1h-3zM12 23h1v1h-1zM14 23h1v1h-1zM21 23h1v1h-1zM23 23h5v1h-5zM29 23h1v1h-1zM31 23h1v1h-1zM35 23h1v1h-1zM4 24h1v1h-1zM6 24h1v1h-1zM8 24h1v1h-1zM10 24h1v1h-1zM13 24h1v1h-1zM18 24h3v1h-3zM22 24h1v1h-1zM25 24h1v1h-1zM34 24h1v1h-1zM37 24h2v1h-2zM5 25h1v1h-1zM7 25h1v1h-1zM9 25h1v1h-1zM11 25h1v1h-1zM13 25h2v1h-2zM16 25h7v1h-7zM24 25h1v1h-1zM26 25h1v1h-1zM29 25h1v1h-1zM32 25h1v1h-1zM35 25h1v1h-1zM37 25h1v1h-1zM5 26h1v1h-1zM7 26h1v1h-1zM12 26h2v1h-2zM15 26h2v1h-2zM18 26h4v1h-4zM23 26h1v1h-1zM27 26h6v1h-6zM36 26h3v1h-3zM7 27h1v1h-1zM9 27h2v1h-2zM18 27h2v1h-2zM22 27h1v1h-1zM25 27h1v1h-1zM33 27h1v1h-1zM36 27h3v1h-3zM4 28h3v1h-3zM11 28h1v1h-1zM13 28h1v1h-1zM15 28h1v1h-1zM17 28h3v1h-3zM23 28h4v1h-4zM31 28h1v1h-1zM35 28h1v1h-1zM37 28h3v1h-3zM4 29h4v1h-4zM9 29h5v1h-5zM16 29h3v1h-3zM20 29h1v1h-1zM22 29h2v1h-2zM25 29h1v1h-1zM27 29h5v1h-5zM34 29h1v1h-1zM37 29h2v1h-2zM3 30h1v1h-1zM5 30h1v1h-1zM8 30h1v1h-1zM10 30h2v1h-2zM13 30h1v1h-1zM15 30h2v1h-2zM18 30h1v1h-1zM20 30h2v1h-2zM24 30h2v1h-2zM27 30h1v1h-1zM31 30h2v1h-2zM36 30h1v1h-1zM39 30h1v1h-1zM6 31h4v1h-4zM13 31h1v1h-1zM15 31h1v1h-1zM19 31h1v1h-1zM22 31h7v1h-7zM30 31h6v1h-6zM38 31h2v1h-2zM11 32h1v1h-1zM15 32h1v1h-1zM17 32h5v1h-5zM26 32h1v1h-1zM28 32h1v1h-1zM30 32h2v1h-2zM35 32h5v1h-5zM3 33h7v1h-7zM11 33h4v1h-4zM16 33h3v1h-3zM21 33h1v1h-1zM23 33h2v1h-2zM29 33h1v1h-1zM31 33h1v1h-1zM33 33h1v1h-1zM35 33h2v1h-2zM38 33h2v1h-2zM3 34h1v1h-1zM9 34h1v1h-1zM12 34h1v1h-1zM14 34h2v1h-2zM17 34h2v1h-2zM20 34h6v1h-6zM27 34h1v1h-1zM31 34h1v1h-1zM35 34h2v1h-2zM3 35h1v1h-1zM5 35h3v1h-3zM9 35h1v1h-1zM12 35h2v1h-2zM18 35h3v1h-3zM22 35h1v1h-1zM25 35h1v1h-1zM29 35h1v1h-1zM31 35h6v1h-6zM38 35h1v1h-1zM3 36h1v1h-1zM5 36h3v1h-3zM9 36h1v1h-1zM11 36h2v1h-2zM14 36h1v1h-1zM17 36h1v1h-1zM19 36h1v1h-1zM21 36h1v1h-1zM23 36h2v1h-2zM28 36h2v1h-2zM31 36h1v1h-1zM33 36h1v1h-1zM35 36h1v1h-1zM37 36h1v1h-1zM3 37h1v1h-1zM5 37h3v1h-3zM9 37h1v1h-1zM11 37h3v1h-3zM15 37h1v1h-1zM21 37h4v1h-4zM28 37h1v1h-1zM30 37h2v1h-2zM33 37h3v1h-3zM37 37h2v1h-2zM3 38h1v1h-1zM9 38h1v1h-1zM14 38h2v1h-2zM17 38h1v1h-1zM19 38h1v1h-1zM21 38h3v1h-3zM25 38h4v1h-4zM30 38h1v1h-1zM32 38h2v1h-2zM35 38h3v1h-3zM3 39h7v1h-7zM13 39h1v1h-1zM15 39h1v1h-1zM19 39h3v1h-3zM25 39h5v1h-5zM36 39h4v1h-4z" fill="#17171c"/></svg>
     </div>
     <div>
       <p class="lead" style="margin-bottom:.6em">网址：</p>
-      <div class="frame" style="font-size:clamp(1.05rem,1.9vw,1.6rem);font-weight:700;color:var(--brand)">
-        〔待填〕/?lang=zh
+      <div class="frame" style="font-size:clamp(1.05rem,1.9vw,1.6rem);font-weight:700;color:var(--brand);
+           word-break:break-all;line-height:1.4">
+        test.jp.wuzuxi.com<br><span style="font-size:.78em">/?lang=zh</span>
       </div>
       <ul style="margin-top:.7em">
-        <li>链接自带 <strong>?lang=zh</strong>，打开就是中文</li>
+        <li>扫码或输网址都行，<strong>打开就是中文</strong></li>
         <li>一路做到<strong>拿到 8 位完成码</strong>才算完成</li>
         <li>做不完也没关系，随时可以关掉</li>
       </ul>
@@ -545,10 +570,43 @@
   </div>
 </section>
 
+<!-- ========== 收尾 ========== -->
+
 <section class="slide">
   <div class="kicker">谢谢</div>
   <p class="big">你今天写的每一句，<br><span class="hl">都会变成这个研究的一行数据。</span></p>
 </section>
+
+<!-- ========== 杂谈（放在「谢谢」之后；要挪到收尾之前，把这一段整体剪上去就行） ========== -->
+
+<section class="slide">
+  <div class="kicker">顺便说个题外话</div>
+  <h2>〔杂谈标题待填〕</h2>
+  <video class="clip" controls preload="metadata" playsinline
+         src="deck_teens/floorplan-3d.mp4"></video>
+  <p class="clip-cap">〔视频说明待填〕</p>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     再加「杂谈」页:照抄上面那段 <section class="slide">…</section>,接在后面就行。
+     页码/进度条自动跟上(末尾 JS 按 .slide 实际数量算,没有硬编码页数)。
+
+     手上有的零件:
+       .kicker / h2 / .lead / .note / .cite       —— 标题与正文
+       .grid2 / .cols / .card / .frame            —— 分栏与卡片
+       .steps + .step                             —— 编号步骤条
+       .flow + .node(.on/.on2) + .arrow           —— 横向流程图
+       .rqrow + .rq                               —— 三栏并列
+       .sbtable                                   —— 表格
+       .diffuse / .seq / .shot / .toks / .tw-wrap —— 已有的几种图解
+       .clip                                      —— 内嵌视频
+
+     放视频:<video class="clip" controls preload="metadata" playsinline src="deck_teens/文件名.mp4"></video>
+       · 文件放 docs/deck_teens/ 下,路径写相对的 deck_teens/…
+       · 点播放器不翻页、焦点在播放器上时空格归它用、翻页时自动暂停 —— 都已处理
+       · 大视频先过一遍 ffmpeg:-c:v libx264 -crf 20 -r 30 -movflags +faststart
+         (+faststart 让 moov 排到前面,否则浏览器要下完整个文件才出第一帧)
+     ══════════════════════════════════════════════════════════════════════ -->
 </div>
 
 <script>
@@ -562,6 +620,10 @@
   function show(n){
     i = Math.max(0, Math.min(slides.length-1, n));
     slides.forEach((s,k)=>s.classList.toggle('active', k===i));
+    // 翻走的页里如果有视频,把它按停 —— 否则讲下一页时声音还在响
+    document.querySelectorAll('video,audio').forEach(m=>{
+      if(!m.closest('.slide')?.classList.contains('active')) m.pause();
+    });
     cutNo.textContent = String(i+1).padStart(2,'0');
     prog.style.width = ((i+1)/slides.length*100)+'%';
     location.hash = i+1;
@@ -570,6 +632,8 @@
   function prev(){ show(i-1); }
 
   document.addEventListener('keydown', e=>{
+    // 焦点在播放器/输入框上时,方向键和空格归它用(空格 = 播放/暂停),不翻页
+    if(['VIDEO','AUDIO','INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)) return;
     if(['ArrowRight','ArrowDown','PageDown',' '].includes(e.key)){ e.preventDefault(); next(); }
     else if(['ArrowLeft','ArrowUp','PageUp'].includes(e.key)){ e.preventDefault(); prev(); }
     else if(e.key==='Home'){ show(0); }
@@ -581,7 +645,7 @@
   });
   // 点击翻页：右 65% 前进 / 左 35% 后退；链接按钮除外
   document.addEventListener('click', e=>{
-    if(e.target.closest('a,button,kbd')) return;
+    if(e.target.closest('a,button,kbd,video,audio,.no-advance')) return;   // 点播放器不翻页
     (e.clientX > innerWidth*0.35) ? next() : prev();
   });
   // 触屏滑动

@@ -123,7 +123,7 @@ def main() -> None:
                 # embed._baseline_texts reverse-looks-up topic identity by this
                 # exact string, so both sides must build it the same way.
                 seed = (seeds[j % len(seeds)] if seeds
-                        else prompts.scenario_text(topic, args.lang, with_note=False))
+                        else prompts.scenario_text(topic, args.lang))
                 text = generate_nonempty(
                     client, system, prompts.build_user_script(topic, seed, args.lang),
                     tag=f"[topic{i}] {j + 1}/{args.n}",

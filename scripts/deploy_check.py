@@ -247,17 +247,17 @@ def check_topics() -> None:
     used = topics[: config.N_ROUNDS]
     bad, gone = [], []
     for i, t in enumerate(used):
-        # choices 与 scenario 同等重要:它既进被试看到的题目卡(§15 的浅色括号行),
-        # 又被 prompts.scenario_text 拼进模型 prompt。缺了不会报错,只会让这道题
-        # 的情境**悄悄少半句** —— 而那半句正是「你可以这样,也可以不这样」。
+        # choices 只进**被试看到的题目卡**(§15 的浅色括号行);2026-09-06 起它不再进
+        # 模型 prompt(见 prompts.scenario_text)。缺了不会报错,只会让这道题在题目卡上
+        # **悄悄少半句** —— 而那半句正是「你可以这样,也可以不这样」的启发。
         for field in ("title", "scenario", "choices"):
             v = t.get(field)
             missing = [lg for lg in ("ja", "zh", "en")
                        if not (v.get(lg) if isinstance(v, dict) else (v if lg == "ja" else None))]
             if len(missing) == 3:
-                # 整个字段缺失:没有任何语言可回退。scenario/choices 缺一个,
-                # 这道题的**模型 prompt 与题目卡都会少半句情境**(prompts.scenario_text
-                # 直接短路),被试看到的题面与你以为的不是同一个。这是红,不是黄。
+                # 整个字段缺失:没有任何语言可回退。scenario 缺了模型与题目卡都会少半句;
+                # choices 缺了则题目卡的启发行整行消失(模型侧不受影响)。
+                # 两种都让被试看到的题面与你以为的不是同一个。这是红,不是黄。
                 gone.append(f"#{i + 1}.{field}")
             elif missing:
                 bad.append(f"#{i + 1}.{field} 缺 {'/'.join(missing)}")
@@ -469,17 +469,26 @@ def _check_script_mode() -> None:
             cron = subprocess.run(["crontab", "-l"], capture_output=True, text=True, timeout=10).stdout
         except Exception:  # noqa: BLE001
             pass
-    boot = [l for l in cron.splitlines()
-            if "@reboot" in l and "start.sh" in l and not l.lstrip().startswith("#")]
+    live = [l for l in cron.splitlines()
+            if "start.sh" in l and not l.lstrip().startswith("#")]
+    boot = [l for l in live if "@reboot" in l]
+    # 看门狗:定时(*/N)跑一次 start.sh。不装 systemd 就没有 Restart=always,
+    # 进程因 OOM/异常退出后没有任何东西会拉起它 —— 采数跨天时这是最现实的失效路径。
+    watch = [l for l in live if l.lstrip().startswith("*/")]
+    missing = []
     if not boot:
-        add(R, "运行时", "以普通后台进程运行(非 systemd),但 crontab 里没有 @reboot 自启 → "
-                        "机器一重启站就没了且无告警。加一行:"
-                        f"`@reboot sleep 20 && cd {ROOT} && scripts/start.sh >> data/serve.log 2>&1`")
+        missing.append(f"@reboot 自启(机器重启后站就没了):`@reboot sleep 20 && cd {ROOT} && scripts/start.sh >> data/serve.log 2>&1`")
     elif f"cd {ROOT}" not in boot[0]:
-        add(R, "运行时", f"@reboot 那行缺 `cd {ROOT}` → cron 从 $HOME 起步,日志重定向会失败。")
+        missing.append(f"@reboot 那行缺 `cd {ROOT}`(cron 从 $HOME 起步,日志重定向会失败)")
+    if not watch:
+        missing.append(f"看门狗(进程死了没人拉):`*/5 * * * * cd {ROOT} && scripts/start.sh >> data/serve.log 2>&1`")
+    elif f"cd {ROOT}" not in watch[0]:
+        missing.append(f"看门狗那行缺 `cd {ROOT}`")
+    if missing:
+        add(R, "运行时", "以普通后台进程运行(非 systemd),但缺 " + " · ".join(missing))
     else:
-        add(G, "运行时", "以普通后台进程运行(非 systemd),进程在、@reboot 自启已配置。"
-                        "⚠️ 以 root 跑且绑 0.0.0.0 —— 已知并接受的取舍(见 docs/paper/07)。")
+        add(G, "运行时", "以普通后台进程运行(非 systemd):进程在、@reboot 自启与 */5 看门狗都已配置。"
+                        "⚠️ 以 root 跑且绑 0.0.0.0 —— 已知并接受的取舍(见 DEPLOY.md §2)。")
 
 
 def check_runtime(sec: dict) -> None:
