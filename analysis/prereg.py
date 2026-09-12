@@ -16,13 +16,22 @@ D_FLOOR_ZERO_GREEN, D_FLOOR_ZERO_YELLOW = 0.30, 0.60   # D 零返工比例(越�
 C_CEIL_MEAN, C_CEIL_SD = 6.0, 1.0                       # imagine_match 天花板判定
 C_CEIL_GAP = 0.30                                        # E−C 差低于此且 C 压顶 → 红
 C_CEIL_YELLOW_MEAN = 5.5
+# ⚠️ 2026-09-07 人群反转后,这两条线**不再是 go/no-go** —— 主分析人群已是全样本,
+# novice 占比低不再影响主分析可行性,只是样本经验构成的描述性参考线 + 探索性子集的
+# 可行性提示。数值与位置暂不动(改动属口径决定,见 docs/paper/06)。
 NOVICE_SHARE_GREEN, NOVICE_SHARE_YELLOW = 0.60, 0.40
 RELIABILITY_GREEN, RELIABILITY_YELLOW = 0.70, 0.60
 OWN_ALPHA_FLOOR = 0.60                                   # own1-3 α 低于此 → 后手D 切 SoPA
 SOA_R_GREEN, SOA_R_YELLOW = 0.50, 0.30                   # soa1-2 两题相关 r;<0.30 = 🔴(docs/paper/05 §④)
 
 # ---- novice 定义(5 项严格 AND;录而不 gate)----
-# B1 拍板(2026-08-03):招募端**不设门槛**(随机找人),但 novice 子集 = **采数前冻结的主分析
+# ⚠️ 2026-09-07 拍板(取代下面的 B1):**主分析人群 = 全样本**(招募端仍不设门槛)。
+# novice / 高手的切分**降级为事后探索性分析**,论文里如实标注 exploratory,不作确证性声明。
+# → 功效按**全样本 N** 算;停止规则去掉「子集也达标」这一条,不再超招募。
+# → 5 项筛查照常收集入库,v3 照常从原始 5 项重算 —— 变的是「谁是主分析人群」,
+#    不是「怎么算 novice」。留痕见 docs/paper/10 同日条目。
+#
+# 〔已被取代〕B1 拍板(2026-08-03):招募端**不设门槛**(随机找人),但 novice 子集 = **采数前冻结的主分析
 # 人群**(B3:本研究不做第三方预注册,措辞一律用「冻结/事前确定」);全样本为稳健性分析,经验者另作「経験あり vs なし」对比/调节分析。
 # → 功效必须按 novice 子集(更小 N)算,并超招募到子集也达标。
 NOVICE_DEF = ("published_idx==0 AND background=='no' AND written=='no' "
@@ -41,6 +50,8 @@ NOVICE_CRITERION_FIELDS = ("published_idx", "background", "written", "self_ratin
 
 # 满足几项才算 novice。5 = 全部满足(严格,现行);4 = B1 已声明的退路
 # (若试测实测 novice 占比 <40% 即 pilot_check ③ 🔴 时启用)。
+# ⚠️ 2026-09-07:人群反转后该退路的**原触发条件已消失**(novice 占比不再是 go/no-go)。
+#    但「退路是否就此取消」是新的设计决定,**未拍板** → docs/paper/06。本轮数值不动。
 # ⚠️ 这个数字必须在**冻结时**定死,不能看了数据再改。
 NOVICE_MIN_CRITERIA = 5
 
@@ -74,7 +85,11 @@ def novice_criteria(screening: dict) -> dict:
 
 
 def is_novice(screening: dict) -> bool:
-    """主分析人群判定(B1)。`screening` = participants.screening_json 解析后的 dict。"""
+    """**探索性**人群切分判定。`screening` = participants.screening_json 解析后的 dict。
+
+    ⚠️ 2026-09-07 起 novice **不再是主分析人群**(主分析 = 全样本);该布尔只用于
+    事后探索性切分与样本经验构成的描述。入组从来不拦人(screening 无条件 passed=True)。
+    """
     if not isinstance(screening, dict):
         return False
     return sum(novice_criteria(screening).values()) >= NOVICE_MIN_CRITERIA
@@ -135,7 +150,8 @@ DECISION_BRANCHES = (
 # 功效换算注记:power_sim 以配对 dz 工作,而 SESOI 是原始单位 → dz ≈ SESOI / SD(配对差)。
 # SD 未知(无功效 pilot),故 power_sim 报**功效曲线**(dz 0.3-0.7)而非单点;真数据到手后用
 # 实测 SD 回算本 SESOI 对应的 dz,写进结果节。
-# ⚠️ 主分析人群 = novice 子集(B1) → 功效须按子集 N 另算一条曲线。
+# ⚠️ 2026-09-07:主分析人群 = **全样本** → 功效按全样本 N 报。novice 子集功效曲线保留,
+#    但仅用于说明**探索性**分析的功效不足,不再是决定招募量的那张表。
 
 # ---- H4(质量非劣)的地位 ——【2026-09-01 拍板 2.4】----
 # **H4 降为描述性,不作确证性的「质量不劣」主张。**
@@ -179,7 +195,10 @@ SECONDARY_ENDPOINTS = ("satisfaction", "effort_composite",
 # (1|被试) 吸收——不用被试内 z:每被试每条件仅 1 轮,被试内 SD 由 3 个点估计、噪声过大,
 # 且与随机截距功能重叠(用户 2026-08-03 拍板;docs/paper/04 §2.1 已同步)。
 # ⚠️ 未拍板的歧义:「全样本」指**当次分析人群的全部 trial**,还是**全部纳入被试(含经验者)**?
-#   stats.main 现在是后者(先在整份 CSV 上 z、再筛 novice)。两种读法下复合列数值相同但含义不同,
+#   stats.main 现在是后者(先在整份 CSV 上 z、再筛人群)。
+#   2026-09-07 人群反转后,**主分析(全样本)下两种读法重合,歧义在主分析里自然消解**;
+#   但由此新生出一条必须在冻结前定死的:**探索性 novice 子集要不要在子集内重新标准化 z**?
+#   现行代码 = 沿用全样本 z(不重新标准化)。这属口径决定,**未拍板** → docs/paper/06。
 #   写 Method 前必须定一个并写进这里(见 docs/paper/13 §⑦-H)。
 COMPOSITES = {
     "fidelity_composite": ("0.5*mean z(imagine, -violation, not_against) + 0.5*z(embed_fidelity)"
@@ -202,11 +221,17 @@ def as_dict() -> dict:
             "d_floor_zero": [D_FLOOR_ZERO_GREEN, D_FLOOR_ZERO_YELLOW],
             "c_ceiling": {"mean": C_CEIL_MEAN, "sd": C_CEIL_SD, "gap": C_CEIL_GAP,
                           "yellow_mean": C_CEIL_YELLOW_MEAN},
+            # 2026-09-07 起非 go/no-go,仅描述性参考线(见文件头常量处注释)
             "novice_share": [NOVICE_SHARE_GREEN, NOVICE_SHARE_YELLOW],
             "reliability": [RELIABILITY_GREEN, RELIABILITY_YELLOW],
             "own_alpha_floor": OWN_ALPHA_FLOOR,
             "soa_r": [SOA_R_GREEN, SOA_R_YELLOW],
         },
+        # ---- 分析人群(2026-09-07 拍板;冻结前补入,见 docs/paper/10)----
+        # 冻结产物里必须能读出「确证 vs 探索」的分界,否则事后无从证明子集分析是探索性的。
+        "primary_population": "all",
+        "novice_is_exploratory": True,
+        # 以下三项描述 novice **怎么算**(定义不变),其用途已降为探索性切分与样本描述。
         "novice_def": NOVICE_DEF,
         "novice_criteria": list(NOVICE_CRITERION_FIELDS),
         "novice_min_criteria": NOVICE_MIN_CRITERIA,

@@ -488,17 +488,17 @@ def main() -> None:
     pt.to_csv(args.out, index=False)
 
     print(f"载入 {len(raw)} 行 trials;逐 trial 指标 {len(pt)} 行 → {args.out}\n")
-    # 人群构成必须在抬头就看见 —— 主分析跑的是 novice 子集(B1),它的 N 往往远小于全样本,
-    # 而此前整条管线里没有任何一处会把这个数字说出来。
+    # 人群构成必须在抬头就看见 —— 主分析跑的是全样本(2026-09-07),novice 占比则决定
+    # 事后探索性切分还有没有解释力,而此前整条管线里没有任何一处会把这个数字说出来。
     n_p = pt["participant_id"].nunique()
     n_nv = pt.loc[pt["novice"], "participant_id"].nunique()
     share = (n_nv / n_p) if n_p else float("nan")
     print(f"=== 人群:全样本 {n_p} 人 / novice 子集 {n_nv} 人({share:.0%})===")
-    print(f"    主分析人群 = novice(prereg.NOVICE_MIN_CRITERIA="
-          f"{prereg.NOVICE_MIN_CRITERIA}/5,B1);全样本作稳健性")
+    print(f"    主分析人群 = 全样本 {n_p} 人(2026-09-07 拍板);"
+          f"novice 子集(≥{prereg.NOVICE_MIN_CRITERIA}/5)仅作事后探索性分析")
     if n_p and share < prereg.NOVICE_SHARE_YELLOW:
-        print(f"    ⚠️ novice 占比 <{prereg.NOVICE_SHARE_YELLOW:.0%} = pilot_check ③ 🔴"
-              f" —— 需收紧招募或启用 4-of-5 退路(B1)")
+        print(f"    ⚠️ novice 占比 <{prereg.NOVICE_SHARE_YELLOW:.0%} —— 不影响主分析(全样本),"
+              f"但探索性子集会因 N 过小而缺乏解释力")
     # 哪一项把人筛掉了 —— 试测时据此判断该改招募还是该放宽定义
     # 用 == False 而不是 ~:nv_* 是「np.nan if 缺项 else bool」生成的(为了避开
     # bool(NaN) 恒 True),只要有一位被试缺了任一子项,整列就退成 object dtype,

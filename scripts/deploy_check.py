@@ -356,15 +356,27 @@ def check_freeze() -> None:
 
 
 def check_default_lang() -> None:
-    """正式研究の被験者は日本人。既定言語が ja でないまま公開すると、リンクを開いた被験者が
-    いきなり中国語/英語の画面を見ることになる —— 採取が始まってからでは取り返せない類。"""
+    """既定言語は**今どちらのコホートを走らせているか**と一致していなければならない。
+
+    2026-09-07 拍板:二つのコホートは**時期を分けて**採取する —— 先に中国(`zh`,36 名)、
+    完全に停止してから日本(`ja`,36 名)。したがって「常に ja が正しい」わけではない。
+    ズレたまま公開すると、リンクを開いた被験者がいきなり別言語の画面を見ることになる。
+    """
     from i18n import translator as T
-    if T.DEFAULT_LANG == "ja" and T.AVAILABLE_LANGS[0] == "ja":
-        add(G, "既定言語", "ja(正式研究の言語)。")
+    cur, first = T.DEFAULT_LANG, T.AVAILABLE_LANGS[0]
+    if cur != first:
+        add(Y, "既定言語", f"既定 ={cur} だが選択肢の先頭 ={first} —— 二つを揃えること"
+                          "(被験者が最初に見る言語がぶれる)。")
+    elif cur == "zh":
+        add(G, "既定言語", "zh —— **第 1 コホート(中国)** の設定。"
+                          "日本コホートへ移る前に i18n/translator.py を ja 先頭へ戻すこと。")
+    elif cur == "ja":
+        add(G, "既定言語", "ja —— **第 2 コホート(日本)** の設定。"
+                          "中国コホートが完全に終了していることを確認すること"
+                          "(同時開放は Williams の釣り合いを崩す。docs/paper/10 参照)。")
     else:
-        add(Y, "既定言語", f"既定 ={T.DEFAULT_LANG} / 選択肢の先頭 ={T.AVAILABLE_LANGS[0]} —— "
-                          "研究者テスト用の暫定設定。被験者は日本人なので、リンクを配る前に "
-                          "i18n/translator.py を ja 先頭へ戻すこと。")
+        add(Y, "既定言語", f"既定 ={cur} —— どちらのコホートでもない(en は研究者テスト用)。"
+                          "リンクを配る前に zh(中国)か ja(日本)へ切り替えること。")
 
 
 # check_public 的结论,供 check_static_gzip 判断严重性:压缩既可以来自 app(serve.py 的

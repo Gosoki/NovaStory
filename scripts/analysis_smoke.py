@@ -172,6 +172,16 @@ def run(tmp: Path) -> None:
 
     # 上面测的是函数;这里测研究员真正会跑的 `make stats` 命令行路径
     _, out = quiet(lambda: _cli(A_stats.main, ["--csv", str(csv)]))
+    # 2026-09-07 拍板:主分析人群 = 全样本 → 不带 --population 时必须跑 all,
+    # 且抬头要把它声明成主分析人群。这条断言钉死默认值,防止有人改回 novice
+    # (改回去的话,`make analysis` 的主结果会静默跑在探索性子集上)。
+    assert "分析人群 = all" in out, f"stats 默认人群不是 all:\n{out[:400]}"
+    assert "事前确定的主分析人群" in out, "抬头没把全样本声明成主分析人群"
+    assert A_stats.DEFAULT_POPULATION == "all", "stats.DEFAULT_POPULATION 被改动"
+    # 显式切到探索性子集时,抬头必须标出它是探索性的
+    _, out_nv = quiet(lambda: _cli(A_stats.main, ["--csv", str(csv), "--population", "novice"]))
+    assert "exploratory" in out_nv or "探索性" in out_nv, \
+        f"novice 子集没有被标成探索性:\n{out_nv[:400]}"
     n_tab = out.count("LMM 计划对比")
     assert n_tab == len(endpoints), f"stats CLI 只打印了 {n_tab}/{len(endpoints)} 张计划对比表"
     assert "⛔ 最终警告" not in out, out[-800:]

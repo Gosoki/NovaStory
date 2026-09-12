@@ -67,8 +67,8 @@ HASHED_FILES = [
     "i18n/locales/zh.json",
     "i18n/locales/en.json",
     # 测量工具本身:筛查里 quiz 的正确项索引(_QUIZ*_CORRECT → quiz_correct → novice 定义)、
-    # 问卷里的题数与注意力题期望值(_ATTENTION_EXPECTED)。改一个数字就改了主分析人群或
-    # 敷衍剔除的口径,而 prereg / v3 / stats 的哈希都不会动。
+    # 问卷里的题数与注意力题期望值(_ATTENTION_EXPECTED)。改一个数字就改了探索性 novice
+    # 分层的口径或敷衍剔除的口径,而 prereg / v3 / stats 的哈希都不会动。
     "views/screening.py",
     "views/questionnaire.py",
     # 定义 DV 的测量代码:t_pregen/t_postgen 的计时口径(round_durations)、版本快照规则、
@@ -113,6 +113,15 @@ def _git(*args: str) -> str:
     return r.stdout.strip()
 
 
+def _figures_default_population():
+    """figures 依赖 matplotlib,缺席时不该让整个冻结崩掉 —— 拿不到就记 None。"""
+    try:
+        from analysis import figures as A_fig
+        return A_fig.DEFAULT_POPULATION
+    except Exception:
+        return None
+
+
 def collect_knobs() -> dict:
     """把散落在管线各处、能翻转结论的常量**逐个读出来**(不靠人抄)。"""
     from analysis import stats as A_stats
@@ -129,6 +138,10 @@ def collect_knobs() -> dict:
         "config.TEMPERATURE": C.TEMPERATURE,
         "config.SUPPLEMENT_RANGE": list(C.SUPPLEMENT_RANGE),
         "config.FOLLOWUP_RANGE": list(C.FOLLOWUP_RANGE),
+        # 分析人群的默认值(2026-09-07 拍板 = 全样本)。这两个默认值一翻,主分析跑的人群
+        # 就换了,而 prereg 的哈希不会动 —— 必须进旋钮快照。读常量,不抄字符串。
+        "stats.DEFAULT_POPULATION": A_stats.DEFAULT_POPULATION,
+        "figures.DEFAULT_POPULATION": _figures_default_population(),
     }
     from core import state as S
     knobs["state._COND_ORDERS"] = [list(x) for x in S._COND_ORDERS]

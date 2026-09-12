@@ -31,6 +31,9 @@ from analysis.stats import build_composites  # noqa: E402
 
 DEFAULT_DB = ROOT / "data" / "novastory.db"
 CSV = ROOT / "data" / "analysis" / "v3_per_trial.csv"
+# 与 analysis.stats 同源的默认人群(2026-09-07 拍板 = 全样本)。
+DEFAULT_POPULATION = "all"
+
 FIGDIR = ROOT / "data" / "analysis" / "figures"
 ORDER = ["C", "D", "E"]
 COL_PRE, COL_POST = "#6aa9c9", "#c98f6a"   # 事前投入 / 事后返工(别叫 COLc:会被读成 C 条件)
@@ -145,9 +148,10 @@ def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description="A6 图表")
     ap.add_argument("--demo", action="store_true", help="只用合成数据渲染验证;不碰真库、文件名带 demo_ 前缀")
     ap.add_argument("--db", type=Path, default=DEFAULT_DB)
-    # 与 make stats 同口径:默认 novice(主分析人群,B1),图题标人群。以前出图这条路完全不筛、也不标,
+    # 与 make stats 同口径:默认 all(主分析人群 = 全样本,2026-09-07),图题标人群。
+    # novice 子集图为**探索性**,图题须标 exploratory。以前出图这条路完全不筛、也不标,
     # 而进论文的正是图。
-    ap.add_argument("--population", choices=("novice", "all"), default="novice")
+    ap.add_argument("--population", choices=("all", "novice"), default=DEFAULT_POPULATION)
     args = ap.parse_args(argv)
     FIGDIR.mkdir(parents=True, exist_ok=True)
 

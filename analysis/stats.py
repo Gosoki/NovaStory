@@ -28,6 +28,10 @@ sys.path.insert(0, str(ROOT))
 
 from analysis import prereg  # noqa: E402  (冻结分析计划常量的单一真源:终点层级 / SESOI)
 
+# 主分析人群的默认值(2026-09-07 拍板 = 全样本)。提成模块级常量是为了让
+# scripts/freeze_prereg.py 的旋钮快照**读到真值**,而不是靠人抄一份字符串。
+DEFAULT_POPULATION = "all"
+
 DEFAULT_PER_TRIAL_CSV = ROOT / "data" / "analysis" / "v3_per_trial.csv"   # 与 events.DEFAULT_CSV 同一份产物
 _PAIRS = [("E", "D"), ("E", "C"), ("D", "C")]  # E−D 为主
 # 2026-09-01 拍板 2.5:第三腿由 mine_ratio 换成 1−ai_against_ratio(v3 导出 `not_against`)。
@@ -471,10 +475,11 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="A6 v3 推断统计")
     ap.add_argument("--csv", type=Path, default=DEFAULT_PER_TRIAL_CSV)
     ap.add_argument("--demo", action="store_true")
-    # 2026-09-01 拍板 2.1:主分析人群 = novice 子集(B1),故**默认就是 novice**。
-    # 此前没有这个参数,主分析实际跑的是全样本,与 04/幻灯片/答辩口径全部对不上。
-    ap.add_argument("--population", choices=("novice", "all"), default="novice",
-                    help="分析人群:novice=事前冻结的主分析人群(默认) / all=全样本(稳健性)")
+    # 2026-09-07 拍板:主分析人群 = **全样本**,故**默认就是 all**。
+    # (2026-09-01 拍板 2.1 曾把默认设成 novice 子集,已被取代;留此一行以免有人照旧文改回去。)
+    ap.add_argument("--population", choices=("all", "novice"), default=DEFAULT_POPULATION,
+                    help="分析人群:all=事前确定的主分析人群(全样本,默认) / "
+                         "novice=事后探索性子集(结论须标 exploratory)")
     args = ap.parse_args()
 
     if args.demo or not args.csv.exists():
@@ -485,18 +490,19 @@ def main() -> None:
 
     df = build_quality(build_dose(build_composites(pd.read_csv(args.csv))))
 
-    # ---- 人群筛选 + 抬头声明(2026-09-01 拍板 2.1)----
+    # ---- 人群筛选 + 抬头声明(2026-09-07 拍板:主分析 = 全样本)----
     n_all = df["participant_id"].nunique() if "participant_id" in df else 0
     if args.population == "novice":
         if "novice" not in df.columns:
             print("⛔ CSV 里没有 `novice` 列 —— 请先用当前版本的 analysis/v3.py 重新生成"
-                  "(旧 CSV 不含人群列)。拒绝以全样本冒充主分析。")
+                  "(旧 CSV 不含人群列)。拒绝以全样本冒充 novice 子集。")
             sys.exit(1)
         df = df[df["novice"].astype(bool)]
     n_used = df["participant_id"].nunique() if "participant_id" in df else 0
     print("=" * 78)
     print(f"分析人群 = {args.population}"
-          + ("(事前冻结的主分析人群,B1)" if args.population == "novice" else "(全样本,稳健性)"))
+          + ("(事后探索性子集,非确证性;结论须写明 exploratory)" if args.population == "novice"
+             else "(事前确定的主分析人群,全样本;2026-09-07)"))
     print(f"  被试 {n_used} 人 / 全样本 {n_all} 人;trial {len(df)} 行")
     # 别打印 NOVICE_DEF:那是给人读的「5 项严格 AND」字符串,退路启用(4/5)后会和真实口径打架
     print(f"  novice 定义:{list(prereg.NOVICE_CRITERION_FIELDS)} 中满足 ≥{prereg.NOVICE_MIN_CRITERIA} 项(prereg.is_novice)")
@@ -506,8 +512,8 @@ def main() -> None:
     if n_used == 0:
         print(f"⛔ 人群 `{args.population}` 下没有任何 trial —— 主分析无法进行。")
         if args.population == "novice":
-            print("   试测早期若还没招到 novice,用 `--population all` 看全样本(那是**稳健性**,"
-                  "不是主分析,结论里必须写明)。")
+            print("   novice 子集是**事后探索性**分析;主分析人群是全样本,"
+                  "去掉 `--population novice`(或跑 `make stats`)即可。")
         # exit 1 而不是 return:`make analysis` 是一条链,静默 return 会让 figures 接着跑,
         # 产出一套「看着正常」的全样本图,而 stats 刚说过主分析没数据。
         sys.exit(1)

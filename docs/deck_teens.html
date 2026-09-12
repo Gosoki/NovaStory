@@ -280,6 +280,26 @@
   .tip .bad{background:var(--panel-2);color:var(--muted);text-decoration:line-through 1.5px}
   .tip .good{background:rgba(224,85,42,.10);color:var(--ink);font-weight:700}
   .tip .why{font-size:clamp(.78rem,1.05vw,.92rem);color:var(--muted);line-height:1.45}
+  /* 自我介绍:左侧照片(没有就是个占位框),右侧几行信息 */
+  .me{display:grid;grid-template-columns:auto 1fr;gap:clamp(20px,3vw,44px);align-items:center}
+  .me-photo{width:min(30vw,38vh);aspect-ratio:1;border-radius:16px;object-fit:cover;
+    border:2px solid var(--line-2);background:var(--panel-2);display:block}
+  .me-photo-ph{width:min(30vw,38vh);aspect-ratio:1;border-radius:16px;
+    border:3px dashed var(--line-2);background:var(--panel-2);
+    display:flex;align-items:center;justify-content:center;text-align:center;
+    color:var(--faint);font-size:clamp(.9rem,1.35vw,1.1rem);line-height:1.6}
+  .me-rows{display:flex;flex-direction:column;gap:clamp(12px,2.2vh,26px);margin-top:clamp(8px,1.6vh,18px)}
+  .me-row{display:flex;gap:1em;align-items:baseline;font-size:clamp(1.32rem,2.4vw,2.05rem);
+    line-height:1.5;color:var(--ink-2)}
+  .me-row .k{flex:0 0 4.2em;font-weight:800;color:var(--brand);font-size:.82em}
+  .me-row .v{font-weight:700;color:var(--ink)}
+  @media (max-width:820px){ .me{grid-template-columns:1fr} }
+  /* 经历时间线:一串小方块 + 箭头,末尾那个是「现在」 */
+  .tl{display:flex;flex-wrap:wrap;align-items:center;gap:.32em .3em}
+  .tl .n{background:var(--panel);border:2px solid var(--line);border-radius:8px;
+    padding:.2em .62em;font-size:.86em;font-weight:700;color:var(--ink-2);white-space:nowrap}
+  .tl .a{color:var(--line-2);font-weight:800;font-size:.86em}
+  .tl .n.now{border-color:var(--brand);background:#fff6ef;color:var(--brand)}
   /* 页码 + 进度条（原版这几个元素没样式，这里补齐） */
   .progress{position:fixed;left:0;top:0;height:4px;background:var(--brand);z-index:50;
             width:0;transition:width .32s ease}
@@ -327,6 +347,26 @@
   <p class="cover-hook">你说一句，AI 做一版——<em>中间它替你定了多少？</em></p>
   <p class="sub">今天聊两件事：<br>
     AI 到底怎么「生成」东西　·　以及，我现在在做的研究</p>
+</section>
+
+<section class="slide">
+  <div class="kicker">先自我介绍一下</div>
+  <h2>我是<em>吴祖熙</em></h2>
+  <!-- 不放照片,单列排版。要加照片就把 .me 的注释版结构找回来(git 历史里有) -->
+  <div class="me-rows">
+    <div class="me-row"><span class="k">在读</span><span class="v">数据科学 · 研究生</span></div>
+    <div class="me-row"><span class="k">一路走来</span><span class="v tl">
+      <span class="n">毕业</span><span class="a">→</span>
+      <span class="n">实习</span><span class="a">→</span>
+      <span class="n">工作</span><span class="a">→</span>
+      <span class="n">学日语</span><span class="a">→</span>
+      <span class="n">留学</span><span class="a">→</span>
+      <span class="n">大学</span><span class="a">→</span>
+      <span class="n now">研究生</span>
+    </span></div>
+    <div class="me-row"><span class="k">方向</span><span class="v">人与 AI 交互</span></div>
+    <div class="me-row"><span class="k">白话说</span><span class="v">研究怎么让 AI 更懂人要什么</span></div>
+  </div>
 </section>
 
 <section class="slide">

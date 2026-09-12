@@ -4,7 +4,7 @@
 PY := .venv/bin/python
 .DEFAULT_GOAL := help
 
-.PHONY: help dev baseline norming v3 events pilot embed judge stats stats-all power figures analysis smoke robust smoke-e2e i18n freeze freeze-check precompress serve
+.PHONY: help dev baseline norming v3 events pilot embed judge stats stats-novice power figures analysis smoke robust smoke-e2e i18n freeze freeze-check precompress serve
 
 dev:        ## 本地开发起服务(热重载;生产 config.toml 默认关)
 	.venv/bin/streamlit run app.py --server.runOnSave true --server.fileWatcherType auto
@@ -39,11 +39,11 @@ embed:      ## embedding 相对基线保真 Δ,合入 CSV(需 OpenAI + baseline)
 judge:      ## 盲评保真 LLM-judge(OpenAI×3+ICC),judge_fidelity 合入 CSV(次要证据,不在 analysis 链)
 	$(PY) scripts/judge.py
 
-stats:      ## LMM / E−D 主对比(Holm)/ 三分支判定 / Wilcoxon / 剂量-反应【默认只跑 novice 子集】
+stats:      ## LMM / E−D 主对比(Holm)/ 三分支判定 / Wilcoxon / 剂量-反应【默认跑全样本 = 主分析人群】
 	$(PY) analysis/stats.py
 
-stats-all:  ## 同上但跑**全样本**(稳健性;主分析人群是 novice,结论里必须写明用的是哪个)
-	$(PY) analysis/stats.py --population all
+stats-novice: ## 同上但只跑 novice 子集(**事后探索性**,非确证;结论里必须标 exploratory)
+	$(PY) analysis/stats.py --population novice
 
 power:      ## 模拟功效 + MDES(SESOI 先验,无 pilot;docs/paper/05 §1.5)
 	$(PY) analysis/power_sim.py

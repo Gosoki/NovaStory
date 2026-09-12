@@ -108,21 +108,23 @@ def power_lmm(delta: float, n: int = 36, nsims: int = 200, alpha: float = prereg
     return hits / nsims
 
 
-# ---- novice 子集功效(2026-09-01 拍板 2.2;B1/B2 明写的连带动作,至今未做)----
-# 主分析人群 = novice 子集(B1),它的 N 远小于全样本 —— 招 36 人、novice 占比 50% 就只剩 18。
-# 此前整个 power_sim 只按 N=36 报,于是对外宣传的「N=36 可检出 dz≈0.48」说的是**全样本**,
-# 而主分析根本不在全样本上跑。下面这条曲线才是决定「要招多少人」的那条。
+# ---- novice 子集功效(现为**探索性分析**的功效注记)----
+# 2026-09-07 拍板:主分析人群 = 全样本 → 决定招募量的是**上面那张全样本表**,不是这张。
+# 这条曲线保留下来,是为了在论文里如实交代:事后按 novice 切分时 N 会小很多
+# (招 36 人、占比 50% 就只剩 18),因此那部分结论功效不足,只能作探索性报告。
 NOVICE_SUBSET_NS = (15, 18, 22, 27, 36)
 
-# 全样本招募量 → novice 子集 N 的换算情景(用于倒推超招募量)。
+# 全样本招募量 → novice 子集 N 的换算情景。
+# ⚠️ 2026-09-07 起**不再用于倒推超招募量**(停止规则已去掉「子集也达标」这一条),
+#    只用于说明探索性子集在既定招募量下会剩多少人。
 # 端点直接读 prereg 的 pilot go/no-go 阈值(🟢 线 / 🟡🔴 线),中间取 0.50;以前手抄了一份。
 NOVICE_SHARE_SCENARIOS = (prereg.NOVICE_SHARE_GREEN, 0.50, prereg.NOVICE_SHARE_YELLOW)
 
 
 def subset_power_table() -> None:
-    """按 novice 子集 N 报功效曲线 + MDES,并倒推达标所需的全样本招募量。"""
-    print("\n=== 【主分析人群】novice 子集 · 先验功效(α=.05,配对 t)===")
-    print("    B1:主分析跑 novice 子集,全样本只作稳健性 → 决定招募量的是这张表,不是上面那张。")
+    """按 novice 子集 N 报功效曲线 + MDES(**探索性分析**的功效下限参考)。"""
+    print("\n=== 【探索性】novice 子集 · 先验功效(α=.05,配对 t)===")
+    print("    主分析人群 = 全样本,功效以上方全样本表为准;这张表只用于交代探索性切分的功效不足。")
     header = f"{'子集 N':<8}" + "".join(f"{f'dz={dz}':>9}" for dz in (0.3, 0.4, 0.5, 0.6, 0.7))
     print(header)
     for n in NOVICE_SUBSET_NS:
@@ -136,8 +138,9 @@ def subset_power_table() -> None:
         mdes80[n] = m80
         print(f"{n:<8}{m80:>12}{mdes(n, 0.90):>12}")
 
-    print("\n=== 倒推:要让 novice 子集达到某个 N,全样本得招多少人 ===")
-    print("    (再按流失率上浮;11 rank3 按 20% 流失估算过,故最后一列 = 招募目标)")
+    print("\n=== 参考:要让 novice 子集达到某个 N,全样本得招多少人 ===")
+    print("    ⚠️ 2026-09-07 起这**不是招募目标表** —— 主分析人群是全样本,招募量由上方全样本表决定。")
+    print("    (保留它只为回答一个问题:既定招募量下,事后按 novice 切分还剩多少人可用。)")
     print(f"{'子集 N':<8}{'MDES(80%)':>11}" + "".join(f"{f'占比{int(p*100)}%':>12}" for p in NOVICE_SHARE_SCENARIOS))
     for n in NOVICE_SUBSET_NS:
         # ⚠️ 别用 -(-n // p) 当 ceil:p 是浮点,n/p 在二进制里往往差一个 ulp
@@ -148,10 +151,9 @@ def subset_power_table() -> None:
             target = math.ceil(full / 0.8)       # 再按 20% 流失上浮 → 招募目标
             cells += f"{full:>7} → {target:>3}"
         print(f"{n:<8}{mdes80[n]:>11}{cells}")
-    print("    读法:『子集N → 全样本N → 含20%流失的招募目标』。")
-    print("    ⚠️ 这张表出来之后必须做两件事:①把选定的子集目标 N 写进 prereg;")
-    print("       ②若倒推出的招募目标不现实,**现在**就改成 4-of-5"
-          f"(prereg.NOVICE_MIN_CRITERIA=4,现={prereg.NOVICE_MIN_CRITERIA})或改『novice 为主体 + 经验作调节』——不能看了数据再改。")
+    print("    读法:『子集N → 需要的全样本N → 含20%流失的对应招募量』(仅供参照,非目标)。")
+    print("    ⚠️ 反过来读才是现在的用法:既定招募 36/队列 → 子集大概落在哪一行 →"
+          "\n       该行 MDES 就是**探索性**切分的功效下限,论文里照此交代。")
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -167,7 +169,8 @@ def main(argv: list[str] | None = None) -> None:
         return
 
     print(f"=== 全样本 · 被试内 E−D 主对比 · 先验功效(N={args.n},α={prereg.ALPHA},配对 t,解析解)===")
-    print("    ⚠️ 这是**稳健性**人群的数字。主分析人群见下方 novice 子集表(B1)。")
+    print("    ✅ 这就是**主分析人群**(全样本)的数字(2026-09-07 拍板);"
+          "下方 novice 子集表仅为探索性分析的功效参考。")
     print(f"{'配对 dz(SESOI)':<18}{'功效':>8}")
     for dz in (0.3, 0.4, 0.45, 0.5, 0.55, 0.6, 0.7):
         print(f"{dz:<20}{power_paired(dz, args.n):>8.3f}")
@@ -181,8 +184,9 @@ def main(argv: list[str] | None = None) -> None:
               f"= {power_lmm(d0, args.n, nsims=args.nsims):.3f}")
     subset_power_table()
 
-    print("\n解读:配对 t 近似与 LMM 同构估计一致——全样本 N=36 约在 80% 功效检出 dz≈0.48-0.5;"
-          "\n     **主分析的 novice 子集 N 更小,需要更大的 dz** —— 以上方子集表为准。"
+    print("\n解读:配对 t 近似与 LMM 同构估计一致——**主分析(全样本)N=36** 约在 80% 功效"
+          "检出 dz≈0.48-0.5;中日两队列合并(N=72)约 dz≈0.33。"
+          "\n     novice 子集因 N 更小而功效不足,其结论只作**探索性**报告。"
           "\n⚠️ SESOI 须用本域(创作 HCI)可辩护的最小实质效应,勿直接搬 Maier/APE 的"
           " between-d(跨设计跨域);between-d→within-dz 需条件间相关 ρ 作敏感性。无 pilot,"
           "以上为先验设定,写入冻结产物(scripts/freeze_prereg.py)。")

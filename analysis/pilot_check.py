@@ -1,10 +1,11 @@
 #!/usr/bin/env python
-"""A6: 试测健康检查 —— 把「4 个生死问题」变成自动 🟢🟡🔴 读数(docs/paper/05 §2 后手手册的触发器)。
+"""A6: 试测健康检查 —— 把「3 个生死问题 + 1 个描述项」变成自动 🟢🟡🔴 读数(docs/paper/05 §2 后手手册的触发器)。
 
 试测(几个人)数据一进 DB,跑 `make pilot` 立刻回答:
   ① D 地板效应   D 条件返工有没有空间(若≈0 → 招牌图「返工↓」落空)
   ② C 天花板     一发生成是否已贴合(若 C 已顶且 E≈C → 保真差检不出)
-  ③ novice 占比  真新手比例(唯一区隔 APE 的人群卖点)
+  ③ novice 占比  真新手比例 —— **2026-09-07 起不再是生死问题**(主分析人群已是全样本);
+                 保留为描述项:样本经验构成 + 事后探索性切分还有没有解释力
   ④ 量表信度     own α / soa 相关 / 中点应答方差压缩
 每项给读数 + 旗标 + 触发的「后手」分支(详见 docs/paper/05 §2)。阈值在采数前冻结于 analysis/prereg.py(内部冻结,非第三方预注册)。
 
@@ -100,8 +101,9 @@ def check_c_ceiling(df: pd.DataFrame) -> None:
 
 def check_novice(con: sqlite3.Connection, db_path: Path) -> None:
     # 口径必须与 ①②④ 一致:统一走 v3.included_participants(问卷 3 件基准)。
-    # 此前这里单独用 `status == "done"`,于是同一份报告里 ③ 的分母与其余三项不同 ——
-    # 而 ③ 是决策闸门(🟢🟡🔴 → 后手 C),分母错了会改掉一条事前声明的分支。
+    # 此前这里单独用 `status == "done"`,于是同一份报告里 ③ 的分母与其余三项不同。
+    # ③ 2026-09-07 起已不是决策闸门(见文件头),但分母仍须与其余三项同源,
+    # 否则同一份报告里两个「N(纳入)」对不上,读的人会以为数据有问题。
     p = pd.read_sql("SELECT id, screening_json FROM participants", con)
     p = p[p["id"].isin(v3.included_participants(db_path))]
     print(f"\n③ novice 占比  N(纳入)={len(p)}")
@@ -113,8 +115,10 @@ def check_novice(con: sqlite3.Connection, db_path: Path) -> None:
     fl = _flag(share, prereg.NOVICE_SHARE_GREEN, prereg.NOVICE_SHARE_YELLOW)
     print(f"   达标 novice = {isnov.sum()}/{len(p)} = {share:.0%}   {fl}")
     if fl != G:
-        print("   → 后手C(docs/paper/05):冻结的分析计划已把「仅 novice 子集」前置为主分析群体(非事后稳健性);"
-              "占比不足则措辞从「novice-专属」弱化为「以 novice 为主体」+ 经验作调节。招募端加门槛。")
+        print("   → 2026-09-07 人群反转后这**不再是 go/no-go**:主分析人群已是全样本,"
+              "占比低不影响主分析可行性,也不需要收紧招募。")
+        print("     它只影响**事后探索性**切分的解释力 —— 子集 N 太小时,"
+              "改用连续经验度作调节而非二分子集,并在论文里标 exploratory。")
 
 
 def check_reliability(df: pd.DataFrame) -> None:

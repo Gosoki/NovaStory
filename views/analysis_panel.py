@@ -83,12 +83,15 @@ def render() -> None:
     # 人群开关放在按钮**外面**:Streamlit 的按钮只在被点的那次 rerun 为真,复选框若实例化在
     # 按钮分支里,一勾就触发 rerun、按钮变假、整块结果连同复选框一起消失 —— 研究员看到的是
     # 「页面空了」。这是后果最重的一个开关,不能是最难用对的那个。
-    pop_all = st.checkbox(t("analysis.pop_all"), key="_an_pop_all")
-    population = "all" if pop_all else "novice"
+    # 2026-09-07 拍板:主分析人群 = 全样本 → 默认**不勾**就是主分析。勾上才切到
+    # novice 子集(事后探索性)。session key 一并换名,避免旧会话残留的 True 把
+    # 研究员静默留在旧默认上。
+    pop_novice = st.checkbox(t("analysis.pop_novice"), key="_an_pop_novice")
+    population = "novice" if pop_novice else "all"
 
     def _select_population(comp):
-        """与 `make stats` 同口径(默认 novice,B1)。返回 (子集, 人数)。"""
-        if not pop_all:
+        """与 `make stats` 同口径(默认 all = 主分析人群)。返回 (子集, 人数)。"""
+        if pop_novice:
             if "novice" in comp.columns:
                 comp = comp[comp["novice"].astype(bool)]
             else:
@@ -127,8 +130,8 @@ def render() -> None:
             comp, warns = _run_capturing_warnings(lambda: A_stats.build_composites(pt))
             for w in warns:  # 例:保真复合缺 embed_fidelity 这条腿
                 st.warning(f"⚠️ {w}")
-            # 人群必须与 `make stats` 一致(默认 novice,B1),并且**写在脸上**:进幻灯片的
-            # 不能是一个没标人群的全样本数字。
+            # 人群必须与 `make stats` 一致(默认 all = 主分析人群,2026-09-07),并且**写在脸上**:
+            # 进幻灯片的不能是一个没标人群的数字 —— 尤其不能把探索性子集的数字当主结果。
             comp = _select_population(comp)
             from analysis import prereg
             comp = A_stats.build_quality(A_stats.build_dose(comp))

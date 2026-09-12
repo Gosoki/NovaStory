@@ -86,8 +86,8 @@ def _overview(parts: pd.DataFrame) -> None:
     st.progress(min(done / _TARGET_N, 1.0),
                 text=t("monitor.progress", n=_TARGET_N, done=done,
                        remain=max(_TARGET_N - done, 0)))
-    # 主分析人群是 novice 子集(B1):上面那条绿了不等于分析 N 够了。招募够不够看这个数
-    # (power_sim 的子集功效表:N=18 → MDES dz 0.71)。
+    # 2026-09-07 拍板:主分析人群 = 全样本 → **招募够不够看上面那条进度条**。
+    # 下面这个 novice 人数只是样本经验构成的参考,决定的是事后探索性切分还有没有解释力。
     st.caption(t("monitor.novice_done", n=int(nov_flags.sum())))
     # 语言构成:ja=日本队列、zh=中国队列,两者都是正式数据(2026-09-06 拍板,分析时按
     # lang 分开即可);只有 en 才是研究员测试或脱离协议的会话 —— 采数期就要看见,
@@ -164,7 +164,7 @@ def _dup_contacts(parts: pd.DataFrame) -> None:
 
     完成页在「请勿重复参加」的正下方摆了一支免费短片作为回报,而代码里**没有任何去重**
     (`insert_participant` 无条件 passed=True)。重复参加会吃掉多个 Williams seq、
-    破坏被试内 LMM 的独立性假设,还会让同一个人在主分析人群(novice 子集)里算好几次。
+    破坏被试内 LMM 的独立性假设,还会让同一个人在主分析人群(全样本)里算好几次。
     邮箱是唯一能照出这件事的信号,所以在这里**只报计数、不显示地址** —— 既让研究员
     看得见,又不把那一列重新暴露到界面上。"""
     if "contact_json" not in parts.columns:

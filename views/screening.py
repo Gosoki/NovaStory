@@ -8,8 +8,9 @@ from i18n import DEFAULT_LANG, t
 from views import _scale, _scroll, consent
 
 # Indices of the correct quiz options. Nobody is gated on these anymore —
-# novice status is recorded as a covariate (screening_json["is_novice"]) and
-# subset in analysis (see paper/4 §5.3).
+# novice status is recorded as a covariate (screening_json["is_novice"]); the
+# novice/expert split is exploratory only (post-hoc) — the primary analysis
+# population is the full sample (2026-09-07; see docs/paper/04).
 _QUIZ1_CORRECT = 1
 _QUIZ2_CORRECT = 1
 
