@@ -115,8 +115,9 @@ def load(db_path: Path) -> pd.DataFrame:
     # Participant language (ja/zh/en, picked once on the consent page). Everything
     # downstream is language-dependent — prompts, topic scenarios, the shot parser,
     # the scales and the embedding fidelity Δ — so analyses must be able to split or
-    # filter on it, and the report must state the language mix. Formal study is ja;
-    # any non-ja row is a researcher test or an off-protocol session.
+    # filter on it, and the report must state the language mix. Both ja (Japan
+    # cohort) and zh (China cohort) are formal study data (2026-09-06, reconfirmed
+    # 2026-09-23); only en rows are researcher tests or off-protocol sessions.
     # 2026-09-01 拍板 2.1:主分析人群必须进得了管线。此前 v3 只带出 lang,于是
     # 「主分析 = novice 子集」(B1)在分析侧无从筛选,stats 实际跑的是全样本。
     # novice **每次从 screening_json 的原始 5 项重算**(prereg.is_novice),不信任
