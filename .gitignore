@@ -233,3 +233,7 @@ data/ghosts/
 data/analysis/
 backup/
 data/storyboard_images/
+
+# 换电脑时的数据转移包（含被试数据，绝不提交；2026-09-23）
+novastory_data_*/
+novastory_data_*.tar.gz*
