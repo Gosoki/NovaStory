@@ -185,7 +185,7 @@ def main(argv: list[str] | None = None) -> None:
     subset_power_table()
 
     print("\n解读:配对 t 近似与 LMM 同构估计一致——**主分析(全样本)N=36** 约在 80% 功效"
-          "检出 dz≈0.48-0.5;中日两队列合并(N=72)约 dz≈0.33。"
+          "检出 dz≈0.48-0.5;日本队列约 18 → dz≈0.70;中日合并约 54 → dz≈0.39(2026-09-23 日本目标下调)。"
           "\n     novice 子集因 N 更小而功效不足,其结论只作**探索性**报告。"
           "\n⚠️ SESOI 须用本域(创作 HCI)可辩护的最小实质效应,勿直接搬 Maier/APE 的"
           " between-d(跨设计跨域);between-d→within-dz 需条件间相关 ρ 作敏感性。无 pilot,"

@@ -197,11 +197,48 @@ def run(tmp: Path) -> None:
         f"H4 段落只剩「{A_stats._H4_QUALITY_DV} 未构建」,非劣主张无 DV 可测\n{out[-800:]}"
     ok(f"make stats 的 CLI 路径:{n_tab} 张计划对比表 + H4(有 DV)/H5 段落,无 ⛔ 终点缺失汇总")
 
+    # 中日合并(prereg 合并段):两队列都在库时 `make stats` 必须走合并模型 —— 此前日本数据
+    # 一进库,stats 会把两国静默混在一起、模型里没有 lang。同一份合成数据复制成第二个队列
+    # (新 id、lang=ja)→ 两队列 E−D 完全相同,门控必须放行;再给 ja 的 E 注入 +3 分所有权,
+    # 门控必须拦下(只测「放行」的话,一个永远放行的门控也是绿的)。
+    from core import config as C_cfg  # noqa: PLC0415
+    assert prereg.WILLIAMS_ROUND_N == C_cfg.LATIN_SQUARE_N, "prereg.WILLIAMS_ROUND_N ≠ config.LATIN_SQUARE_N"
+    zh_part = merged.assign(lang="zh")
+    ja_part = merged.assign(lang="ja", participant_id=merged["participant_id"] + 100000)
+    zh_csv, mix_csv = tmp / "zh_only.csv", tmp / "mixed.csv"
+    zh_part.to_csv(zh_csv, index=False)
+    pd.concat([zh_part, ja_part]).to_csv(mix_csv, index=False)
+    _, out_pool = quiet(lambda: _cli(A_stats.main, ["--csv", str(mix_csv)]))
+    assert "**合并模型**" in out_pool, f"两队列都在却没走合并模型:\n{out_pool[:600]}"
+    for tag in ("[M1] 队列 × 条件 交互", "[M1] 分国估计", "[M0 合并模型] LMM 计划对比"):
+        assert out_pool.count(tag) == len(endpoints), f"合并模式缺「{tag}」段(应每终点一次)"
+    assert "⛔ 最终警告" not in out_pool and "⛔ HETEROGENEOUS(两队列" not in out_pool, out_pool[-800:]
+    ja_het = ja_part.copy()
+    ja_het.loc[ja_het["condition"] == "E", "own_mean"] += 3.0
+    ja_het["imagine"] += 1.0   # 让两队列的 z 参照分布不同 —— 下面「先筛再 z」的比对才有牙
+    pd.concat([zh_part, ja_het]).to_csv(mix_csv, index=False)
+    _, out_het = quiet(lambda: _cli(A_stats.main, ["--csv", str(mix_csv)]))
+    assert "ownership_composite: ⛔ HETEROGENEOUS" in out_het, f"注入队列差后门控没拦:\n{out_het[-1200:]}"
+    # 分国单独跑 = 先筛语言再 z:正文必须与「库里只有这一队列」时逐字相同(抬头多一行 lang,不比)
+    _, out_zh = quiet(lambda: _cli(A_stats.main, ["--csv", str(mix_csv), "--lang", "zh"]))
+    _, out_ref = quiet(lambda: _cli(A_stats.main, ["--csv", str(zh_csv)]))
+    assert out_zh.split("=" * 78)[-1] == out_ref.split("=" * 78)[-1], \
+        "--lang zh 的结果随另一队列进库而变了(z 没有先筛语言?)"
+    pd.concat([zh_part, ja_part.assign(lang="en")]).to_csv(mix_csv, index=False)   # 混进研究员测试会话
+    try:
+        quiet(lambda: _cli(A_stats.main, ["--csv", str(mix_csv)]))
+        raise AssertionError("混进 en 会话竟然照常合并")
+    except SystemExit as e:
+        assert e.code == 1, e.code
+    ok("两队列 → 合并模型(M1 门控 + 分国估计 + M0 Holm);--lang zh 与单队列逐字相同;"
+       "注入队列差 → HETEROGENEOUS;混进 en → 拒绝")
+
     # 零方差 DV 必须大声失败,不能"拟合成功"后打印 p=0(A1 的洞)
     df_flat = df.copy()
     df_flat["flat_dv"] = 1.0
     (err, _ed), _log = quiet(lambda: A_stats.analyze_endpoint(df_flat, "flat_dv"))
     assert err, "零方差 DV 竟然产出了确证结论(Holm 把 NaN 排成了 0)"
+    assert "llf 非有限" in err or "无方差" in err, f"零方差 DV 拦下了,但报错没说是数据问题:{err}"
     assert A_stats._holm([float("nan")] * 3) == [1.0, 1.0, 1.0], "NaN 的 p 被 Holm 排成了 0"
     ok(f"零方差 DV 被拦下:{err[:60]}…")
 

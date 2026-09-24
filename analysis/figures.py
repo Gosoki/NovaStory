@@ -52,7 +52,7 @@ def fig_effort(pt: pd.DataFrame, out: Path, population: str = "") -> None:
     post = [pt.loc[pt.condition == c, "post_investment"].mean() for c in conds]
     fig, ax = plt.subplots(figsize=(5.2, 4))
     ax.bar(conds, pre, color=COL_PRE, label="pre-gen investment (elicitation)")
-    ax.bar(conds, post, bottom=pre, color=COL_POST, label="post-gen revision")
+    ax.bar(conds, post, bottom=pre, color=COL_POST, label="post-gen time (C: reading only; C/D pre = 0 by design)")
     ax.errorbar(range(len(conds)), [a + b for a, b in zip(pre, post)], yerr=sem, fmt="none", ecolor="#444", capsize=3, lw=0.8)
     for i, (a, b) in enumerate(zip(pre, post)):
         ax.text(i, a + b + (sem[i] or 0), f"{a + b:.0f}s (n={n_by[i]})", ha="center", va="bottom", fontsize=8)
@@ -152,6 +152,8 @@ def main(argv: list[str] | None = None) -> None:
     # novice 子集图为**探索性**,图题须标 exploratory。以前出图这条路完全不筛、也不标,
     # 而进论文的正是图。
     ap.add_argument("--population", choices=("all", "novice"), default=DEFAULT_POPULATION)
+    # 与 stats --lang 同口径:先筛语言再构建复合(z 的参照随之而定);两队列混画会在图题里标出
+    ap.add_argument("--lang", choices=("all", "zh", "ja"), default="all")
     args = ap.parse_args(argv)
     FIGDIR.mkdir(parents=True, exist_ok=True)
 
@@ -166,12 +168,18 @@ def main(argv: list[str] | None = None) -> None:
     if not CSV.exists():
         raise SystemExit(f"未找到 {CSV} —— 先跑 make v3(或用 --demo 看合成图)。不再静默退回合成数据。")
     # 复合终点只在 stats.py 内存里构建、从不写回 CSV,故这里自己算(否则主 DV 图永远出不来)
-    pt = build_composites(pd.read_csv(CSV))
+    raw = pd.read_csv(CSV)
+    if args.lang != "all" and "lang" in raw:
+        raw = raw[raw["lang"] == args.lang]
+    langs = sorted(raw["lang"].dropna().unique()) if "lang" in raw else []
+    if len(langs) > 1:
+        print(f"⚠️ 图里混有多个队列 {langs}(不分队列、无 lang 项);分国图用 --lang zh / --lang ja")
+    pt = build_composites(raw)
     if args.population == "novice":
         if "novice" not in pt.columns:
             raise SystemExit("CSV 里没有 novice 列 —— 用当前版本的 analysis/v3.py 重新生成")
         pt = pt[pt["novice"].astype(bool)]
-    pop = f"{args.population}, n={pt['participant_id'].nunique()}"
+    pop = f"{args.population}, {'+'.join(langs) or '?'}, n={pt['participant_id'].nunique()}"
     print(f"人群 = {pop}")
 
     fig_effort(pt, FIGDIR / "fig_effort.png", pop)
@@ -186,8 +194,14 @@ def main(argv: list[str] | None = None) -> None:
         df = v3.load(args.db)
         if args.population == "novice" and "novice" in df.columns:
             df = df[df["novice"].astype(bool)]
-        div = v3.diversity_by_group(df)
-        if len(div):
+        if args.lang != "all" and "lang" in df.columns:
+            df = df[df["lang"] == args.lang]
+        # 压缩比 / distinct-2 跨语言不可比(字节级、字符级),中日稿混成一组算没有意义
+        mixed = "lang" in df.columns and df["lang"].nunique() > 1
+        div = v3.diversity_by_group(df) if not mixed else []
+        if mixed:
+            print("(多个队列混在一起,跳过多样性图 —— 用 --lang zh / --lang ja 分开画)")
+        elif len(div):
             fig_diversity(div, FIGDIR / "fig_diversity.png")
         else:
             print("(每组 <2 稿,跳过多样性图)")

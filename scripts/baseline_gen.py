@@ -1,5 +1,6 @@
 #!/usr/bin/env python
-"""T7.2 采样地板 — 每题 N 份纯机器 C 式输出 → data/baseline/topic{i}.jsonl。
+"""T7.2 采样地板 — 每题 N 份纯机器 C 式输出 → data/baseline/topic{i}.jsonl(ja;
+其他语言 → data/baseline/<lang>/topic{i}.jsonl,目录规则见 analysis/embed.baseline_dir)。
 
 每行: {topic_idx, sample_idx, seed, text, lang, model, temperature, base_url, ts}
 断点续跑: 已有行数直接跳过。
@@ -15,10 +16,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from analysis.embed import baseline_dir  # noqa: E402  (按语言分目录的单一真源,embed/norming 同读)
 from core import config, prompts, shots, state  # noqa: E402
 from core.llm_batch import BatchClient  # noqa: E402
-
-OUT_DIR = ROOT / "data" / "baseline"
 
 # 空稿连续这么多次就中止,不写半份基线。
 _EMPTY_RETRIES = 3
@@ -57,8 +57,8 @@ def assert_consistent(path: Path, client, lang: str) -> None:
     """续跑前校验已有行的 model/temperature/base_url/lang 与当前一致,
     防止换 --config-index/--temperature/--lang 续跑时同一题基线混用不同配置。
 
-    lang 尤其要查:三种语言的输出文件同名(topic{i}.jsonl),拿 --lang zh 试跑过之后
-    再补 ja,两种语言会混进同一题的质心,而 Δ 的零点就此错位。"""
+    lang 尤其要查:现在各语言分目录(baseline_dir),但旧版不分 —— 拿 --lang zh 试跑过的
+    旧文件就在根目录,再补 ja 两种语言会混进同一题的质心,而 Δ 的零点就此错位。"""
     meta = {**client.meta(), "lang": lang}
     # 看**每一行**:只看首行的话,中途换配置续跑过的文件检不出来
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -96,7 +96,8 @@ def main() -> None:
     ap.add_argument("--temperature", type=float, default=config.TEMPERATURE,
                     help="默认 = 被试用的 config.TEMPERATURE;基线与被试温度不同则 Δ 的零点不同源")
     ap.add_argument("--lang", default="ja", choices=("ja", "zh", "en"),
-                    help="生成语言(正式=ja,与被试数据可比;embed 只对同语言被试算 Δ;zh/en 仅测试)")
+                    help="生成语言(ja=日本队列、zh=中国队列;embed 让每位被试只和同语言基线比;"
+                         "ja 写 data/baseline/,其他写 data/baseline/<lang>/)")
     args = ap.parse_args()
 
     # 走 state.load_topics:与被试同一份归一化(shot_seconds→total_seconds、整数化),
@@ -104,11 +105,12 @@ def main() -> None:
     topics = state.load_topics()[: config.N_ROUNDS]
     seeds = load_seeds(args.seeds_file)
     client = BatchClient.from_secrets(args.config_index, temperature=args.temperature)
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    print(f"模型: {client.model}  温度: {client.temperature}  每题 N={args.n}")
+    out_dir = baseline_dir(args.lang)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    print(f"模型: {client.model}  温度: {client.temperature}  语言: {args.lang}  每题 N={args.n}")
 
     for i, topic in enumerate(topics):
-        out_path = OUT_DIR / f"topic{i}.jsonl"
+        out_path = out_dir / f"topic{i}.jsonl"
         done = count_lines(out_path)
         if done >= args.n:
             print(f"[topic{i}] 已有 {done} 份,跳过")
@@ -140,7 +142,7 @@ def main() -> None:
                 f.write(json.dumps(rec, ensure_ascii=False) + "\n")
                 f.flush()
                 print(f"[topic{i}] {j + 1}/{args.n} 完成 ({len(text)} 字)")
-    print("基线生成完毕 →", OUT_DIR)
+    print("基线生成完毕 →", out_dir)
 
 
 if __name__ == "__main__":

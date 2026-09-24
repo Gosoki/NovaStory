@@ -42,9 +42,9 @@ def _run_capturing_warnings(fn):
 
 
 # 由**别的**步骤合进 v3_per_trial.csv 的列(v3.per_trial 自己算不出来):
-# embed.py 的 embedding 保真Δ、events.py 的事件层、judge.py 的盲评保真。
+# embed.py 的 embedding 保真Δ(两种意图定义各一列)、events.py 的事件层、judge.py 的盲评保真。
 # 面板每次点「出分析结果」都重算 per_trial 并覆盖同一个 CSV,不接回来就会**静默抹掉**它们。
-_MERGED_ELSEWHERE = ("embed_fidelity", "judge_fidelity", "judge_n_reps", *EVENT_COLS)
+_MERGED_ELSEWHERE = ("embed_fidelity", "embed_fidelity_guided", "judge_fidelity", "judge_n_reps", *EVENT_COLS)
 
 
 def preserve_merged(pt, csv_path: Path):

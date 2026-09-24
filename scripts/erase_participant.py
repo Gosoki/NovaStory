@@ -48,8 +48,10 @@ def find_pid(con: sqlite3.Connection, args) -> int | None:
 def participant_texts(con: sqlite3.Connection, pid: int) -> set[str]:
     """该被试写过 / 收到过的全部文本 —— 用来反查 emb_cache 里的向量(键 = sha1(model + 文本))。"""
     out: set[str] = set()
-    for intent, final, versions in con.execute(
-            "SELECT intent_statement, final_output, script_versions FROM trials WHERE participant_id=?", (pid,)):
+    from analysis.embed import guided_intent  # noqa: PLC0415 — 与 embed.py 同一个锚文本构造
+    for intent, final, versions, guidance in con.execute(
+            "SELECT intent_statement, final_output, script_versions, guidance_json "
+            "FROM trials WHERE participant_id=?", (pid,)):
         for s in (intent, final):
             if s:
                 out.add(s)
@@ -57,6 +59,11 @@ def participant_texts(con: sqlite3.Connection, pid: int) -> set[str]:
             out.update(v.get("text", "") for v in json.loads(versions or "[]") if v.get("text"))
         except ValueError:
             pass
+        if intent:   # embed.py 意图定义②的锚文本(意图 + E 引导答案)也会进 emb_cache
+            try:
+                out.add(guided_intent(intent, guidance))
+            except ValueError:
+                pass
     return out
 
 
@@ -78,7 +85,8 @@ def main() -> None:
     counts = {t: con.execute(f"SELECT COUNT(*) FROM {t} WHERE participant_id=?", (pid,)).fetchone()[0] for t in tables}
     texts = participant_texts(con, pid)     # 先读出文本,删库之后就反查不到 emb_cache 的键了
     img_dirs = sorted(IMG.glob(f"{pid}_*")) if IMG.exists() else []
-    csvs = sorted(ANALYSIS.glob("*.csv")) if ANALYSIS.exists() else []
+    # rglob:队列快照(zh_v1_*/)、数据挖掘目录(mining_*/)里的逐 trial CSV 也按 participant_id 存行
+    csvs = sorted(ANALYSIS.rglob("*.csv")) if ANALYSIS.exists() else []
     print(f"participant_id={pid}: 行数 {counts},插图目录 {len(img_dirs)} 个,分析 CSV {len(csvs)} 份将剔除该 id 的行,"
           f"emb_cache 反查文本 {len(texts)} 条")
     if not args.yes:
@@ -116,6 +124,14 @@ def main() -> None:
         cache.write_text(json.dumps(d))
         print(f"emb_cache.json:删掉 {n0 - len(d)} 条向量")
     print(f"已删除 participant_id={pid} 的全部在线记录。")
+    # 这些文件脚本改不了(整库副本 / 打包 / 自包含网页),但可能仍含该被试 —— 必须点名,不能说「全部」
+    frozen = sorted([*ANALYSIS.rglob("*.tar.gz"), *ANALYSIS.rglob("*.db"), *ANALYSIS.rglob("*.html"),
+                     *ANALYSIS.rglob("*.json"), *ANALYSIS.rglob("*.md"),
+                     *ANALYSIS.rglob("*.log"), *ANALYSIS.rglob("*.txt")]) if ANALYSIS.exists() else []
+    frozen = [p for p in frozen if p.name not in ("emb_cache.json",) and not p.name.startswith("norming")]
+    if frozen:
+        print(f"⚠️ data/analysis/ 下还有 {len(frozen)} 个文件可能仍含该被试,需人工处理(删掉或重新生成):"
+              f"{[str(p.relative_to(ANALYSIS)) for p in frozen]}")
     old = sorted(BACKUP.glob("novastory-*.db")) if BACKUP.exists() else []
     if old:
         print(f"⚠️ 备份目录里还有 {len(old)} 份历史快照可能仍含该被试(最早 {old[0].name}):"

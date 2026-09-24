@@ -190,6 +190,54 @@ PRIMARY_ENDPOINTS = ("ownership_composite", "fidelity_composite")
 SECONDARY_ENDPOINTS = ("satisfaction", "effort_composite",
                        "post_investment", "total_investment")
 
+# ---- 中日两队列合并分析 ——【2026-09-24 草案,docs/paper/06 ⑰-1 选项 (b);待用户拍板】----
+# 背景:中国队列(zh)N=36 已采完、先出一版结论(zh_v1);日本队列(ja)目标约 18、后采。
+# 日本单独 N=18 → MDES dz≈0.70,「两国各一套结论」撑不住,只剩合并建模(10 · 2026-09-23)。
+# 本节在**见到任何日本数据之前**写死合并怎么做;stats 从这里读,不临场决定。
+# ⚠️ lang 与队列 / 采集时间 / 模型版本 / 招募场景完全共线(先中后日,10 · 2026-09-07),
+#    所以 lang 的主效应与交互**只能读作「队列差异」**,不能读作「语言 / 文化效应」。
+COHORT_LANGS = ("zh", "ja")              # 两个正式队列;其余语言(en = 研究员测试)出现即拒绝合并
+COHORT_TARGET_N = {"zh": 36, "ja": 18}   # ja 采不满就停在 18 = 一整轮 Williams(10 · 2026-09-23)
+WILLIAMS_ROUND_N = 18                    # = core.config.LATIN_SQUARE_N(本模块不 import 带 streamlit 的 config;
+                                         #   analysis_smoke 断言两者相等)
+
+# 模型:(1|被试) 不变;is_ja = 1[lang=="ja"],**zh 为参照**(先采、N 大的队列)。
+#   M1 交互模型:条件 × 队列;题目与顺序也按队列分层
+#   M0 合并模型:条件效应两队列共用;题目与顺序仍按队列分层
+# 题目为什么嵌套在队列里:两国读的是**同一道题的不同语言版本**,翻译会改变难度 / 开放度
+# (中文题面 norming 2026-09-24 事后补做:第 1 题明显更同质,见 docs/paper/14 §4),不能假设题目效应跨语言相同。
+# 顺序(练习)效应同理:两批在不同场景、不同设备上做。代价只有 3 个自由度。
+# 这样 M1 的分国条件对比 = 两个单队列模型叠在一起(只共享方差成分),
+# 队列内平衡时点估计与 `stats.py --lang zh/ja` 单独拟合相同。
+POOLED_RHS_INTERACTION = "C(condition)*is_ja + C(topic)*is_ja + order*is_ja"   # M1
+POOLED_RHS_MAIN = "C(condition) + C(topic)*is_ja + order*is_ja"                # M0
+
+# 门控(每个终点各一次):M1 里 **E−D 的队列差** (E−D)_ja − (E−D)_zh 的 1 自由度 Wald 检验。
+#   p ≥ α_int → 合并:在 M0 上走原来的三计划对比 + 族内 Holm + DECISION_BRANCHES
+#   p <  α_int → HETEROGENEOUS:不报合并结论,只报分国估计
+# 只看 E−D、不看 2 自由度的整体 condition×lang:判定分支只对 E−D 下结论,门控就只管它;
+# 整体检验把 E−C / D−C 的队列差也掺进来,既稀释功效,又会让一个不下结论的对比挡住主结论。
+# 整体 χ²(2) 与 E−C / D−C 的队列差照样打印(描述性,不门控)。
+# α_int = 0.10 而不是 0.05:ja 只有约 18 人,交互的 MDES ≈ 0.73 个配对差 SD(所有权约 0.95 分),
+# 检验本来就很弱;门控放宽 = 对「合并」更保守。交互检验不进 Holm 族(它是模型检查,不是主张)。
+# ⚠️ 门控不显著 ≠ 两国效应相同 → **分国估计(95% CI)无论门控结果如何都报**。
+LANG_INTERACTION_ALPHA = 0.10
+LANG_GATE_CONTRAST = "E-D"
+
+# TOST(合并时):仍是原来的配对 TOST,配对差来自两队列全部被试(df = N−1)。这正是 M0
+# 「两队列 E−D 相同」假设下的检验;若两队列均值其实不同,差异会进配对差的 SD,只会让
+# TOST 更难通过(保守)。界与量纲不变(SESOI_BY_ENDPOINT / EQUIV_DV_BY_ENDPOINT)。
+# z 合成的复合:合并时在**合并样本**上 z(与下方「z 一律按全样本」一致);单队列分析
+# (--lang zh/ja)**先筛语言再 z** → zh_v1 的数字在日本数据进库后仍可逐位复现,
+# 但与合并模式里 zh 的分国估计不在同一把 z 尺上(原始分终点不受影响)。
+# H5 剂量-反应(被试间 OLS)合并时加 C(lang) 协变量,防两队列的水平差冒充剂量效应。
+#
+# 队列完整性:每个队列都覆盖一整轮 Williams(WILLIAMS_ROUND_N 个 seq 各 ≥1 名完成者),
+# 合并结果才算确证性。不满一整轮(例如 ja 只有 12 人 → 条件顺序 [3,3,3,3,0,0],
+# E 从没排在第 1 轮)时,队列内条件与轮次位置部分混杂 → 合并结果**降为探索性**,
+# 确证结论以 zh 单队列(zh_v1)为准。满一整轮但各 seq 人数不等(例如 24 人):照常合并并告警。
+# ⛔ 任何情况下都**不为了凑平衡丢弃已完成的被试**(违反纳入规则与同意书承诺)。
+
 # ---- 复合公式(as-run,见 analysis/stats.build_composites) ----
 # z 一律按**全样本**算(跨全部 trial 的均值/标准差),被试间差异交给 LMM 的随机截距
 # (1|被试) 吸收——不用被试内 z:每被试每条件仅 1 轮,被试内 SD 由 3 个点估计、噪声过大,
@@ -246,4 +294,14 @@ def as_dict() -> dict:
         "primary_endpoints": list(PRIMARY_ENDPOINTS),
         "secondary_endpoints": list(SECONDARY_ENDPOINTS),
         "composites": COMPOSITES,
+        # ---- 中日两队列合并(2026-09-24 草案,06 ⑰-1 (b))----
+        "pooled": {
+            "cohort_langs": list(COHORT_LANGS),
+            "cohort_target_n": dict(COHORT_TARGET_N),
+            "williams_round_n": WILLIAMS_ROUND_N,
+            "rhs_interaction": POOLED_RHS_INTERACTION,
+            "rhs_main": POOLED_RHS_MAIN,
+            "lang_interaction_alpha": LANG_INTERACTION_ALPHA,
+            "gate_contrast": LANG_GATE_CONTRAST,
+        },
     }

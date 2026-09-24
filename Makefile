@@ -3,8 +3,13 @@
 #                        次要证据要的话另跑 make judge(位置见文件末尾说明)
 PY := .venv/bin/python
 .DEFAULT_GOAL := help
+# 机器基线的语言(baseline / norming):ja=日本队列(默认,落 data/baseline/)、zh=中国队列(落 data/baseline/zh/)。
+# ⚠️ 不能叫 LANG —— 那是 shell 的 locale 环境变量(C.UTF-8 / en_US.UTF-8…),make 会把它当默认值读进来。
+BASELINE_LANG ?= ja
+# embed 缺省每位被试各比自己语言的基线;设了 EMBED_LANG 就只算这一种语言(其余记 NaN)
+EMBED_LANG ?=
 
-.PHONY: help dev baseline norming v3 events pilot embed judge stats stats-novice power figures analysis smoke robust smoke-e2e i18n freeze freeze-check precompress serve
+.PHONY: help dev baseline norming v3 events pilot embed judge stats stats-zh stats-ja stats-novice power figures analysis smoke robust smoke-e2e i18n freeze freeze-check precompress serve
 
 dev:        ## 本地开发起服务(热重载;生产 config.toml 默认关)
 	.venv/bin/streamlit run app.py --server.runOnSave true --server.fileWatcherType auto
@@ -12,11 +17,11 @@ dev:        ## 本地开发起服务(热重载;生产 config.toml 默认关)
 help:       ## 列出所有命令(直接敲 `make` 就看这个)
 	@grep -hE '^[a-z][a-zA-Z0-9_-]*:.*##' $(MAKEFILE_LIST) | sed -E 's/:.*## / — /' | sort
 
-baseline:   ## 机器基线(norming / embed 的输入):每题 N 份纯机器稿 → data/baseline/
-	$(PY) scripts/baseline_gen.py --n 12 --lang ja
+baseline:   ## 机器基线(norming / embed 的输入):每题 30 份纯机器稿 → data/baseline/[<lang>/](BASELINE_LANG=zh 切语言)
+	$(PY) scripts/baseline_gen.py --n 30 --lang $(BASELINE_LANG)
 
-norming:    ## 主题开放度 norming(先 make baseline)→ 三题是否可比
-	$(PY) analysis/norming.py
+norming:    ## 主题开放度 norming(先 make baseline)→ 三题是否可比(BASELINE_LANG=zh 切语言)
+	$(PY) analysis/norming.py --lang $(BASELINE_LANG)
 
 v3:         ## 确定性指标(结构/多样性/逐镜头保真/版本演化/努力再分配/主观复合)→ v3_per_trial.csv
 	$(PY) analysis/v3.py
@@ -33,14 +38,20 @@ freeze-check: ## 校验「冻结值 == 当前代码实际值」;改过分析代�
 pilot:      ## 试测健康检查(4 生死问题:D地板/C天花板/novice占比/量表信度)→ 🟢🟡🔴 + 后手(docs/paper/05)
 	$(PY) analysis/pilot_check.py
 
-embed:      ## embedding 相对基线保真 Δ,合入 CSV(需 OpenAI + baseline)
-	$(PY) analysis/embed.py
+embed:      ## embedding 相对基线保真 Δ(每位被试比同语言基线),合入 CSV(需 OpenAI + baseline;EMBED_LANG=zh 只算一种)
+	$(PY) analysis/embed.py $(if $(EMBED_LANG),--lang $(EMBED_LANG))
 
 judge:      ## 盲评保真 LLM-judge(OpenAI×3+ICC),judge_fidelity 合入 CSV(次要证据,不在 analysis 链)
 	$(PY) scripts/judge.py
 
-stats:      ## LMM / E−D 主对比(Holm)/ 三分支判定 / Wilcoxon / 剂量-反应【默认跑全样本 = 主分析人群】
+stats:      ## LMM / E−D 主对比(Holm)/ 三分支判定 / Wilcoxon / 剂量-反应【默认跑全样本 = 主分析人群;zh+ja 都在库 → 合并模型】
 	$(PY) analysis/stats.py
+
+stats-zh:   ## 只跑中国队列(单队列模型;先筛语言再 z → 日本数据进库后仍逐位复现 zh_v1)
+	$(PY) analysis/stats.py --lang zh
+
+stats-ja:   ## 只跑日本队列(单队列模型;N≈18 → MDES dz≈0.70,分国结果只作描述)
+	$(PY) analysis/stats.py --lang ja
 
 stats-novice: ## 同上但只跑 novice 子集(**事后探索性**,非确证;结论里必须标 exploratory)
 	$(PY) analysis/stats.py --population novice

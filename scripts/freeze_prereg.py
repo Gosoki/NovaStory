@@ -142,6 +142,8 @@ def collect_knobs() -> dict:
         # 就换了,而 prereg 的哈希不会动 —— 必须进旋钮快照。读常量,不抄字符串。
         "stats.DEFAULT_POPULATION": A_stats.DEFAULT_POPULATION,
         "figures.DEFAULT_POPULATION": _figures_default_population(),
+        # 队列默认值同理:翻成 zh/ja,`make stats` 在两队列都在库时就不再跑合并主分析。
+        "stats.DEFAULT_LANG": A_stats.DEFAULT_LANG,
     }
     from core import state as S
     knobs["state._COND_ORDERS"] = [list(x) for x in S._COND_ORDERS]

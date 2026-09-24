@@ -5,11 +5,13 @@
 计划对比 E−D(主)/ E−C / D−C,族内 Holm 校正。
 等价:  TOST(主终点不显著时的等价检验,界取 prereg.SESOI_BY_ENDPOINT;H4 结构完整度只作描述性,2026-09-01 拍板 2.4)。稳健: Wilcoxon 配对符号秩。
 剂量-反应: E 内 事前投入 → 保真 / 所有权(被试间,附注局限)。
+中日合并: CSV 里 zh + ja 两个正式队列都在时,默认走 prereg 合并段(M1 交互门控 → M0 合并 + 分国估计)。
 
 输入: analysis/v3.py 的 per-trial CSV(缺主复合成分则跳过该复合)。
 无数据时 `--demo` 用 power_sim 的合成数据自测:能否复原注入的 E−D 效应。
 
 用法: .venv/bin/python analysis/stats.py            # 有 CSV 则跑真数据,否则自测
+      .venv/bin/python analysis/stats.py --lang zh  # 只跑中国队列(单队列模型)
       .venv/bin/python analysis/stats.py --demo     # 强制合成自测
 """
 from __future__ import annotations
@@ -31,6 +33,10 @@ from analysis import prereg  # noqa: E402  (冻结分析计划常量的单一真
 # 主分析人群的默认值(2026-09-07 拍板 = 全样本)。提成模块级常量是为了让
 # scripts/freeze_prereg.py 的旋钮快照**读到真值**,而不是靠人抄一份字符串。
 DEFAULT_POPULATION = "all"
+# 队列默认值:all = 库里全部正式队列 —— 只有一个队列时跑单队列模型(与以前逐位相同),
+# zh + ja 都在时跑事前确定的合并模型(prereg 合并段)。**不存在「两队列混在一起、模型里
+# 没有 lang」的路径**:那正是日本数据一进库就会静默发生的事。同样进 freeze 旋钮快照。
+DEFAULT_LANG = "all"
 
 DEFAULT_PER_TRIAL_CSV = ROOT / "data" / "analysis" / "v3_per_trial.csv"   # 与 events.DEFAULT_CSV 同一份产物
 _PAIRS = [("E", "D"), ("E", "C"), ("D", "C")]  # E−D 为主
@@ -192,18 +198,27 @@ _OPTIMIZERS = ("lbfgs", "powell", "bfgs", "nm", "cg")
 
 
 _LMM_TERMS = ("condition", "topic", "round_idx", "participant_id")
+_RHS_SINGLE = "C(condition) + C(topic) + order"   # 单队列模型;合并模型的 rhs 在 prereg 合并段
 
 
-def fit_lmm(df: pd.DataFrame, dv: str):
-    """依次试 _OPTIMIZERS,返回第一个拟合成功的。lbfgs 在本设计上常抛 Singular matrix
-    而 powell/bfgs/nm 拟合同一模型无碍(N=36 合成数据 6 个终点里 5 个如此),写死单一
-    优化器会让冻结分析计划里的确证分析静默消失。全失败则抛,绝不返回 None。
+def fit_lmm(df: pd.DataFrame, dv: str, rhs: str = _RHS_SINGLE):
+    """_OPTIMIZERS 全部试一遍,在**已收敛**的拟合里取 REML 对数似然最高的那个。
+    lbfgs 在本设计上常抛 Singular matrix 而 powell/bfgs/nm 拟合同一模型无碍(N=36 合成数据
+    6 个终点里 5 个如此),写死单一优化器会让冻结分析计划里的确证分析静默消失。全失败则抛,
+    绝不返回 None。
+
+    ⚠️ 2026-09-24 修:此前是「返回第一个不抛异常的」。中国队列真数据上,effort_composite 的
+    lbfgs 不抛异常但 converged=False,停在 llf 低 2.44 的点(σ²_e 被低估约 17%,SE .133 vs
+    正确的 .146),于是 H3a 的 p_holm 报成 .0003(收敛解 = .001,与被试固定效应 OLS 一致);
+    total_investment 的 lbfgs 甚至自报 converged=True,llf 却低于其他优化器。所以
+    converged 标志本身不够,要比 llf。点估计不受影响(平衡设计下固定效应不依赖方差成分)。
 
     去空必须覆盖模型的**全部**项(此前只去 dv/condition):一个 NaN topic 会被 patsy
     悄悄丢行、而 groups 仍是全长,五个优化器一起抛
     `IndexError: index 107 is out of bounds for axis 0 with size 107` —— 把「数据缺一格」
     伪装成「数值不收敛」。丢了多少行必须报出来(深度评审 T3)。
-    拟合后报 converged / 被试随机效应方差,避免边界解被当成正常结果(T7)。"""
+    拟合后报 converged / 被试随机效应方差,避免边界解被当成正常结果(T7)。
+    rhs 默认 = 单队列模型;合并模式传 prereg.POOLED_RHS_INTERACTION / POOLED_RHS_MAIN。"""
     import statsmodels.formula.api as smf
     d = df.dropna(subset=[dv, *_LMM_TERMS]).copy()
     dropped = len(df) - len(d)
@@ -212,18 +227,27 @@ def fit_lmm(df: pd.DataFrame, dv: str):
         print(f"  注:{dv} 按模型项去空丢了 {dropped}/{len(df)} 行(各项空值数 {na})——"
               "这是**数据缺失**,不是优化器/数值问题。")
     d["order"] = d["round_idx"].astype(float)
-    formula = f"Q('{dv}') ~ C(condition) + C(topic) + order"
-    errs = []
+    if "is_ja" in rhs:   # 合并模型:zh 为参照(prereg 合并段)
+        d["is_ja"] = (d["lang"] == "ja").astype(float)
+    formula = f"Q('{dv}') ~ {rhs}"
+    errs, fits = [], []
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")  # 5 次尝试的 Convergence/Singular 噪声;收敛性下面显式查
         for opt in _OPTIMIZERS:
             try:
                 fit = smf.mixedlm(formula, d, groups=d["participant_id"]).fit(method=opt)
-                _report_fit_health(dv, opt, fit)
-                return fit
+                if np.isfinite(fit.llf):
+                    fits.append((opt, fit))
+                else:   # 零方差 DV:五个优化器都不抛异常、只给 llf=inf —— 这是数据问题,要说清楚
+                    errs.append(f"{opt}=llf 非有限({fit.llf}):DV 无残差方差/被设计完全解释 —— 数据问题,不是优化器问题")
             except Exception as e:  # noqa: BLE001
                 errs.append(f"{opt}={type(e).__name__}: {e}")
-    raise RuntimeError(f"{dv}: 全部优化器均失败(" + "; ".join(errs) + ")")
+    if not fits:
+        raise RuntimeError(f"{dv}: 全部优化器均失败(" + "; ".join(errs) + ")")
+    ok = [f for f in fits if bool(getattr(f[1], "converged", True))]
+    opt, fit = max(ok or fits, key=lambda f: f[1].llf)   # 全都没收敛才退而取 llf 最高者(下面会报)
+    _report_fit_health(dv, opt, fit)
+    return fit
 
 
 def _report_fit_health(dv: str, opt: str, fit) -> None:
@@ -271,6 +295,72 @@ def contrasts(fit) -> pd.DataFrame:
                      "se": float(np.ravel(r.sd)[0]), "p_raw": float(np.ravel(r.pvalue)[0])})
     out = pd.DataFrame(rows)
     out["p_holm"] = _holm(out["p_raw"].tolist())
+    return out
+
+
+# ---------------- 中日合并(prereg 合并段)----------------
+
+def lang_interaction(fit) -> tuple[pd.DataFrame, pd.DataFrame, float]:
+    """在 M1(prereg.POOLED_RHS_INTERACTION,zh 为参照)上取三样东西:
+    ① 三个对比各自的队列差 (ja − zh) 与 1 自由度 Wald p —— E−D 那一行就是门控;
+    ② 分国估计:zh / ja 各三个对比,95% CI,**未校正**(描述性,无论门控结果都报);
+    ③ 整体 condition×lang 的 2 自由度 Wald p(描述性,不门控)。"""
+    names = list(fit.model.exog_names)
+    D, E = "C(condition)[T.D]", "C(condition)[T.E]"
+    Dj, Ej = f"{D}:is_ja", f"{E}:is_ja"
+
+    def vec(w: dict) -> np.ndarray:
+        v = np.zeros(len(names))
+        for n, x in w.items():
+            v[names.index(n)] += x
+        return v.reshape(1, -1)
+
+    def test(w: dict) -> dict:
+        r = fit.t_test(vec(w))
+        lo, hi = np.ravel(r.conf_int())
+        return {"estimate": float(np.ravel(r.effect)[0]), "se": float(np.ravel(r.sd)[0]),
+                "ci_lo": float(lo), "ci_hi": float(hi), "p": float(np.ravel(r.pvalue)[0])}
+
+    base = {"E-D": {E: 1, D: -1}, "E-C": {E: 1}, "D-C": {D: 1}}       # zh 队列的对比
+    diff = {"E-D": {Ej: 1, Dj: -1}, "E-C": {Ej: 1}, "D-C": {Dj: 1}}   # ja − zh
+    inter = pd.DataFrame([{"contrast": c, **test(w)} for c, w in diff.items()])
+    per = pd.DataFrame([{"lang": lg, "contrast": c, **test({**base[c], **(diff[c] if lg == "ja" else {})})}
+                        for lg in prereg.COHORT_LANGS for c in base])
+    R = np.vstack([vec({Dj: 1}), vec({Ej: 1})])
+    # MixedLM 的 t_test 收「固定效应长度」的向量,wald_test 却要**全参数长度**(含方差成分)→ 补零
+    R = np.hstack([R, np.zeros((len(R), len(fit.params) - R.shape[1]))])
+    omni = fit.wald_test(R, scalar=True)
+    return inter, per, float(omni.pvalue)
+
+
+def _lang_gate(df: pd.DataFrame, dv: str) -> dict:
+    """拟合 M1、打印交互与分国估计,返回门控结果 {p_int, heterogeneous}。"""
+    inter, per, p_omni = lang_interaction(fit_lmm(df, dv, prereg.POOLED_RHS_INTERACTION))
+    if not np.isfinite(inter[["se", "p"]].to_numpy()).all():
+        raise RuntimeError(f"{dv}: M1 退化,队列差的 se/p 非有限值(某队列该 DV 无方差?)")
+    gate = prereg.LANG_GATE_CONTRAST
+    p_int = float(inter.set_index("contrast").loc[gate, "p"])
+    het = p_int < prereg.LANG_INTERACTION_ALPHA
+    print(f"\n[M1] 队列 × 条件 交互(ja − zh;门控 = {gate} 这一行,α_int={prereg.LANG_INTERACTION_ALPHA},"
+          "不进 Holm 族):")
+    print(inter.round(4).to_string(index=False))
+    print(f"  整体 condition×lang Wald χ²(2) p={p_omni:.4f}(描述性,不门控)")
+    print(f"  → 门控 p_int={p_int:.4f}:" + (
+        f"⛔ < {prereg.LANG_INTERACTION_ALPHA} → HETEROGENEOUS,不报合并结论,以分国估计为准" if het
+        else f"≥ {prereg.LANG_INTERACTION_ALPHA} → 合并(⚠️ 不显著 ≠ 两国相同,分国估计照报)"))
+    print("\n[M1] 分国估计(描述性,95% CI,未校正;无论门控结果都报):")
+    print(per.round(4).to_string(index=False))
+    return {"p_int": p_int, "heterogeneous": het}
+
+
+def _cohort_design(df: pd.DataFrame) -> dict:
+    """每个队列:人数、覆盖了几个 Williams seq、各 seq 人数是否相等(prereg 合并段的完整性规则)。"""
+    out = {}
+    for lg, g in df.drop_duplicates("participant_id").groupby("lang"):
+        cnt = (pd.to_numeric(g["seq"], errors="coerce").dropna().astype(int).value_counts()
+               .reindex(range(prereg.WILLIAMS_ROUND_N), fill_value=0))
+        out[lg] = {"n": len(g), "seq_covered": int((cnt > 0).sum()),
+                   "balanced": bool((cnt > 0).all() and cnt.nunique() == 1)}
     return out
 
 
@@ -354,25 +444,32 @@ def tost(df: pd.DataFrame, dv: str, pair=("E", "D"), bound: float | None = None)
             "verdict": "equivalent" if eq else "INCONCLUSIVE"}
 
 
-def dose_response(df: pd.DataFrame, dv: str, dose: str = "dose_composite") -> dict:
+def dose_response(df: pd.DataFrame, dv: str, dose: str = "dose_composite",
+                  by_lang: bool = False) -> dict:
     """E 内:事前投入 → 保真 / 所有权(被试间 OLS;每被试仅 1 个 E,无法被试内中心化
     ——附注局限)。docs/paper/04 §3.1-4 的 H5 因变量是**两个主复合**,不止保真。
-    默认剂量为 build_dose 的三成分复合;dose='pre_investment' 可得只看时间的可比版本。"""
+    默认剂量为 build_dose 的三成分复合;dose='pre_investment' 可得只看时间的可比版本。
+    by_lang=True(合并模式)加 C(lang) 协变量:被试间模型里两队列的水平差会冒充剂量效应。"""
     import statsmodels.formula.api as smf
     if dv not in df or dose not in df:
         return {"note": f"缺列 {[c for c in (dv, dose) if c not in df]}"}
     e = df[(df["condition"] == "E")].dropna(subset=[dv, dose])
     if len(e) < 8 or e[dose].std() == 0:
         return {"n": len(e), "note": "样本不足/无方差"}
-    m = smf.ols(f"Q('{dv}') ~ Q('{dose}')", e).fit()
-    return {"n": int(len(e)), "beta": float(m.params.iloc[1]),
-            "p": float(m.pvalues.iloc[1]), "r2": float(m.rsquared)}
+    m = smf.ols(f"Q('{dv}') ~ Q('{dose}')" + (" + C(lang)" if by_lang else ""), e).fit()
+    term = f"Q('{dose}')"   # 按名取:加了 C(lang) 后 patsy 把分类项排在前面,iloc[1] 会取错
+    return {"n": int(len(e)), "beta": float(m.params[term]),
+            "p": float(m.pvalues[term]), "r2": float(m.rsquared)}
 
 
 # ---------------- 端点分析 + CLI ----------------
 
-def analyze_endpoint(df: pd.DataFrame, dv: str) -> tuple[str | None, dict | None]:
+def analyze_endpoint(df: pd.DataFrame, dv: str, pooled: bool = False) -> tuple[str | None, dict | None]:
     """跑完一个终点。返回 (失败原因或 None, {"p_holm", "estimate"} 或 None)。
+
+    pooled=True(中日合并,prereg 合并段):先在 M1 上做队列×条件门控并打印分国估计,
+    再在 M0 上做三计划对比 + Holm;返回值额外带 {"p_int", "heterogeneous"} 给 primary_verdict。
+    M1 失败同样算确证分析缺失 —— 没有门控就没有合并结论。
 
     **estimate 是 E−D 的点估计,必须一起带回来** —— 只凭 p 走判定分支会把
     「E 显著**劣于** D」误判成「判优」(显著性检验是双侧的,p 不含方向)。
@@ -385,21 +482,23 @@ def analyze_endpoint(df: pd.DataFrame, dv: str) -> tuple[str | None, dict | None
     if dv not in df or df[dv].notna().sum() < 6:
         print("  (数据不足,跳过)")
         return "数据不足(该列缺失或非空 < 6)", None
-    means = df.groupby("condition")[dv].agg(["mean", "std", "count"])
-    print("按条件:\n", means.round(3).to_string())
+    means = df.groupby(["lang", "condition"] if pooled else "condition")[dv].agg(["mean", "std", "count"])
+    print(("按 队列×条件:\n" if pooled else "按条件:\n"), means.round(3).to_string())
     err, ed_stat = None, None
     try:
-        fit = fit_lmm(df, dv)
+        gate = _lang_gate(df, dv) if pooled else {}
+        fit = fit_lmm(df, dv, prereg.POOLED_RHS_MAIN if pooled else _RHS_SINGLE)
         con = contrasts(fit)
         if not np.isfinite(con[["se", "p_raw"]].to_numpy()).all():
             # 零方差/共线 DV 上 LMM 会「成功」但 se/p 全 NaN,照样打印就成了假的确证结论
             raise RuntimeError(f"{dv}: LMM 退化,计划对比 se/p 非有限值(DV 无方差或与设计共线)")
-        print("\nLMM 计划对比(Holm;E−D 为主):")
+        print(("\n[M0 合并模型] " if pooled else "\n") + "LMM 计划对比(Holm;E−D 为主)"
+              + (";⚠️ 门控未过,仅供参考、不作结论" if gate.get("heterogeneous") else "") + ":")
         print(con.round(4).to_string(index=False))
         row = con[con["contrast"] == "E-D"]
         if len(row):
             ed_stat = {"p_holm": float(row.iloc[0]["p_holm"]),
-                       "estimate": float(row.iloc[0]["estimate"])}
+                       "estimate": float(row.iloc[0]["estimate"]), **gate}
     except Exception as e:  # noqa: BLE001
         err = f"{type(e).__name__}: {e}"
         print("!" * 78)
@@ -432,12 +531,18 @@ def primary_verdict(df: pd.DataFrame, dv: str, ed: dict | None, alpha: float = p
 
     等价检验用的 DV 由 prereg.EQUIV_DV_BY_ENDPOINT 指定,可能**不是**主效应那个 DV:
     保真复合是 z 合成的(单位=标准差),在它上面写「0.5 分」是量纲错配,
-    故保真的「≈」判在原始锚题 imagine(7 点量表原始分)上。"""
+    故保真的「≈」判在原始锚题 imagine(7 点量表原始分)上。
+
+    合并模式(prereg 合并段)在这三支之前多一道门:E−D 的队列差显著(p_int < α_int)
+    → **HETEROGENEOUS**,不走三分支、不报合并结论(TOST 也不做 —— 共同效应的前提不成立)。"""
     if dv not in prereg.PRIMARY_ENDPOINTS:
         raise ValueError(f"primary_verdict() 的方向约定只对主终点成立,收到 {dv}")
     if not ed or ed.get("p_holm") is None:
         return {"dv": dv, "verdict": "INCONCLUSIVE",
                 "note": "无 E−D 计划对比(LMM 失败/数据不足)"}
+    if ed.get("heterogeneous"):
+        return {"dv": dv, "verdict": "HETEROGENEOUS", "p_int": ed.get("p_int"),
+                "note": f"两队列的 E−D 不同(p_int < {prereg.LANG_INTERACTION_ALPHA})→ 不报合并结论,见分国估计"}
     p_ed, est = float(ed["p_holm"]), float(ed.get("estimate", 0.0))
     if p_ed < alpha:
         better = est > 0
@@ -480,6 +585,9 @@ def main() -> None:
     ap.add_argument("--population", choices=("all", "novice"), default=DEFAULT_POPULATION,
                     help="分析人群:all=事前确定的主分析人群(全样本,默认) / "
                          "novice=事后探索性子集(结论须标 exploratory)")
+    ap.add_argument("--lang", choices=("all", *prereg.COHORT_LANGS), default=DEFAULT_LANG,
+                    help="all=库里全部队列(默认;只有一个 → 单队列模型,zh+ja 都在 → 事前确定的合并模型) / "
+                         "zh、ja=只跑该队列(单队列模型;先筛语言再算 z,另一队列进库不改变它的数字)")
     args = ap.parse_args()
 
     if args.demo or not args.csv.exists():
@@ -488,7 +596,16 @@ def main() -> None:
         _demo()
         return
 
-    df = build_quality(build_dose(build_composites(pd.read_csv(args.csv))))
+    raw = pd.read_csv(args.csv)
+    # ---- 队列(lang)筛选 —— 必须在 build_composites 之前:z 复合的参照样本随之而定 ----
+    if args.lang != "all":
+        raw = raw[raw["lang"] == args.lang]
+    langs = sorted(raw["lang"].dropna().unique()) if "lang" in raw else []
+    if len(langs) > 1 and not set(langs) <= set(prereg.COHORT_LANGS):
+        print(f"⛔ CSV 里混有正式队列 {prereg.COHORT_LANGS} 以外的语言:{langs}(en = 研究员测试/脱离协议)。"
+              "\n   拒绝合并 —— 先剔除这些会话,或用 `--lang zh` / `--lang ja` 只跑一个队列。")
+        sys.exit(1)
+    df = build_quality(build_dose(build_composites(raw)))
 
     # ---- 人群筛选 + 抬头声明(2026-09-07 拍板:主分析 = 全样本)----
     n_all = df["participant_id"].nunique() if "participant_id" in df else 0
@@ -504,6 +621,33 @@ def main() -> None:
           + ("(事后探索性子集,非确证性;结论须写明 exploratory)" if args.population == "novice"
              else "(事前确定的主分析人群,全样本;2026-09-07)"))
     print(f"  被试 {n_used} 人 / 全样本 {n_all} 人;trial {len(df)} 行")
+    # 人群筛选之后再定:探索性子集里若只剩一个队列,M1 的 is_ja 列全 0 会奇异
+    langs = sorted(df["lang"].dropna().unique()) if "lang" in df else []
+    pooled, confirmatory = len(langs) > 1, True
+    if pooled:
+        design = _cohort_design(df)
+        print(f"  队列 lang = { {k: v['n'] for k, v in design.items()} }(目标 {prereg.COHORT_TARGET_N})"
+              " → **合并模型**(prereg 合并段;zh 为参照,(1|被试))")
+        print(f"    M1 交互:{prereg.POOLED_RHS_INTERACTION}")
+        print(f"    M0 合并:{prereg.POOLED_RHS_MAIN}")
+        print(f"    门控:{prereg.LANG_GATE_CONTRAST} 的队列差 p<{prereg.LANG_INTERACTION_ALPHA} → HETEROGENEOUS"
+              "(不报合并结论);复合 z 在合并样本上算,分国单独分析见 make stats-zh / stats-ja")
+        for lg, v in design.items():
+            full = v["seq_covered"] == prereg.WILLIAMS_ROUND_N
+            confirmatory &= full
+            print(f"    {lg}: {v['n']} 人,覆盖 {v['seq_covered']}/{prereg.WILLIAMS_ROUND_N} 个 Williams seq"
+                  + (" ✅" if v["balanced"] else " ⚠️ 各 seq 人数不等(照常合并,残留效应平衡打折)" if full
+                     else " ⛔ 未满一整轮"))
+        if not confirmatory:
+            print("  ⛔ 有队列未满一整轮 Williams → 按冻结规则,本次合并结果**降为探索性**;"
+                  "确证结论以 zh 单队列(make stats-zh)为准。")
+    else:
+        print(f"  队列 lang = {langs or '(CSV 无 lang 列)'} → 单队列模型"
+              + (f"(--lang {args.lang} 筛选;两队列都在库时主分析是合并模型 = make stats)"
+                 if args.lang != "all" else ""))
+    descriptive_only = langs == ["ja"]   # prereg 合并段:日本单队列 N≈18(MDES dz≈0.70)只作描述
+    if descriptive_only:
+        print("  ⚠️ 日本单队列 N≈18:按 prereg 合并段**只作描述**,下面的判定不是确证结论;主结论见合并模型(make stats)")
     # 别打印 NOVICE_DEF:那是给人读的「5 项严格 AND」字符串,退路启用(4/5)后会和真实口径打架
     print(f"  novice 定义:{list(prereg.NOVICE_CRITERION_FIELDS)} 中满足 ≥{prereg.NOVICE_MIN_CRITERIA} 项(prereg.is_novice)")
     print(f"  等价界 SESOI:{prereg.SESOI_BY_ENDPOINT}")
@@ -514,13 +658,15 @@ def main() -> None:
         if args.population == "novice":
             print("   novice 子集是**事后探索性**分析;主分析人群是全样本,"
                   "去掉 `--population novice`(或跑 `make stats`)即可。")
+        if args.lang != "all":
+            print(f"   CSV 里没有 lang={args.lang} 的 trial(该队列还没进库?)。")
         # exit 1 而不是 return:`make analysis` 是一条链,静默 return 会让 figures 接着跑,
         # 产出一套「看着正常」的全样本图,而 stats 刚说过主分析没数据。
         sys.exit(1)
 
     failed, p_by_dv = {}, {}
     for dv in prereg.PRIMARY_ENDPOINTS + prereg.SECONDARY_ENDPOINTS:  # 终点层级单一真源
-        err, ed_stat = analyze_endpoint(df, dv)
+        err, ed_stat = analyze_endpoint(df, dv, pooled=pooled)
         p_by_dv[dv] = ed_stat
         if err:
             failed[dv] = err
@@ -529,13 +675,18 @@ def main() -> None:
     print("\n########## 主终点判定(冻结三分支;prereg.DECISION_BRANCHES)##########")
     for br in prereg.DECISION_BRANCHES:
         print(f"    {br}")
+    if pooled:
+        print(f"    (合并模式:先过队列门控 {prereg.LANG_GATE_CONTRAST} p_int≥{prereg.LANG_INTERACTION_ALPHA};"
+              "TOST 用两队列全部被试的配对差)"
+              + ("" if confirmatory else "\n    ⛔ 有队列未满一整轮 Williams → 以下合并判定为**探索性**"))
     for dv in prereg.PRIMARY_ENDPOINTS:
         d = primary_verdict(df, dv, p_by_dv.get(dv))
         mark = {"superior": "✅ 判优(E>D)", "inferior": "❌ E 显著劣于 D",
                 "equivalent": "≈ 判等价",
-                "INCONCLUSIVE": "⛔ INCONCLUSIVE(不得写「不劣」)"}.get(d["verdict"], d["verdict"])
+                "INCONCLUSIVE": "⛔ INCONCLUSIVE(不得写「不劣」)",
+                "HETEROGENEOUS": "⛔ HETEROGENEOUS(两队列 E−D 不同,不报合并结论)"}.get(d["verdict"], d["verdict"])
         extra = f" · 等价检验在 {d['equiv_dv']} 上" if d.get("equiv_dv") != dv and d.get("equiv_dv") else ""
-        print(f"  {dv}: {mark}{extra}")
+        print(f"  {'[描述性] ' if descriptive_only else ''}{dv}: {mark}{extra}")
         print(f"      {d}")
 
     print("\n########## H4 质量(描述性;2026-09-01 拍板 2.4 起不作确证性非劣主张)##########")
@@ -551,9 +702,10 @@ def main() -> None:
 
     print("\n########## H5 剂量-反应(E 内,被试间 OLS;事前声明的确认性次分析)##########")
     for dv in prereg.PRIMARY_ENDPOINTS:  # docs/paper/04 §3.1-4:因变量是保真**和**所有权
-        print(f"  {dv} ~ 复合剂量(自填率+答题净时+1−AI代答率):", dose_response(df, dv))
-        print(f"  {dv} ~ 仅时间(pre_investment,可比参照):",
-              dose_response(df, dv, dose="pre_investment"))
+        print(f"  {dv} ~ 复合剂量(自填率+答题净时+1−AI代答率)" + (" + C(lang)" if pooled else "") + ":",
+              dose_response(df, dv, by_lang=pooled))
+        print(f"  {dv} ~ 仅时间(pre_investment,可比参照)" + (" + C(lang)" if pooled else "") + ":",
+              dose_response(df, dv, dose="pre_investment", by_lang=pooled))
 
     if failed:
         print("\n" + "!" * 78)
@@ -562,7 +714,7 @@ def main() -> None:
             print(f"   - {dv}  ←  {err}")
         print("   这些终点当前只有描述性/稳健性输出,不可写进确证性结论。")
         print("!" * 78)
-    print("\n注:embedding 相对基线保真 Δ 由 embed.py 合入后进保真复合;质量走 TOST 非劣。")
+    print("\n注:embedding 相对基线保真 Δ 由 embed.py 合入后进保真复合;质量(H4)只作描述,不作非劣主张。")
 
 
 if __name__ == "__main__":
