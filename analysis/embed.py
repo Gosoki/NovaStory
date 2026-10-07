@@ -216,7 +216,7 @@ def compute(only_lang: str | None = None) -> None:
     trials = trials[trials["participant_id"].isin(keep)]
     if trials["participant_id"].nunique() < n0:
         print(f"  纳入规则:{n0} 人中排除 "
-              f"{n0 - trials['participant_id'].nunique()} 人(dev / 未走完全部轮次)")
+              f"{n0 - trials['participant_id'].nunique()} 人(dev / 名单剔除 / 未走完全部轮次)")
     # 语言:每位被试只和**自己语言**的基线比(prompt / 题面 / 分镜模板全随语言变,跨语言的零点
     # 不可比)。正式队列(COHORT_LANGS)缺基线 → 由 _baseline_texts 硬失败;其余语言缺基线、
     # 或被 --lang 排除 → 不发 API、Δ 记 NaN、大声说。

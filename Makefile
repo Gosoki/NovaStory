@@ -47,7 +47,7 @@ judge:      ## 盲评保真 LLM-judge(OpenAI×3+ICC),judge_fidelity 合入 CSV(�
 stats:      ## LMM / E−D 主对比(Holm)/ 三分支判定 / Wilcoxon / 剂量-反应【默认跑全样本 = 主分析人群;zh+ja 都在库 → 合并模型】
 	$(PY) analysis/stats.py
 
-stats-zh:   ## 只跑中国队列(单队列模型;先筛语言再 z → 日本数据进库后仍逐位复现 zh_v1)
+stats-zh:   ## 只跑中国队列(单队列模型;先筛语言再 z → 日本数据进库后仍逐位复现 zh_v1 N=35 = logs/03c,除第 5 行队列说明)
 	$(PY) analysis/stats.py --lang zh
 
 stats-ja:   ## 只跑日本队列(单队列模型;N≈18 → MDES dz≈0.70,分国结果只作描述)

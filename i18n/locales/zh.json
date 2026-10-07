@@ -381,5 +381,30 @@
     "note": "注：「embedding 保真Δ」需 OpenAI + 机器基线，采数后再接；本面板先给 结构/多样性/逐镜头/主观/努力 指标 + 统计 + 图。",
     "no_output": "（无输出——可能还没有完成的被试数据）",
     "captured_err": "[出错] {err}"
+  },
+  "tendency": {
+    "title": "📋 回答倾向（逐人 × C / D / E）",
+    "caption": "同屏看每位被试在三种方式里各题怎么答。口径与分析相同：只含走完三轮的被试，不含研究员测试与名单剔除的演示会话（pid 1）。不显示被试原文和邮箱。⚠️ 日本队列采集期间不要看 ja 的数据（等于中途偷看结果）。",
+    "open": "展开回答倾向面板",
+    "empty": "还没有走完三轮的被试。",
+    "f_lang": "语言（队列；ja 默认不显示）",
+    "f_age": "排除年龄档",
+    "f_drop_attn": "去掉注意力题失败者",
+    "f_blank_straight": "敷衍 trial（所有题同分）置空",
+    "n_line": "当前 {n} 人 / {trials} 个 trial",
+    "dist_title": "各题的分数分布（橙 = 低分，紫 = 高分）",
+    "means_caption": "均值（{n} 人）；E−D 只是均值差，不是检验结果。",
+    "table_title": "逐人明细（点表头可排序）",
+    "view": "视图",
+    "view_single": "单个条件",
+    "view_side": "三条件并排",
+    "view_diff": "条件差值",
+    "cond": "条件",
+    "diff": "差值",
+    "show_behavior": "显示行为指标",
+    "legend_title": "图例与列说明",
+    "legend_colors": "色块只表示分数高低（1 橙 → 4 白 → 7 紫），不代表好坏：violation（违背本意）和 tlx1（负荷）是分数越高越差。差值视图里紫 = 前者更高，橙 = 后者更高。",
+    "legend_own_mean": "own1–3 的均分（所有权主终点）",
+    "legend_other": "其余列：`age` 年龄档；`date` 入组日期（UTC）；`order` 三轮的条件顺序；`round_idx` 该条件在第几轮；`topic` 题目；`shot_*` 三个镜头里各标签的个数；`straightline` 本轮所有题同分（1 = 是）；`ai_q_helpful` 被勾「有帮助」的引导题占比。行为指标：`t_total` 本轮用时（秒）；`pre_investment` / `post_investment` 生成前 / 后投入（秒）；`n_ai_rounds` 让 AI 修改的次数。`fs_*_cond` 是总问卷里最喜欢 / 以后想用 / 最接近心里想的 / 最费劲的方式，`fs_overall_sat` 是总体满意度。"
   }
 }

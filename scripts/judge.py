@@ -105,7 +105,7 @@ def load_trials(db_path: Path) -> list[tuple]:
     keep = _v3.included_participants(db_path)   # 已含 dev 过滤 + 走完全部轮次
     excluded = {i for i, _ in parts if i not in keep}
     if excluded:
-        print(f"纳入规则:排除 {len(excluded)} 人(dev 测试被试 / 未走完全部轮次)")
+        print(f"纳入规则:排除 {len(excluded)} 人(dev 测试被试 / 名单剔除 / 未走完全部轮次)")
     return [r for r in rows if r[0] not in excluded]
 
 

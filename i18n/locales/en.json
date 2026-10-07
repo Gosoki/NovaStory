@@ -381,5 +381,30 @@
     "note": "Note: the embedding fidelity Δ needs OpenAI + a machine baseline and is wired up after collection; this panel first gives structural / diversity / shot-level / subjective / effort metrics + stats + figures.",
     "no_output": "(no output — there may be no completed participant data yet)",
     "captured_err": "[error] {err}"
+  },
+  "tendency": {
+    "title": "📋 Response patterns (per participant × C / D / E)",
+    "caption": "See how each participant answered every item in the three modes. Same inclusion as the analysis: only participants who finished all three rounds; researcher tests and listed demo sessions (pid 1) are excluded. No participant free text or email is shown. ⚠️ Do not look at ja data while the Japan cohort is being collected (that is peeking at results).",
+    "open": "Open the response-pattern panel",
+    "empty": "No participant has finished all three rounds yet.",
+    "f_lang": "Language (cohort; ja hidden by default)",
+    "f_age": "Exclude age bands",
+    "f_drop_attn": "Drop attention-check failures",
+    "f_blank_straight": "Blank straight-lined trials (same answer on every item)",
+    "n_line": "{n} participants / {trials} trials",
+    "dist_title": "Score distribution per item (orange = low, purple = high)",
+    "means_caption": "Means ({n} participants). E−D is a difference of means, not a test result.",
+    "table_title": "Per-participant detail (click a header to sort)",
+    "view": "View",
+    "view_single": "One condition",
+    "view_side": "Three conditions side by side",
+    "view_diff": "Condition difference",
+    "cond": "Condition",
+    "diff": "Difference",
+    "show_behavior": "Show behavioural measures",
+    "legend_title": "Legend and columns",
+    "legend_colors": "Colour shows only how high a score is (1 orange → 4 white → 7 purple), not whether it is good: for violation and tlx1 (load), higher is worse. In the difference view, purple = the first condition is higher, orange = the second is higher.",
+    "legend_own_mean": "mean of own1–3 (primary ownership endpoint)",
+    "legend_other": "Other columns: `age` age band; `date` entry date (UTC); `order` condition order across the three rounds; `round_idx` which round this condition was in; `topic` topic; `shot_*` number of shots (of 3) with each tag; `straightline` same answer on every item this round (1 = yes); `ai_q_helpful` share of guiding questions marked helpful. Behavioural: `t_total` round time (s); `pre_investment` / `post_investment` time invested before / after generation (s); `n_ai_rounds` number of AI revision requests. `fs_*_cond` is the mode picked in the final survey as favourite / would reuse / closest to what I imagined / most effort; `fs_overall_sat` is overall satisfaction."
   }
 }

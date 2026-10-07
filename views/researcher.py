@@ -12,6 +12,8 @@ def render() -> None:
     monitor_panel.render()      # 概览卡片 + 采数进度/平衡统计图
     st.divider()
     _data_browser()             # 四表原始浏览 + CSV 导出
+    from views import tendency_panel  # 惰性导入:它出问题只影响研究员页,不连带被试页
+    tendency_panel.render()     # 📋 逐人 × C/D/E 回答倾向
     analysis_panel.render()     # 📊 数据分析(一键出结果/图)
 
 

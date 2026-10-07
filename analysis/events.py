@@ -15,7 +15,7 @@ onboarding 没生效,属数据质量信号,采数期就要看得见。intake 事
 过滤,否则丢掉 questionnaire_submit 等提交后事件)。旧行(7-02 前)attempt 全 NULL、
 ts 只有秒级 → 退化为按 (participant, round) 整取,指标照算(精度降到秒)。
 
-纯读、不改库;与 v3.load() 一样排除 dev 注入被试。像 analysis/embed.py 那样把列
+纯读、不改库;与 v3.load() 一样排除 dev 注入被试与名单剔除的非被试会话(prereg.EXCLUDED_SESSIONS)。像 analysis/embed.py 那样把列
 **合入** v3_per_trial.csv,而不是做 v3.per_trial() 的硬依赖(v3 必须能在无 events
 的纯 trials 库上跑通)。
 
@@ -36,6 +36,7 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))   # 以脚本方式运行(make events)时 core/ 才 import 得到
+from analysis import prereg  # noqa: E402
 
 DEFAULT_DB = ROOT / "data" / "novastory.db"
 DEFAULT_CSV = ROOT / "data" / "analysis" / "v3_per_trial.csv"
@@ -48,7 +49,7 @@ _COLS = EVENT_COLS
 
 
 def load_events(db_path: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """(events, participants),都已排除 dev 被试;ts 解析为 datetime,旧秒级行也吃。"""
+    """(events, participants),都已排除 dev 被试与名单剔除的非被试会话;ts 解析为 datetime,旧秒级行也吃。"""
     con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     try:
         ev = pd.read_sql("SELECT * FROM events", con)
@@ -56,7 +57,8 @@ def load_events(db_path: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
     finally:
         con.close()
     dev_ids = {int(r.id) for r in parts.itertuples()
-               if _loads(r.screening_json).get("dev")}
+               if _loads(r.screening_json).get("dev")
+               or prereg.is_excluded_session(r.id, r.created_at)}
     if dev_ids:
         ev = ev[~ev["participant_id"].isin(dev_ids)]
         parts = parts[~parts["id"].isin(dev_ids)]

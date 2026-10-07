@@ -42,9 +42,10 @@ _TAGS = prereg.SHOT_TAGS   # 与 views/questionnaire 同源,别各写一份
 def included_participants(db_path) -> set[int]:
     """分析纳入的被试 id —— **每一个取数口都必须用它**,不能各写各的。
 
-    两条规则:
+    三条规则:
       ① 研究员注入的 dev 被试(`screening_json.dev`)不算;
-      ② `prereg.ANALYSIS_REQUIRES_ALL_ROUNDS` 为真时,只留**走完全部 N_ROUNDS 轮**的人,
+      ② `prereg.EXCLUDED_SESSIONS` 登记的非被试会话(研究员演示等)不算;
+      ③ `prereg.ANALYSIS_REQUIRES_ALL_ROUNDS` 为真时,只留**走完全部 N_ROUNDS 轮**的人,
          以**问卷提交数**为准(不看 `participants.status` —— 三轮问卷都交了、只差最后
          那份总问卷没点的人,任务数据是完整的)。
 
@@ -55,12 +56,13 @@ def included_participants(db_path) -> set[int]:
     (`pilot_check` 更是用了第三种口径 `status=='done'`,同一份报告里两个分母。)"""
     con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     try:
-        parts = pd.read_sql("SELECT id, screening_json FROM participants", con)
+        parts = pd.read_sql("SELECT id, created_at, screening_json FROM participants", con)
         quest = pd.read_sql("SELECT participant_id, round_idx FROM questionnaires", con)
     finally:
         con.close()
     ids = {int(r.id) for r in parts.itertuples()
-           if not _loads(r.screening_json, {}).get("dev")}
+           if not _loads(r.screening_json, {}).get("dev")
+           and not prereg.is_excluded_session(r.id, r.created_at)}
     if prereg.ANALYSIS_REQUIRES_ALL_ROUNDS:
         if len(quest):
             n = (quest.drop_duplicates(["participant_id", "round_idx"])
@@ -83,7 +85,7 @@ def load(db_path: Path) -> pd.DataFrame:
         trials = pd.read_sql("SELECT * FROM trials", con)
         quest = pd.read_sql("SELECT * FROM questionnaires", con)
         parts = pd.read_sql(
-            "SELECT id, lang, seq, status, screening_json, final_survey_json,"
+            "SELECT id, created_at, lang, seq, status, screening_json, final_survey_json,"
             " attention_ok, attention_raw FROM participants", con)
     finally:
         con.close()
@@ -91,11 +93,14 @@ def load(db_path: Path) -> pd.DataFrame:
     n_before = trials["participant_id"].nunique()
     trials = trials[trials["participant_id"].isin(keep_ids)]
     n_after = trials["participant_id"].nunique()
+    # 名单剔除单独报数:入库时间一旦对不上(库从别的格式恢复等),pid 1 会悄悄回到分析里,
+    # 唯一的迹象就是这里从「1 人」变成「0 人」
+    n_listed = sum(prereg.is_excluded_session(r.id, r.created_at) for r in parts.itertuples())
     if n_after < n_before:
         # 试测早期没人走完 3 轮时会一个不剩 —— 那时的空结果必须与「库里本来就没数据」
         # 区分开,否则看到「N=0」的人会以为埋点坏了,而其实是纳入规则在正常工作。
         print(f"    纳入规则:{n_before} 人中排除 {n_before - n_after} 人"
-              f"(dev 测试被试,或未走完 {config.N_ROUNDS} 轮)"
+              f"(其中名单剔除的非被试会话 {n_listed} 人;其余为 dev 测试被试或未走完 {config.N_ROUNDS} 轮)"
               + ("  ⚠️ 全部被排除 —— 库里有数据,但还没有人走完全部轮次"
                  if n_after == 0 else ""))
     # avoid column collisions on merge (id/created_at exist in both)

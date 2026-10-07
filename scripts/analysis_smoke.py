@@ -98,6 +98,21 @@ def run(tmp: Path) -> None:
     assert dev not in set(pt["participant_id"]), f"dev 被试 {dev} 混进了分析人群"
     ok(f"dev 被试 id={dev}(库里有 {n_dev_trials} 条 trials)被排除")
 
+    # 名单剔除(prereg.EXCLUDED_SESSIONS):id 与 created_at 同时相符才剔 —— 合成库的 pid 1
+    # 是普通被试,不能被真库的名单误伤;登记上它的 created_at 后又必须真被剔掉。
+    assert 1 in set(pt["participant_id"]), "EXCLUDED_SESSIONS 误伤了合成库 pid 1(created_at 守卫失效?)"
+    ca = _q1(db_path, "SELECT created_at FROM participants WHERE id=1", ())
+    orig = dict(prereg.EXCLUDED_SESSIONS)
+    try:
+        prereg.EXCLUDED_SESSIONS.clear()
+        prereg.EXCLUDED_SESSIONS[1] = (ca, "smoke")
+        assert 1 not in v3.included_participants(db_path), "登记了 (id, created_at) 却没剔除"
+        assert 1 not in set(A_ev.load_events(db_path)[1]["id"]), "events 没跟着名单剔除"
+    finally:
+        prereg.EXCLUDED_SESSIONS.clear()
+        prereg.EXCLUDED_SESSIONS.update(orig)
+    ok("名单剔除:id+created_at 同时相符才剔(v3 / events),合成库 pid 1 不被误伤")
+
     # 解析失败的那条:不丢行,但结构指标必须诚实(parse_ok=0 / 整稿一个标签)
     fpid, fridx = info["parse_fail"][0]
     frow = pt[(pt.participant_id == fpid) & (pt.round_idx == fridx)].iloc[0]

@@ -64,6 +64,20 @@ NOVICE_MIN_CRITERIA = 5
 # 明写「途中で中止された場合、そこまでのデータは分析に使用しません」,这句话必须是真的。
 ANALYSIS_REQUIRES_ALL_ROUNDS = True
 
+# 走了真实同意流程、但**不是被试**的会话 → 按名单剔除(2026-09-30 用户确认,docs/paper/10)。
+# id 只在本库有意义(合成库 / 本地开发库的 pid 1 是别人),所以 id 与 created_at 同时相符才剔。
+# 只在分析侧剔,库里保留;⛔ 不在服务器上释放(07 §3.6 2b)。以后的演示请走 devtools
+# 「跳过同意+筛查」(dev 标记,自动不进分析),不要再往这里加。
+EXCLUDED_SESSIONS: dict[int, tuple[str, str]] = {
+    1: ("2026-09-08T05:15:36",
+        "研究员 09-08 讲座现场演示 C/D/E;三句创意与 views/devtools.py TEST_INTENTS 逐字相同"),
+}
+
+
+def is_excluded_session(pid, created_at) -> bool:
+    hit = EXCLUDED_SESSIONS.get(int(pid))
+    return hit is not None and hit[0] == created_at
+
 
 def novice_criteria(screening: dict) -> dict:
     """5 个操作化子项各自的真假(便于分报「哪一项把人筛掉了」)。
@@ -191,7 +205,7 @@ SECONDARY_ENDPOINTS = ("satisfaction", "effort_composite",
                        "post_investment", "total_investment")
 
 # ---- 中日两队列合并分析 ——【2026-09-24 草案,docs/paper/06 ⑰-1 选项 (b);待用户拍板】----
-# 背景:中国队列(zh)N=36 已采完、先出一版结论(zh_v1);日本队列(ja)目标约 18、后采。
+# 背景:中国队列(zh)N=36 已采完(剔除研究员演示 pid 1 后分析 N=35)、先出一版结论(zh_v1);日本队列(ja)目标约 18、后采。
 # 日本单独 N=18 → MDES dz≈0.70,「两国各一套结论」撑不住,只剩合并建模(10 · 2026-09-23)。
 # 本节在**见到任何日本数据之前**写死合并怎么做;stats 从这里读,不临场决定。
 # ⚠️ lang 与队列 / 采集时间 / 模型版本 / 招募场景完全共线(先中后日,10 · 2026-09-07),
@@ -284,6 +298,8 @@ def as_dict() -> dict:
         "novice_criteria": list(NOVICE_CRITERION_FIELDS),
         "novice_min_criteria": NOVICE_MIN_CRITERIA,
         "analysis_requires_all_rounds": ANALYSIS_REQUIRES_ALL_ROUNDS,
+        "excluded_sessions": {str(k): {"created_at": c, "reason": r}
+                              for k, (c, r) in EXCLUDED_SESSIONS.items()},
         "sesoi": SESOI,
         "sesoi_by_endpoint": dict(SESOI_BY_ENDPOINT),
         "equiv_dv": dict(EQUIV_DV_BY_ENDPOINT),

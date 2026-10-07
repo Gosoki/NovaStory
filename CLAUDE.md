@@ -24,7 +24,7 @@ Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-s
  - 分析管线：`analysis/{v3,stats,power_sim,embed,figures,norming,textstats}.py`（A6 v3，`make analysis` 串全链）；**试测健康检查 `analysis/pilot_check.py`（`make pilot`；4 生死问题→🟢🟡🔴 + 后手分支）**；旧 `analysis/metrics.py` 为 v2(HLZ) 遗留，收数验收后删；`scripts/judge.py`（不在 `analysis/`）= LLM-judge **只做盲评保真**，四维审美 rubric 已弃（B5, 2026-08-03）。
  - **预注册冻结常量的单一真源：`analysis/prereg.py`**（pilot 阈值 / novice 定义 / SESOI / 终点层级 / 复合公式）——阈值只改这里，`pilot_check`/`stats` 从它 import。
  - 关键设计常量：`core/config.py: LATIN_SQUARE_N=18`（**Williams 6 排列 × 3 题目**，不是 3×3 拉丁方）、`N_ROUNDS=3`、`MIN_INTENT_CHARS=8`（B6, 2026-08-03 由 10 改为 8）。
- - 现状（2026-09-24）：**中国队列 N=36 已采完并出首版结论**（`docs/paper/14`：所有权 / 保真 E−D 均未检出提升）；日本队列目标约 18、只在服务器采（规程 `07 §3.6`）。2026-09-23 起定位改为结果驱动，**卡点 = `06` ㉔ 数据清洗与同意书（开日本队列前）+ ㉑ 论文定位 + ㉒ 合并分析参数 + ㉓ 结论措辞**；冻结文件从未生成。答辩火力点须按结果重写（`08 §11`）。
+ - 现状（2026-09-30）：**中国队列 36 人已采完；剔除研究员演示会话 pid 1 后分析 N=35**（`prereg.EXCLUDED_SESSIONS`，2026-09-30 确认；补 1 人待定，`06` ㉔-1），已出首版结论（`docs/paper/14`：所有权 / 保真 E−D 均未检出提升）；日本队列目标约 18、只在服务器采（规程 `07 §3.6`）。2026-09-23 起定位改为结果驱动，**卡点 = `06` ㉔ 数据清洗与同意书（开日本队列前）+ ㉑ 论文定位 + ㉒ 合并分析参数 + ㉓ 结论措辞**；冻结文件从未生成。答辩火力点须按结果重写（`08 §11`）。
 
 ### 0.3 语言（实验对象是日本人）
  - 被试：中国队列 `zh`（已采完）+ 日本队列 `ja`（采集中）。代码当前默认 `zh`（`i18n/translator.py`），日本队列不改代码、用 `?lang=ja` 链接（`07 §3.6`）。**ja/zh/en 三语现在都是全链路可用**（UI + `prompts.build_*` 输出 + `data/topics.json` 的 `{ja,zh,en}` 情境 + `core/shots.py` 分镜解析），被试同意页三语可选；研究员后台随语言选择器切换。
