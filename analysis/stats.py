@@ -65,6 +65,18 @@ def _z(s: pd.Series) -> pd.Series:
     return (s - s.mean()) / sd if sd else s * 0.0
 
 
+def drop_attention_fail(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
+    """敏感性分析 V1(04 §3.1 事先列出「剔除 attention 失败」):去掉注意力题失败者
+    (`attention_ok == 0`)的全部 trial,返回 (剩余表, 剔除人数)。**非主分析。**
+
+    必须在 `build_composites` **之前**调用 —— z 复合在剩余样本内重算,与 14 §4 的 V1 同口径
+    (那里的 V1 就是把 stats 跑在子集表上)。`attention_ok` 缺失的人保留:不能证明失败就不剔。"""
+    if "attention_ok" not in df.columns:
+        raise ValueError("表里没有 attention_ok 列 —— 用当前版本的 analysis/v3.py 重新生成")
+    bad = df.loc[df["attention_ok"] == 0, "participant_id"].unique()
+    return df[~df["participant_id"].isin(bad)], len(bad)
+
+
 def build_composites(df: pd.DataFrame) -> pd.DataFrame:
     """保真复合 = 0.5 × mean z(imagine, −violation, not_against) + 0.5 × z(embedding Δ)
     (embedding 缺席则退回主观三腿等权并告警;2026-09-01 拍板 2.5 起第三腿是 not_against,不是 mine_ratio);
@@ -383,6 +395,38 @@ def wilcoxon_pairs(df: pd.DataFrame, dv: str) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def conclusiveness(df: pd.DataFrame, dv: str) -> dict | None:
+    """主终点离「下结论」还差多少(研究员面板的读数,不是检验)。在等价检验用的 DV 上取被试内
+    E−D 配对差:均值 / SD / 90% CI;当前 n 下要显著所需的最小 |差|(双侧 α .05,及主族 Holm
+    最严的 .025);若真差 = 当前均值,80% 把握显著(α .025,方向同当前)/ 判等价(±SESOI)各需几人。"""
+    from statsmodels.stats.power import TTestPower
+    edv = prereg.EQUIV_DV_BY_ENDPOINT.get(dv, dv)
+    bound = prereg.SESOI_BY_ENDPOINT.get(edv)
+    if edv not in df or not bound:
+        return None
+    w = df.pivot_table(index="participant_id", columns="condition", values=edv)
+    if not {"E", "D"} <= set(w.columns):
+        return None
+    d = (w["E"] - w["D"]).dropna()
+    n = len(d)
+    if n < 3:
+        return None
+    m, sd = float(d.mean()), float(d.std(ddof=1))
+    se, t90 = sd / np.sqrt(n), stats.t.ppf(.95, n - 1)
+
+    def _need(es, **kw):
+        try:
+            return float(TTestPower().solve_power(effect_size=es, power=.8, **kw)) if es > 0 else np.inf
+        except Exception:  # noqa: BLE001  效应极小时求解器不收敛 → 当作「要非常多人」
+            return np.inf
+    return {"dv": dv, "equiv_dv": edv, "n": n, "mean_diff": m, "sd": sd, "bound": bound,
+            "ci90": (m - t90 * se, m + t90 * se),
+            "min_sig_05": float(stats.t.ppf(.975, n - 1) * se),
+            "min_sig_025": float(stats.t.ppf(1 - .0125, n - 1) * se),
+            "n_significant": _need(abs(m) / sd if sd else 0, alpha=.025),
+            "n_equivalent": _need((bound - abs(m)) / sd if sd else 0, alpha=.05, alternative="larger")}
+
+
 def tost(df: pd.DataFrame, dv: str, pair=("E", "D"), bound: float | None = None) -> dict:
     """等价/非劣检验:E 与 D 在 dv 上是否等价(|差| < bound)。
     **bound 必须是采数前冻结的 a priori SESOI**(dv **原始单位**的绝对值),与观测数据无关;
@@ -588,6 +632,8 @@ def main() -> None:
     ap.add_argument("--lang", choices=("all", *prereg.COHORT_LANGS), default=DEFAULT_LANG,
                     help="all=库里全部队列(默认;只有一个 → 单队列模型,zh+ja 都在 → 事前确定的合并模型) / "
                          "zh、ja=只跑该队列(单队列模型;先筛语言再算 z,另一队列进库不改变它的数字)")
+    ap.add_argument("--drop-attention-fail", action="store_true",
+                    help="敏感性分析 V1:剔除注意力题失败者(非主分析;z 在剩余样本内重算)")
     args = ap.parse_args()
 
     if args.demo or not args.csv.exists():
@@ -605,10 +651,13 @@ def main() -> None:
         print(f"⛔ CSV 里混有正式队列 {prereg.COHORT_LANGS} 以外的语言:{langs}(en = 研究员测试/脱离协议)。"
               "\n   拒绝合并 —— 先剔除这些会话,或用 `--lang zh` / `--lang ja` 只跑一个队列。")
         sys.exit(1)
+    n_attn, n_before_attn = None, raw["participant_id"].nunique() if "participant_id" in raw else 0
+    if args.drop_attention_fail:   # 在 build_composites 之前:z 的参照样本随之而定
+        raw, n_attn = drop_attention_fail(raw)
     df = build_quality(build_dose(build_composites(raw)))
 
     # ---- 人群筛选 + 抬头声明(2026-09-07 拍板:主分析 = 全样本)----
-    n_all = df["participant_id"].nunique() if "participant_id" in df else 0
+    n_all = n_before_attn
     if args.population == "novice":
         if "novice" not in df.columns:
             print("⛔ CSV 里没有 `novice` 列 —— 请先用当前版本的 analysis/v3.py 重新生成"
@@ -619,8 +668,12 @@ def main() -> None:
     print("=" * 78)
     print(f"分析人群 = {args.population}"
           + ("(事后探索性子集,非确证性;结论须写明 exploratory)" if args.population == "novice"
+             else "(全样本去掉注意力题失败者 = 敏感性分析 V1,非主分析)" if n_attn is not None
              else "(事前确定的主分析人群,全样本;2026-09-07)"))
     print(f"  被试 {n_used} 人 / 全样本 {n_all} 人;trial {len(df)} 行")
+    if n_attn is not None:
+        print(f"  ⚠️ 敏感性分析 V1:已剔除注意力题失败者 {n_attn} 人(04 §3.1 事先列出;**非主分析**,"
+              "结论以不剔除的主分析为准;复合 z 在剩余样本内重算)")
     # 人群筛选之后再定:探索性子集里若只剩一个队列,M1 的 is_ja 列全 0 会奇异
     langs = sorted(df["lang"].dropna().unique()) if "lang" in df else []
     pooled, confirmatory = len(langs) > 1, True
@@ -648,8 +701,7 @@ def main() -> None:
     descriptive_only = langs == ["ja"]   # prereg 合并段:日本单队列 N≈18(MDES dz≈0.70)只作描述
     if descriptive_only:
         print("  ⚠️ 日本单队列 N≈18:按 prereg 合并段**只作描述**,下面的判定不是确证结论;主结论见合并模型(make stats)")
-    # 别打印 NOVICE_DEF:那是给人读的「5 项严格 AND」字符串,退路启用(4/5)后会和真实口径打架
-    print(f"  novice 定义:{list(prereg.NOVICE_CRITERION_FIELDS)} 中满足 ≥{prereg.NOVICE_MIN_CRITERIA} 项(prereg.is_novice)")
+    print(f"  novice 定义:{prereg.NOVICE_DEF}(prereg.is_novice,2026-10-15 暂定)")
     print(f"  等价界 SESOI:{prereg.SESOI_BY_ENDPOINT}")
     print(f"  判定分支:{' | '.join(prereg.DECISION_BRANCHES)}")
     print("=" * 78)
@@ -672,7 +724,8 @@ def main() -> None:
             failed[dv] = err
 
     # ---- 冻结的判定三分支,只对**主终点**执行(次要终点不做等价声明)----
-    print("\n########## 主终点判定(冻结三分支;prereg.DECISION_BRANCHES)##########")
+    v1 = "(敏感性分析 V1,非主分析)" if n_attn is not None else ""
+    print(f"\n########## 主终点判定(冻结三分支;prereg.DECISION_BRANCHES){v1}##########")
     for br in prereg.DECISION_BRANCHES:
         print(f"    {br}")
     if pooled:
@@ -686,7 +739,8 @@ def main() -> None:
                 "INCONCLUSIVE": "⛔ INCONCLUSIVE(不得写「不劣」)",
                 "HETEROGENEOUS": "⛔ HETEROGENEOUS(两队列 E−D 不同,不报合并结论)"}.get(d["verdict"], d["verdict"])
         extra = f" · 等价检验在 {d['equiv_dv']} 上" if d.get("equiv_dv") != dv and d.get("equiv_dv") else ""
-        print(f"  {'[描述性] ' if descriptive_only else ''}{dv}: {mark}{extra}")
+        print(f"  {'[敏感性 V1·非主分析] ' if n_attn is not None else ''}"
+              f"{'[描述性] ' if descriptive_only else ''}{dv}: {mark}{extra}")
         print(f"      {d}")
 
     print("\n########## H4 质量(描述性;2026-09-01 拍板 2.4 起不作确证性非劣主张)##########")
@@ -700,7 +754,7 @@ def main() -> None:
     print("  ——三个成分的分条件均值(spec_ok 贴天花板正是 H4 降描述性的原因):")
     print(df.groupby("condition")[[c for c in _H4_LEGS if c in df]].mean().round(3).to_string())
 
-    print("\n########## H5 剂量-反应(E 内,被试间 OLS;事前声明的确认性次分析)##########")
+    print(f"\n########## H5 剂量-反应(E 内,被试间 OLS;事前声明的确认性次分析){v1}##########")
     for dv in prereg.PRIMARY_ENDPOINTS:  # docs/paper/04 §3.1-4:因变量是保真**和**所有权
         print(f"  {dv} ~ 复合剂量(自填率+答题净时+1−AI代答率)" + (" + C(lang)" if pooled else "") + ":",
               dose_response(df, dv, by_lang=pooled))

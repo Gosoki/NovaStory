@@ -11,7 +11,7 @@ import sqlite3
 import streamlit as st
 
 from core import db
-from i18n import t
+from i18n import get_lang, t
 
 CONDS = ("C", "D", "E")
 # 题目代码对应 q.<code> 的题目原文;own_mean 是 own1-3 的均分(所有权主终点)
@@ -20,8 +20,9 @@ ITEMS = ("own_mean", "own1", "own2", "own3", "soa1", "soa2",
 E_ITEMS = ("ai_q_quality", "ai_q_amount")
 BEHAVIOR = ("t_total", "pre_investment", "post_investment", "n_ai_rounds")
 FS = ("fs_pref_cond", "fs_reuse_cond", "fs_closest_cond", "fs_effort_cond")
+EXP = ("published_idx", "bg_yes", "written_yes", "self_low", "quiz1_ok", "quiz2_ok", "quiz_both")
 # 7 点色阶(PuOr):橙 = 低分、紫 = 高分,不带好坏含义(violation / tlx1 高 = 更违背 / 更累)
-PALETTE = ("#b35806", "#f1a340", "#fee0b6", "#f7f7f7", "#d8daeb", "#998ec3", "#542788")
+PALETTE = ("#b35806", "#f1a340", "#fee0b6", "#e4e4e4", "#d8daeb", "#998ec3", "#542788")   # 4 用浅灰,白色在分布条里看着像断开
 
 
 def _cell(v) -> str:
@@ -65,21 +66,37 @@ def _load():
     extra = ["own1", "own2", "own3", "soa1", "soa2", "shot_mine", "shot_ai_ok", "shot_ai_against"]
     long = pt.merge(raw[keys + extra], on=keys, how="left")
     long[extra] = long[extra].apply(pd.to_numeric, errors="coerce")   # 缺答时 JSON 拆出来是 object 列
+    # 题名按界面语言显示:per_trial 的 topic 统一取日文题名(分析用的键),中文界面下会混进日文
+    titles = raw["topic_json"].map(lambda s: (json.loads(s) if isinstance(s, str) and s else {}).get("title"))
+    titles = titles.map(lambda x: x if isinstance(x, dict) else {"ja": x or ""})
+    long = long.merge(raw[keys].assign(topic_titles=titles), on=keys, how="left")
     long["ai_q_helpful"] = long["n_ai_q_helpful"] / long["g_n_questions"]
 
     con = sqlite3.connect(f"file:{db.DB_PATH}?mode=ro", uri=True)
     try:
-        meta = pd.read_sql("SELECT id AS participant_id, created_at, demographics_json FROM participants", con)
+        meta = pd.read_sql("SELECT id AS participant_id, created_at, demographics_json, screening_json"
+                           " FROM participants", con)
     finally:
         con.close()
     meta["age_idx"] = meta["demographics_json"].map(
         lambda s: (json.loads(s) if isinstance(s, str) and s else {}).get("age_idx"))
+    # 经验构成(背景问卷原始答案):novice 本身用 v3 已按 prereg.is_novice 算好的列
+    scr = meta["screening_json"].map(lambda s: json.loads(s) if isinstance(s, str) and s else {})
+    num = lambda d, k: pd.to_numeric(d.get(k), errors="coerce")  # noqa: E731
+    meta["published_idx"] = scr.map(lambda d: num(d, "published_idx"))
+    meta["bg_yes"] = scr.map(lambda d: d.get("background") == "yes")
+    meta["written_yes"] = scr.map(lambda d: d.get("written") == "yes")
+    meta["self_low"] = scr.map(lambda d: num(d, "self_rating") <= 2)
+    meta["quiz1_ok"] = scr.map(lambda d: num(d, "quiz1_idx") == 1)
+    meta["quiz2_ok"] = scr.map(lambda d: num(d, "quiz2_idx") == 1)
+    meta["quiz_both"] = scr.map(lambda d: num(d, "quiz_correct") == 2)
     meta["date"] = meta["created_at"].str[5:10]
     order = (long.sort_values("round_idx").groupby("participant_id")["condition"]
                  .agg(lambda s: "→".join(s)).rename("order"))
     first = long.drop_duplicates("participant_id").set_index("participant_id")
-    pp = (first[["lang", "seq", "attention_ok", "fs_overall_sat", *FS]]
-          .join(order).join(meta.set_index("participant_id")[["age_idx", "date"]]).reset_index())
+    pp = (first[["lang", "seq", "attention_ok", "novice", "fs_overall_sat", *FS]]
+          .join(order).join(meta.set_index("participant_id")[["age_idx", "date", *EXP]]).reset_index()
+          .sort_values("participant_id", ignore_index=True))
     return long, pp
 
 
@@ -108,19 +125,27 @@ def render() -> None:
     langs = f1.multiselect(t("tendency.f_lang"), all_langs, key="_td_lang",
                            default=[x for x in all_langs if x != "ja"])   # ja 默认不显示(防偷看)
     drop_ages = f2.multiselect(t("tendency.f_age"), sorted(pp["age_key"].unique()), default=[],
-                               format_func=lambda i: age_lab.get(i, "—"), key="_td_age")
+                               format_func=lambda i: age_lab.get(i, "—"), key="_td_age",
+                               placeholder=t("tendency.f_age_none"))
     drop_attn = f3.checkbox(t("tendency.f_drop_attn"), key="_td_attn")
     blank_sl = f3.checkbox(t("tendency.f_blank_straight"), key="_td_sl")
+    novice_only = f3.checkbox(t("tendency.f_novice_only"), key="_td_nov")
     keep = pp["lang"].isin(langs) & ~pp["age_key"].isin(drop_ages)
     if drop_attn:
         keep &= pp["attention_ok"] != 0
+    if novice_only:
+        keep &= pp["novice"].astype(bool)
     pp = pp[keep]
     long = long[long["participant_id"].isin(pp["participant_id"])].copy()
+    lang = get_lang()
+    long["topic"] = long["topic_titles"].map(lambda d: d.get(lang) or d.get("ja") or "")
     if blank_sl:
         long.loc[long["straightline"] == 1, list(ITEMS)] = float("nan")
     st.caption(t("tendency.n_line", n=len(pp), trials=len(long)))
     if pp.empty:
         return
+    with st.expander(t("tendency.comp_title")):
+        _composition(pp)
 
     # ---- 总览:每题三个条件的 1–7 分布 + 均值 ----
     st.markdown(f"**{t('tendency.dist_title')}**")
@@ -134,7 +159,7 @@ def render() -> None:
     view = c_view.radio(t("tendency.view"), list(views), format_func=views.get,
                     horizontal=True, key="_td_view")
     show_beh = c_beh.checkbox(t("tendency.show_behavior"), key="_td_beh")
-    base = pp[["participant_id", "age", "date", "order"]]
+    base = pp[["participant_id", "age", "date", "order", "novice"]]
 
     if view == "single":
         cond = c_pick.selectbox(t("tendency.cond"), CONDS, key="_td_cond")
@@ -169,6 +194,16 @@ def render() -> None:
                      na_rep="")
     st.dataframe(sty, hide_index=True, width="stretch", height=min(38 * (len(tab) + 1), 900))
 
+    # 汇总单独一张表:Streamlit 表格没有表尾,汇总行塞进明细会在点表头排序时混进数据行
+    num = [c for c in tab.columns if c not in ("pid", "round_idx") and pd.api.types.is_numeric_dtype(tab[c])]
+    summ = pd.DataFrame({t("tendency.sum"): tab[num].sum(min_count=1),
+                         t("tendency.mean"): tab[num].mean(),
+                         t("tendency.median"): tab[num].median()}).T
+    st.markdown(f"**{t('tendency.summary_title')}**")
+    st.dataframe(summ.style.format({c: (lambda v, _s="−" in c: "" if v != v else
+                                        (f"{v:+.2f}" if _s else f"{v:.2f}").rstrip("0").rstrip("."))
+                                    for c in num}), width="stretch")
+
     with st.expander(t("tendency.legend_title")):
         st.markdown(t("tendency.legend_colors"))
         for code in (*ITEMS[1:], *E_ITEMS):
@@ -176,6 +211,24 @@ def render() -> None:
         st.markdown(f"- `own_mean`：{t('tendency.legend_own_mean')}")
         st.markdown(f"- `shot_*`：{t('q.tag_mine')} / {t('q.tag_ai_ok')} / {t('q.tag_ai_against')}")
         st.markdown(t("tendency.legend_other"))
+
+
+def _composition(pp) -> None:
+    """当前筛选下的样本经验构成(背景问卷逐项人数 + 新手 / 有经验者)。"""
+    import pandas as pd
+
+    rows = [(t("tendency.comp_novice"), pp["novice"].astype(bool)),
+            (t("tendency.comp_expert"), ~pp["novice"].astype(bool))]
+    rows += [(f"{t('tendency.comp_published')}：{t(f'screening.published_opt{k + 1}')}", pp["published_idx"] == k)
+             for k in range(3)]
+    rows += [(t(f"tendency.comp_{k}"), pp[c].astype(bool)) for k, c in (
+        ("background", "bg_yes"), ("written", "written_yes"), ("self_low", "self_low"),
+        ("quiz1", "quiz1_ok"), ("quiz2", "quiz2_ok"), ("quiz_both", "quiz_both"))]
+    rows.append((t("tendency.comp_written_quiz"), pp["written_yes"].astype(bool) & pp["quiz_both"].astype(bool)))
+    n = len(pp)
+    st.dataframe(pd.DataFrame([{t("tendency.comp_item"): lab, t("tendency.comp_n"): int(m.sum()),
+                                t("tendency.comp_share"): f"{m.sum() / n:.0%}" if n else ""} for lab, m in rows]),
+                 hide_index=True, width="stretch")
 
 
 def _distribution(long) -> None:
@@ -200,6 +253,6 @@ def _distribution(long) -> None:
     means = long.groupby("condition")[list(ITEMS)].mean().T.reindex(columns=list(CONDS))
     means["E−D"] = means["E"] - means["D"]
     means.index.name = "item"
-    c2.dataframe(means.style.map(_cell, subset=list(CONDS)).format(precision=2, na_rep=""),
-                 width="stretch")
+    # 均值不上色:色块按四舍五入取档,4.49 与 4.51 会被染成两档,把 0.02 分的差画成档次差
+    c2.dataframe(means.style.format(precision=2, na_rep=""), width="stretch")
     c2.caption(t("tendency.means_caption", n=long["participant_id"].nunique()))

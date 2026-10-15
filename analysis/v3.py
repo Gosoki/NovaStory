@@ -501,7 +501,7 @@ def main() -> None:
     share = (n_nv / n_p) if n_p else float("nan")
     print(f"=== 人群:全样本 {n_p} 人 / novice 子集 {n_nv} 人({share:.0%})===")
     print(f"    主分析人群 = 全样本 {n_p} 人(2026-09-07 拍板);"
-          f"novice 子集(≥{prereg.NOVICE_MIN_CRITERIA}/5)仅作事后探索性分析")
+          f"novice 子集({prereg.NOVICE_DEF})仅作事后探索性分析")
     if n_p and share < prereg.NOVICE_SHARE_YELLOW:
         print(f"    ⚠️ novice 占比 <{prereg.NOVICE_SHARE_YELLOW:.0%} —— 不影响主分析(全样本),"
               f"但探索性子集会因 N 过小而缺乏解释力")

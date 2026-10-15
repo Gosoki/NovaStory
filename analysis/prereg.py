@@ -24,7 +24,9 @@ RELIABILITY_GREEN, RELIABILITY_YELLOW = 0.70, 0.60
 OWN_ALPHA_FLOOR = 0.60                                   # own1-3 α 低于此 → 后手D 切 SoPA
 SOA_R_GREEN, SOA_R_YELLOW = 0.50, 0.30                   # soa1-2 两题相关 r;<0.30 = 🔴(docs/paper/05 §④)
 
-# ---- novice 定义(5 项严格 AND;录而不 gate)----
+# ---- novice 定义(录而不 gate)----
+# 2026-10-15 用户暂定:**写过分镜/剧本 且 术语小测两题全对 = 有经验者**,其余都是 novice
+# (中国队列 35 人中有经验者 3 人)。原「5 项严格 AND」与 4-of-5 退路随之停用(见 docs/paper/10)。
 # ⚠️ 2026-09-07 拍板(取代下面的 B1):**主分析人群 = 全样本**(招募端仍不设门槛)。
 # novice / 高手的切分**降级为事后探索性分析**,论文里如实标注 exploratory,不作确证性声明。
 # → 功效按**全样本 N** 算;停止规则去掉「子集也达标」这一条,不再超招募。
@@ -34,8 +36,7 @@ SOA_R_GREEN, SOA_R_YELLOW = 0.50, 0.30                   # soa1-2 两题相关 r
 # 〔已被取代〕B1 拍板(2026-08-03):招募端**不设门槛**(随机找人),但 novice 子集 = **采数前冻结的主分析
 # 人群**(B3:本研究不做第三方预注册,措辞一律用「冻结/事前确定」);全样本为稳健性分析,经验者另作「経験あり vs なし」对比/调节分析。
 # → 功效必须按 novice 子集(更小 N)算,并超招募到子集也达标。
-NOVICE_DEF = ("published_idx==0 AND background=='no' AND written=='no' "
-              "AND self_rating<=2 AND quiz_correct<=1")
+NOVICE_DEF = "NOT (written=='yes' AND quiz_correct==2)"
 
 # ⚠️ 2026-09-01 拍板 2.1:上面的字符串**只是给人读的文档**。此前它是全库唯一的 novice
 # 定义,而它**从不执行** —— screening 里另有一份内联的同义判断,v3 不导出 novice,
@@ -43,17 +44,11 @@ NOVICE_DEF = ("published_idx==0 AND background=='no' AND written=='no' "
 # 主分析实际跑的是全样本。下面这个函数是**唯一会被执行的定义**,
 # screening / v3 / stats / pilot_check 四处共用。
 #
-# 每次分析都从 screening_json 的**原始 5 项重算**,而不是信任入库时写下的
-# `is_novice` 布尔:定义一旦在冻结前微调(例如 B1 退路里的 4-of-5),旧行的布尔就
-# 是按旧定义算的,重算才能保证全样本口径一致。
+# 每次分析都从 screening_json 的**原始答案重算**,而不是信任入库时写下的
+# `is_novice` 布尔:定义改过(2026-10-15),旧行的布尔是按旧定义算的。
+# 下面 5 个子项只用于描述样本经验构成(v3 的 nv_* 列),不再决定 novice。
 NOVICE_CRITERION_FIELDS = ("published_idx", "background", "written", "self_rating", "quiz_correct")
 
-# 满足几项才算 novice。5 = 全部满足(严格,现行);4 = B1 已声明的退路
-# (若试测实测 novice 占比 <40% 即 pilot_check ③ 🔴 时启用)。
-# ⚠️ 2026-09-07:人群反转后该退路的**原触发条件已消失**(novice 占比不再是 go/no-go)。
-#    但「退路是否就此取消」是新的设计决定,**未拍板** → docs/paper/06。本轮数值不动。
-# ⚠️ 这个数字必须在**冻结时**定死,不能看了数据再改。
-NOVICE_MIN_CRITERIA = 5
 
 # 纳入规则:只分析**走完全部 N_ROUNDS 轮**的被试(以问卷提交数为准,不看 status ——
 # 三轮问卷都交了、只是没点最后那份总问卷的人,任务数据是完整的,不该丢)。
@@ -106,7 +101,11 @@ def is_novice(screening: dict) -> bool:
     """
     if not isinstance(screening, dict):
         return False
-    return sum(novice_criteria(screening).values()) >= NOVICE_MIN_CRITERIA
+    try:
+        quiz = int(screening.get("quiz_correct", 0))
+    except (TypeError, ValueError):
+        quiz = 0
+    return not (screening.get("written") == "yes" and quiz >= 2)
 
 # ---- SESOI(等价检验界)——【2026-08-03 锁 H4;2026-09-01 拍板 2.3 补齐两个主终点】----
 # 单位一律 = **DV 原始单位**(不是 d/dz)。
@@ -293,10 +292,9 @@ def as_dict() -> dict:
         # 冻结产物里必须能读出「确证 vs 探索」的分界,否则事后无从证明子集分析是探索性的。
         "primary_population": "all",
         "novice_is_exploratory": True,
-        # 以下三项描述 novice **怎么算**(定义不变),其用途已降为探索性切分与样本描述。
+        # 以下两项描述 novice **怎么算**(2026-10-15 暂定新定义),用途为探索性切分与样本描述。
         "novice_def": NOVICE_DEF,
         "novice_criteria": list(NOVICE_CRITERION_FIELDS),
-        "novice_min_criteria": NOVICE_MIN_CRITERIA,
         "analysis_requires_all_rounds": ANALYSIS_REQUIRES_ALL_ROUNDS,
         "excluded_sessions": {str(k): {"created_at": c, "reason": r}
                               for k, (c, r) in EXCLUDED_SESSIONS.items()},

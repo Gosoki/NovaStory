@@ -87,7 +87,17 @@ def render() -> None:
     # novice 子集(事后探索性)。session key 一并换名,避免旧会话残留的 True 把
     # 研究员静默留在旧默认上。
     pop_novice = st.checkbox(t("analysis.pop_novice"), key="_an_pop_novice")
+    # 敏感性分析 V1(与 `stats.py --drop-attention-fail` 同一函数):剔除要在 build_composites 之前,
+    # z 在剩余样本内重算;写回的 v3_per_trial.csv 仍是全样本
+    drop_attn = st.checkbox(t("analysis.drop_attn"), key="_an_drop_attn")
     population = "novice" if pop_novice else "all"
+
+    def _drop_attn(pt):
+        if not drop_attn:
+            return pt
+        pt, k = A_stats.drop_attention_fail(pt)
+        st.warning(t("analysis.drop_attn_line", k=k))
+        return pt
 
     def _select_population(comp):
         """与 `make stats` 同口径(默认 all = 主分析人群)。返回 (子集, 人数)。"""
@@ -97,7 +107,11 @@ def render() -> None:
             else:
                 st.warning(t("analysis.pop_missing"))
         n_p = comp["participant_id"].nunique() if "participant_id" in comp else 0
-        st.caption(t("analysis.pop_line", pop=population, n=n_p, rows=len(comp)))
+        if drop_attn:
+            pop = f"{population} − {t('analysis.drop_attn_tag')}"
+            st.caption(t("analysis.pop_line_v1", pop=pop, n=n_p, rows=len(comp)))
+        else:
+            st.caption(t("analysis.pop_line", pop=population, n=n_p, rows=len(comp)))
         return comp
 
     c1, c2 = st.columns(2)
@@ -120,6 +134,8 @@ def render() -> None:
             pt.to_csv(csv_path, index=False)
             if kept:
                 st.caption(t("analysis.kept_cols", cols=" · ".join(kept)))
+            pt = _drop_attn(pt)
+            df = df[df["participant_id"].isin(pt["participant_id"])]
             have = [x for x in v3._SUMMARY_COLS if x in pt.columns]
             st.markdown(t("analysis.means_title"))
             st.dataframe(pt.groupby("condition")[have].mean(numeric_only=True).T)
@@ -146,7 +162,25 @@ def render() -> None:
                     st.code(_capture_stdout(_run), language="text")
                     if dv in prereg.PRIMARY_ENDPOINTS:
                         verdict = _capture_stdout(lambda dv=dv: print(A_stats.primary_verdict(comp, dv, ed_box.get("ed"))))
+                        if drop_attn:   # V1 的判定与主分析可能相反,单独截这一块也必须看得出不是主分析
+                            verdict = f"[{t('analysis.drop_attn_tag')}] " + verdict
                         st.code(verdict, language="text")
+            # 离下结论还差多少:跟随上面的人群 / 剔除选项(comp 已筛过)
+            import pandas as pd
+            gaps = [g for g in (A_stats.conclusiveness(comp, dv) for dv in prereg.PRIMARY_ENDPOINTS) if g]
+            if gaps:
+                big = lambda v: "> 10000" if not v < 10000 else f"{v:.0f}"  # noqa: E731
+                st.markdown(t("analysis.gap_title"))
+                st.dataframe(pd.DataFrame([{
+                    t("analysis.gap_dv"): f"{g['dv']}（{g['equiv_dv']}）",
+                    t("analysis.gap_n"): g["n"],
+                    t("analysis.gap_diff"): f"{g['mean_diff']:+.2f}",
+                    t("analysis.gap_ci"): f"[{g['ci90'][0]:+.2f}, {g['ci90'][1]:+.2f}]",
+                    t("analysis.gap_min_sig"): f"±{g['min_sig_05']:.2f} / ±{g['min_sig_025']:.2f}",
+                    t("analysis.gap_n_sig"): big(g["n_significant"]),
+                    t("analysis.gap_n_eq"): big(g["n_equivalent"]),
+                } for g in gaps]), hide_index=True, width="stretch")
+                st.caption(t("analysis.gap_caption", bound=gaps[0]["bound"]))
         except Exception as e:  # noqa: BLE001
             st.warning(t("analysis.err_data", err=f"{type(e).__name__}: {e}"))
 
@@ -158,17 +192,24 @@ def render() -> None:
             # 与「出分析结果」同一条路:接回 embed/events/judge 合入的列、收 warnings、按人群筛。
             # 以前出图分支三样都没做 —— 而进论文的正是图。
             pt, _ = preserve_merged(v3.per_trial(df), csv_path)
+            pt = _drop_attn(pt)
             comp, warns = _run_capturing_warnings(lambda: A_stats.build_composites(pt))
             for w in warns:
                 st.warning(f"⚠️ {w}")
             comp = _select_population(comp)
             pt = pt[pt["participant_id"].isin(comp["participant_id"])] if "participant_id" in pt else pt
             FIGDIR.mkdir(parents=True, exist_ok=True)
-            A_fig.fig_effort(pt, FIGDIR / "fig_effort.png")
-            st.image(str(FIGDIR / "fig_effort.png"), caption=t("analysis.cap_effort"))
+            # 勾了任一非主分析选项:另存文件、图题标人群 —— 不能覆盖 make figures 写的主分析图
+            # (进论文的正是图)。图题用英文:figures.py 没配 CJK 字体。
+            sfx = ("_novice" if pop_novice else "") + ("_attnV1" if drop_attn else "")
+            lab = (f"{'novice + ' if pop_novice else ''}{'V1 (not primary)' if drop_attn else 'novice'}"
+                   f", n={comp['participant_id'].nunique()}") if sfx else ""   # 要短:图题单行,过长会被裁掉
+            tag = f" · {t('analysis.drop_attn_tag')}" if drop_attn else ""
+            A_fig.fig_effort(pt, FIGDIR / f"fig_effort{sfx}.png", lab)
+            st.image(str(FIGDIR / f"fig_effort{sfx}.png"), caption=t("analysis.cap_effort") + tag)
             if "ownership_composite" in comp:
-                A_fig.fig_dv(comp, "ownership_composite", FIGDIR / "fig_ownership.png")
-                st.image(str(FIGDIR / "fig_ownership.png"), caption=t("analysis.cap_ownership"))
+                A_fig.fig_dv(comp, "ownership_composite", FIGDIR / f"fig_ownership{sfx}.png", lab)
+                st.image(str(FIGDIR / f"fig_ownership{sfx}.png"), caption=t("analysis.cap_ownership") + tag)
         except Exception as e:  # noqa: BLE001
             st.warning(t("analysis.err_figures", err=f"{type(e).__name__}: {e}"))
 

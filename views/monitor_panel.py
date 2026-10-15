@@ -35,8 +35,8 @@ def _topic_title(x) -> str:
 
 
 def _novice_flags(parts: pd.DataFrame) -> pd.Series:
-    """每位被试是否 novice —— 与分析侧一样从原始 5 项**重算**(prereg.is_novice),
-    不信任入库时写下的布尔:NOVICE_MIN_CRITERIA 若按退路从 5 调到 4,旧布尔就是旧口径。"""
+    """每位被试是否 novice —— 与分析侧一样从原始答案**重算**(prereg.is_novice),
+    不信任入库时写下的布尔:定义改过(2026-10-15),旧布尔就是旧口径。"""
     if "screening_json" not in parts:
         return pd.Series(False, index=parts.index)
     return parts["screening_json"].map(lambda x: prereg.is_novice(_loads(x)))

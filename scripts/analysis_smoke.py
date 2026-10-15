@@ -197,6 +197,20 @@ def run(tmp: Path) -> None:
     _, out_nv = quiet(lambda: _cli(A_stats.main, ["--csv", str(csv), "--population", "novice"]))
     assert "exploratory" in out_nv or "探索性" in out_nv, \
         f"novice 子集没有被标成探索性:\n{out_nv[:400]}"
+    # 敏感性分析 V1(--drop-attention-fail):合成库全员通过注意力题 → 造 2 人失败,
+    # 必须恰好剔掉这 2 人,且抬头标成敏感性分析、不冒充主分析人群
+    a_df = pd.read_csv(csv)
+    fail_ids = sorted(a_df["participant_id"].unique())[:2]
+    a_df.loc[a_df["participant_id"].isin(fail_ids), "attention_ok"] = 0
+    a_csv = tmp / "attn_fail.csv"
+    a_df.to_csv(a_csv, index=False)
+    kept_df, n_drop = A_stats.drop_attention_fail(a_df)
+    assert n_drop == 2 and not set(fail_ids) & set(kept_df["participant_id"]), (n_drop, fail_ids)
+    _, out_at = quiet(lambda: _cli(A_stats.main, ["--csv", str(a_csv), "--drop-attention-fail"]))
+    assert "已剔除注意力题失败者 2 人" in out_at and "敏感性分析 V1" in out_at, out_at[:600]
+    assert "事前确定的主分析人群" not in out_at, "剔除后的结果被标成了主分析人群"
+    assert "[敏感性 V1·非主分析]" in out_at, "主终点判定块没标 V1(单独截这一块会被当成主分析)"
+    ok("--drop-attention-fail:恰好剔除注意力失败者,抬头标为敏感性分析 V1")
     n_tab = out.count("LMM 计划对比")
     assert n_tab == len(endpoints), f"stats CLI 只打印了 {n_tab}/{len(endpoints)} 张计划对比表"
     assert "⛔ 最终警告" not in out, out[-800:]
