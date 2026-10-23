@@ -9,7 +9,7 @@ Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-s
  - 你可以适时增加新的md
  - 适时更新md
  - 适标记过时或废弃的文档md
- - 一些可能用得上的文献放到 `docs/paper/reference/` 里面
+ - 一些可能用得上的文献放到 `docs/paper/literature/` 里面（2026-10-22 起；旧 `docs/paper/reference/` 已归档只读）
  - ⚠️ **旧 `paper/` 目录已于 2026-08-03 整体归档**（每个文件顶部有归档横幅，迁移对照见 `paper/README.md`）。**只读、勿引用为当前状态、勿再往里写。**
 
 ### 0.1 维护决策留痕 `docs/paper/10_核心决策留痕.md`
@@ -20,7 +20,7 @@ Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-s
 
 ### 0.2 当前权威文档（避免引用过时内容）
  - **索引：`docs/paper/README.md`**。权威顺位：**代码 > `docs/index.html`（发表用幻灯片，对外口径）> `docs/paper/`**。
- - 研究定位/贡献措辞/禁用措辞/文献切割：`docs/paper/01`　实验设计+交互规格+运行流程：`docs/paper/02`　测量/量表/数据字典：`docs/paper/03`　假设表+分析计划：`docs/paper/04`　分析计划冻结+试测决策树（**第三方预注册不做**）：`docs/paper/05`　**待拍板事项：`docs/paper/06`**　采数前执行清单(部署/合规)：`docs/paper/07`　论文写作与投稿：`docs/paper/08`　日语资料(タイトル/背景目的/発表原稿/用語ルール)：`docs/paper/09`　决策留痕：`docs/paper/10`　**中国队列首版结论：`docs/paper/14`**　文献库：`docs/paper/reference/`
+ - 研究定位/贡献措辞/禁用措辞/文献切割：`docs/paper/01`　实验设计+交互规格+运行流程：`docs/paper/02`　测量/量表/数据字典：`docs/paper/03`　假设表+分析计划：`docs/paper/04`　分析计划冻结+试测决策树（**第三方预注册不做**）：`docs/paper/05`　**待拍板事项：`docs/paper/06`**　采数前执行清单(部署/合规)：`docs/paper/07`　论文写作与投稿：`docs/paper/08`　日语资料(タイトル/背景目的/発表原稿/用語ルール)：`docs/paper/09`　决策留痕：`docs/paper/10`　**中国队列首版结论：`docs/paper/14`**　文献库：`docs/paper/literature/`（旧 `reference/` 已归档）
  - 分析管线：`analysis/{v3,stats,power_sim,embed,figures,norming,textstats}.py`（A6 v3，`make analysis` 串全链）；**试测健康检查 `analysis/pilot_check.py`（`make pilot`；4 生死问题→🟢🟡🔴 + 后手分支）**；旧 `analysis/metrics.py` 为 v2(HLZ) 遗留，收数验收后删；`scripts/judge.py`（不在 `analysis/`）= LLM-judge **只做盲评保真**，四维审美 rubric 已弃（B5, 2026-08-03）。
  - **预注册冻结常量的单一真源：`analysis/prereg.py`**（pilot 阈值 / novice 定义 / SESOI / 终点层级 / 复合公式）——阈值只改这里，`pilot_check`/`stats` 从它 import。
  - 关键设计常量：`core/config.py: LATIN_SQUARE_N=18`（**Williams 6 排列 × 3 题目**，不是 3×3 拉丁方）、`N_ROUNDS=3`、`MIN_INTENT_CHARS=8`（B6, 2026-08-03 由 10 改为 8）。
