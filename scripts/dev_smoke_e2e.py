@@ -7,11 +7,14 @@ then asserts the database contents (guidance_json / revision_requests /
 script_versions / behavioral counters / timing columns / intake event trail).
 
 Run:  .venv/bin/python scripts/dev_smoke_e2e.py
+      NOVASTORY_E2E_LANG=ja .venv/bin/python scripts/dev_smoke_e2e.py   # 日语全流程
+ja 模式另查:每屏界面文字与发给 LLM 的提示词里有没有简体中文(CLAUDE.md §0.3)。
 """
 from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -21,7 +24,37 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from streamlit.testing.v1 import AppTest  # noqa: E402
 
 from core import db, llm  # noqa: E402
-from i18n import DEFAULT_LANG  # noqa: E402
+from i18n import DEFAULT_LANG, LANG_LABELS  # noqa: E402
+from i18n import translator as _T  # noqa: E402
+
+# 跑哪种语言的全流程(make smoke-e2e 两种都跑)。下面的按钮 / 选项标签写的是中文,
+# 非 zh 时由 L() 按 i18n 键换成目标语言 —— 同一套步骤,不复制一份测试。
+E2E_LANG = os.environ.get("NOVASTORY_E2E_LANG", "zh")
+
+
+def _walk(d: dict, path: str = ""):
+    for k, v in d.items():
+        p = f"{path}.{k}" if path else k
+        if isinstance(v, dict):
+            yield from _walk(v, p)
+        elif isinstance(v, list):
+            yield from ((f"{p}[{i}]", x) for i, x in enumerate(v) if isinstance(x, str))
+        elif isinstance(v, str):
+            yield p, v
+
+
+_ZH_TEXT = list(_walk(_T._load("zh")))
+_TGT_TEXT = dict(_walk(_T._load(E2E_LANG)))
+
+
+def L(zh: str) -> str:
+    """中文 UI 标签 → E2E_LANG 下同一个 i18n 键的文本(zh 时原样返回)。"""
+    if E2E_LANG == "zh":
+        return zh
+    hits = {_TGT_TEXT[k] for k, v in _ZH_TEXT if v == zh}
+    assert len(hits) == 1, f"标签 {zh!r} 在 zh.json 里对应 {len(hits)} 种 {E2E_LANG} 译文:{hits}"
+    return hits.pop()
+
 
 # ---------- stub LLM ----------
 
@@ -66,11 +99,67 @@ _FU_QUESTIONS = {
 }
 
 
+# ja 版:prompts.py 的 ja 分支要的两行排版(【画面】/【秒数】【カメラ】【セリフ・音】)。
+_JA = {
+    "script": (
+        "1.\n"
+        "【画面】目覚ましが23:00を指し、主人公がはっと顔を上げる\n"
+        "【秒数】3秒 【カメラ】クローズアップ 【セリフ・音】「やばい、やばい」\n"
+        "2.\n"
+        "【画面】教科書のページが高速でめくられ、蛍光ペンが走る\n"
+        "【秒数】8秒 【カメラ】ミディアム 【セリフ・音】紙がめくれる音\n"
+        "3.\n"
+        "【画面】朝、主人公が本の山に突っ伏して眠っている\n"
+        "【秒数】4秒 【カメラ】ロング 【セリフ・音】鳥の声"
+    ),
+    "r1": {"questions": [
+        {"dimension": "psychology", "question": "主人公がいちばん強く感じているのは？",
+         "options": ["焦り", "自虐", "冷静"], "why": "感情の軸が演技の方向を決める"},
+        {"dimension": "turning_point", "question": "物語はどこで転換する？",
+         "options": ["冒頭", "中盤", "ラスト"], "why": "テンポが決まる"},
+        {"dimension": "key_shot", "question": "観客にいちばん覚えてほしい画面は？",
+         "options": ["ページをめくる", "眠り込む", "夜明け"], "why": "視覚の要"},
+        {"dimension": "tone", "question": "全体のトーンは？",
+         "options": ["コメディ", "サスペンス", "リアル"], "why": "雰囲気をそろえる"},
+        {"dimension": "ending", "question": "結末の方向は？",
+         "options": ["失敗", "どんでん返し", "オープン"], "why": "余韻"},
+        {"dimension": "sound", "question": "どの音を際立たせる？",
+         "options": ["時計の音", "独白", "環境音"], "why": "雰囲気"},
+    ]},
+    "fu": {"questions": [
+        {"dimension": "pacing", "question": "2カット目は長すぎない？",
+         "options": ["短くする", "そのまま", "2カットに分ける"], "why": "テンポ"},
+        {"dimension": "dialogue", "question": "ラストにセリフを1つ足す？",
+         "options": ["足す", "足さない"], "why": "締め"},
+    ]},
+}
+# 被试输入(创意 / 修改请求 / 手改 / 引导自填),按语言给,ja 界面里不混中文输入。
+_INPUT = {
+    "zh": {"intents": ("主角发现卷子上的题目昨晚全梦到过", "末班车开走后他跟着夜跑团回家",
+                       "告白的话写在毕业帽内侧被风吹走"),
+           "request": "更搞笑一点", "edit": "\n（我手改的：结尾加一个彩蛋镜头）",
+           "custom": "我自己写的：荒诞但温柔"},
+    "ja": {"intents": ("答案用紙の問題を、ゆうべ全部夢で見ていたと気づく",
+                       "終電を逃した彼は、夜のランニング集団について帰る",
+                       "卒業帽の内側に書いた告白が風で飛ばされる"),
+           "request": "もっと笑える感じにして", "edit": "\n（自分で手直し：最後におまけのカットを追加）",
+           "custom": "自分で書いた：ばかばかしいけど優しい"},
+}[E2E_LANG if E2E_LANG == "ja" else "zh"]
+if E2E_LANG == "ja":
+    _SCRIPT = _JA["script"]
+    _SCRIPT_REV = _SCRIPT.replace("やばい、やばい", "ははっ、面白い")
+    _R1_QUESTIONS, _FU_QUESTIONS = _JA["r1"], _JA["fu"]
+
+_PROMPTS: list[tuple[str, str, str]] = []   # (group, system, user) —— ja 模式查简体中文混入
+
+
 def _stub_stream(system, user, *, group, user_id="", temperature=None):
+    _PROMPTS.append((group, system, user))
     yield _SCRIPT_REV if "revise" in group else _SCRIPT
 
 
 def _stub_json(system, user, *, group, user_id="", retries=None, temperature=None):
+    _PROMPTS.append((group, system, user))
     return _R1_QUESTIONS if group == "E-guidance-r1" else _FU_QUESTIONS
 
 
@@ -89,7 +178,47 @@ print(f"temp db: {db.DB_PATH}")
 
 _injected: dict[str, object] = {}
 
-EDIT_MARK = "\n（我手改的：结尾加一个彩蛋镜头）"
+EDIT_MARK = _INPUT["edit"]
+
+# 日语里不用的简体字(只收和日文新字体不同形的常用字;写、将、没、画、温之类两边同形的不收)。
+# ja 模式下任何一屏或任何一条提示词出现它们,就是中文混进了日语会话。
+_ZH_ONLY = set(
+    "这们说让么为样进过还请选择务动导问题时间实验镜头轮创编辑继续确认满现页设计惯经历该给从发结个"
+    "开关见长车门书买卖读讲话语记论谢订许调谈谁课诉词译试详误变爱华员团围图场坏报处备复够孙宁审宽"
+    "尔层岁岛币师带帮库应废异张弹强归录忆态总惊戏战护挂损换显晓术杂权极构标树桥梦检欢毕汇测浓灭环"
+    "电疗盖盘码确离种积稳穷笔签简类紧红约级纪纯纸线练组细织终绍绝统绩维综绿缓缘罗联肤脑脸节苏药获"
+    "营蓝虑虽补观规视觉访证评识贝负财责货质购费资赛赞赢赶跃轻载较辆边达运远违连迟适递邮释钟钢钱铁"
+    "银链销错闭闲闻阅队阳阴阶际陆险难项顺须顾预领频颜额风飞饭饮馆驾鸟齐龄龙"
+)
+_LEAKS: list[str] = []
+_INVISIBLE = re.compile(r"<style.*?</style>|<script.*?</script>|<!--.*?-->", re.S | re.I)
+
+
+def _scan_screen(at) -> None:
+    """收集当前这一屏所有可见文字,记下含简体字的那几条(只在 ja 模式)。"""
+    texts: list[str] = []
+    for kind in ("markdown", "caption", "title", "header", "subheader", "text", "info",
+                 "warning", "error", "success", "button", "radio", "selectbox", "checkbox",
+                 "text_area", "text_input", "expander", "button_group", "metric", "tabs"):
+        try:
+            els = at.get(kind)
+        except Exception:  # noqa: BLE001 —— 该版本没有这种元素就跳过
+            continue
+        for el in els:
+            for attr in ("value", "label", "body"):
+                v = getattr(getattr(el, "proto", None), attr, None) or getattr(el, attr, None) \
+                    if attr != "value" or kind in ("markdown", "caption", "title", "header",
+                                                   "subheader", "text", "info", "warning",
+                                                   "error", "success") else None
+                if isinstance(v, str):
+                    texts.append(v)
+            opts = getattr(el, "options", None)
+            if opts:
+                texts.extend(str(o) for o in opts)
+    for x in texts:
+        x = _INVISIBLE.sub("", x)   # <style> 里的 CSS 注释等被试看不到,不算混入
+        if any(ch in _ZH_ONLY for ch in x):
+            _LEAKS.append(f"[{at.session_state['stage'] if 'stage' in at.session_state else '?'}] {x[:120]!r}")
 
 
 def inject(at, key, value):
@@ -141,9 +270,12 @@ def safe_run(at):
         if k not in at.session_state:
             at.session_state[k] = v
     at.run()
+    if E2E_LANG == "ja":
+        _scan_screen(at)
 
 
 def btn_click(at, label):
+    label = L(label)
     hits = [b for b in at.button if b.label == label]
     assert hits, f"button not found: {label!r} (have: {[b.label for b in at.button]})"
     hits[0].click()
@@ -153,26 +285,27 @@ def btn_click(at, label):
 def run() -> None:
     at = AppTest.from_file("app.py", default_timeout=60)
     at.run()
-    # Participants default to ja; the researcher (and this test) work in zh — pick
-    # it on the consent-page language selector (options[1] == zh), as a subject would.
+    # 在同意页的语言选择器上选 E2E_LANG(默认 zh = 研究员的工作语言),和被试一样操作。
     lang_radio = at.radio(key="_consent_lang")
-    lang_radio.set_value("中文")      # 按标签选,与 AVAILABLE_LANGS 的顺序无关
+    lang_radio.set_value(LANG_LABELS[E2E_LANG])   # 按标签选,与 AVAILABLE_LANGS 的顺序无关
     at.run()
-    assert at.session_state["lang"] == "zh", at.session_state["lang"]
+    assert at.session_state["lang"] == E2E_LANG, at.session_state["lang"]
+    if E2E_LANG == "ja":
+        _scan_screen(at)
 
     # --- consent → screening → intro (how-it-works page) → rounds ---
     at.checkbox(key="_consent_agree").check().run()
     btn_click(at, "同意并开始")
     assert at.session_state["stage"] == "screening", at.session_state["stage"]
-    at.selectbox[0].select("21-30 岁")
-    at.selectbox[1].select("不愿透露")
-    at.selectbox[2].select("偶尔（每月几次）")
-    at.selectbox[3].select("从未用过")          # aiexp (AI creative experience)
-    at.radio[0].set_value("从未发布过")
-    at.radio[1].set_value("否")
-    at.radio[2].set_value("否")
-    at.radio[3].set_value("我不知道")
-    at.radio[4].set_value("我不知道")
+    at.selectbox[0].select(L("21-30 岁"))
+    at.selectbox[1].select(L("不愿透露"))
+    at.selectbox[2].select(L("偶尔（每月几次）"))
+    at.selectbox[3].select(L("从未用过"))          # aiexp (AI creative experience)
+    at.radio[0].set_value(L("从未发布过"))
+    at.radio[1].set_value(L("否"))
+    at.radio[2].set_value(L("否"))
+    at.radio[3].set_value(L("我不知道"))
+    at.radio[4].set_value(L("我不知道"))
     set_sc(at, "_scr_self", 1)
     set_sc(at, "_scr_conf", 2)                # 自我效能:能不能写出短视频脚本的把握
     set_sc(at, "_scr_trust", 4)               # baseline trait: AI trust
@@ -186,15 +319,15 @@ def run() -> None:
 
     # seq 0 → conditions C, D, E with topics 1, 2, 3
     # --- R1: C — one-shot ---
-    at.text_area(key="_intent_input").set_value("主角发现卷子上的题目昨晚全梦到过")
+    at.text_area(key="_intent_input").set_value(_INPUT["intents"][0])
     btn_click(at, "确定，开始创作")
     btn_click(at, "提交这一版，进入问卷")      # C 只生成一次,提交文案是中性的
     _answer_questionnaire(at, round_idx=1)
 
     # --- R2: D — revise via chat + hand-edit (attention round) ---
-    at.text_area(key="_intent_input").set_value("末班车开走后他跟着夜跑团回家")
+    at.text_area(key="_intent_input").set_value(_INPUT["intents"][1])
     btn_click(at, "确定，开始创作")
-    inject(at, "_revision_input", "更搞笑一点")
+    inject(at, "_revision_input", _INPUT["request"])
     btn_click(at, "告诉 AI")                # → v2 (ai)
     assert at.session_state["r_n_ai_rounds"] == 1
     inject(at, "_script_edit", _SCRIPT_REV + EDIT_MARK)
@@ -202,7 +335,7 @@ def run() -> None:
     _answer_questionnaire(at, round_idx=2, attention=True)
 
     # --- R3: E — guidance round-1 → script → follow-up → hand-edit ---
-    at.text_area(key="_intent_input").set_value("告白的话写在毕业帽内侧被风吹走")
+    at.text_area(key="_intent_input").set_value(_INPUT["intents"][2])
     btn_click(at, "确定，开始创作")
     _answer_guidance(at, rnd=1, n=6, custom_idx=1, ai_idx=2)
     assert at.session_state["r_phase"] == "postgen"
@@ -223,7 +356,23 @@ def run() -> None:
     print("completion code:", codes[0])
 
     _assert_db()
-    print("E2E SMOKE PASSED")
+    if E2E_LANG == "ja":
+        _assert_no_zh_leak()
+    print(f"E2E SMOKE PASSED（{E2E_LANG}）")
+
+
+def _assert_no_zh_leak() -> None:
+    """ja 会话:界面每一屏 + 每条发给 LLM 的提示词都不含简体字;分镜提示词要的是 ja 字段标记。"""
+    for group, system, user in _PROMPTS:
+        for part, txt in (("system", system), ("user", user)):
+            bad = sorted({ch for ch in txt if ch in _ZH_ONLY})
+            if bad:
+                _LEAKS.append(f"[prompt {group}/{part}] 含简体字 {''.join(bad)}")
+    script_sys = [s for g, s, _ in _PROMPTS if "guidance" not in g]
+    assert script_sys and all("【画面】" in s and "【秒数】" in s for s in script_sys), \
+        "ja 会话的分镜提示词里没有 ja 字段标记(【画面】/【秒数】)"
+    assert not _LEAKS, "ja 会话里混进了简体中文:\n  " + "\n  ".join(dict.fromkeys(_LEAKS))
+    print(f"ja ok:{len(_PROMPTS)} 条提示词 + 每屏界面文字都没有简体中文;分镜提示词用 ja 字段标记")
 
 
 def _answer_guidance(at, rnd: int, n: int, custom_idx: int = -1, ai_idx: int = -1) -> None:
@@ -232,13 +381,13 @@ def _answer_guidance(at, rnd: int, n: int, custom_idx: int = -1, ai_idx: int = -
     # segmented_control set_value loses values across the advance-rerun).
     qs = at.session_state["r_g_questions"]
     assert len(qs) == n, f"expected {n} questions, got {len(qs)}"
-    ai_decide_zh = "交给 AI 决定"  # researcher tests in zh; == t("guidance.ai_decide")
+    ai_decide = L("交给 AI 决定")  # == t("guidance.ai_decide") in E2E_LANG
     answers = {}
     for i in range(n):
         if i == custom_idx:
-            answers[i] = {"opt": None, "custom": "我自己写的：荒诞但温柔", "ai_decided": False}
+            answers[i] = {"opt": None, "custom": _INPUT["custom"], "ai_decided": False}
         elif i == ai_idx:
-            answers[i] = {"opt": ai_decide_zh, "custom": "", "ai_decided": True}
+            answers[i] = {"opt": ai_decide, "custom": "", "ai_decided": True}
         elif qs[i]["options"]:
             answers[i] = {"opt": qs[i]["options"][0], "custom": "", "ai_decided": False}
     at.session_state["r_g_answers"] = answers
@@ -313,7 +462,7 @@ def _assert_db() -> None:
     dv = json.loads(d["script_versions"])
     assert [x["author"] for x in dv] == ["ai", "ai", "user_edit"], dv
     reqs = json.loads(d["revision_requests"])
-    assert len(reqs) == 1 and reqs[0]["text"] == "更搞笑一点"
+    assert len(reqs) == 1 and reqs[0]["text"] == _INPUT["request"]
     assert d["n_ai_rounds"] == 1 and d["n_hand_edits"] == 1 and d["hand_edit_chars"] > 0
     assert d["t_postgen"] is not None and EDIT_MARK.strip() in d["final_output"]
 

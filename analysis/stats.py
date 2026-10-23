@@ -698,9 +698,9 @@ def main() -> None:
         print(f"  队列 lang = {langs or '(CSV 无 lang 列)'} → 单队列模型"
               + (f"(--lang {args.lang} 筛选;两队列都在库时主分析是合并模型 = make stats)"
                  if args.lang != "all" else ""))
-    descriptive_only = langs == ["ja"]   # prereg 合并段:日本单队列 N≈18(MDES dz≈0.70)只作描述
+    descriptive_only = langs == ["ja"]   # prereg 合并段:日本单队列 N 18–36(MDES dz≈0.70–0.48)只作描述
     if descriptive_only:
-        print("  ⚠️ 日本单队列 N≈18:按 prereg 合并段**只作描述**,下面的判定不是确证结论;主结论见合并模型(make stats)")
+        print("  ⚠️ 日本单队列(N 18–36):按 prereg 合并段**只作描述**,下面的判定不是确证结论;主结论见合并模型(make stats)")
     print(f"  novice 定义:{prereg.NOVICE_DEF}(prereg.is_novice,2026-10-15 暂定)")
     print(f"  等价界 SESOI:{prereg.SESOI_BY_ENDPOINT}")
     print(f"  判定分支:{' | '.join(prereg.DECISION_BRANCHES)}")

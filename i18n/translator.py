@@ -6,13 +6,13 @@ from pathlib import Path
 import streamlit as st
 
 LOCALES_DIR = Path(__file__).parent / "locales"
-# ⚠️ **正式研究の被験者は日本人** —— 本番前に DEFAULT_LANG / AVAILABLE_LANGS を ja 先頭へ戻すこと。
-# 2026-09-03、研究者のテストがしやすいよう暫定的に zh を既定にしている
-# (scripts/deploy_check.py の「既定言語」項が本番前に黄色で知らせる)。
+# 既定言語 = いま走らせているコホートの言語(scripts/deploy_check.py の「既定言語」項が確認する)。
+# 2026-09-03〜中国コホート(zh)の間は zh を既定にしていた;2026-10-23、日本コホート開始前に ja へ戻した。
+# 日本の募集リンクは引き続き `?lang=ja` 付きを使う(docs/paper/07 §3.6)—— 既定 ja は裸リンクの保険。
 # DEFAULT_LANG はキー欠落時のフォールバック先でもある —— 三言語のキー木は
 # scripts/i18n_check.py が一致を保証しているので、実際に落ちることはない。
-DEFAULT_LANG = "zh"
-AVAILABLE_LANGS = ["zh", "ja", "en"]
+DEFAULT_LANG = "ja"
+AVAILABLE_LANGS = ["ja", "zh", "en"]
 LANG_LABELS = {"zh": "中文", "en": "English", "ja": "日本語"}
 
 _log = logging.getLogger(__name__)

@@ -65,8 +65,9 @@ figures:    ## 招牌图(努力再分配)+ 主 DV 分条件 → data/analysis/fi
 smoke:      ## 分析链路回归自测(合成 N=36 跑完整条链并断言;临时库,不碰 data/novastory.db)
 	$(PY) scripts/analysis_smoke.py
 
-smoke-e2e:  ## 被试全流程 E2E(正常路径:consent→3轮→完成码 + intake埋点/?lang=/续接/重做)
+smoke-e2e:  ## 被试全流程 E2E(正常路径:consent→3轮→完成码 + intake埋点/?lang=/续接/重做;zh、ja 各跑一遍,ja 另查界面与提示词有无简体中文)
 	NOVASTORY_NO_IMAGES=1 $(PY) scripts/dev_smoke_e2e.py
+	NOVASTORY_NO_IMAGES=1 NOVASTORY_E2E_LANG=ja $(PY) scripts/dev_smoke_e2e.py
 
 robust:     ## 实测就绪性验收(出事时扛不扛得住:并发/断网/刷新/脏数据/后台线程)→ docs/paper/12
 	NOVASTORY_NO_IMAGES=1 $(PY) scripts/robustness_check.py
