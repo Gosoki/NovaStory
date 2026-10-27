@@ -58,19 +58,19 @@
   },
   {
     "title": {
-      "ja": "急な雨（雨やどりの数分）",
-      "zh": "突如其来的雨（躲雨的几分钟）",
-      "en": "A Sudden Shower (a few minutes out of the rain)"
+      "ja": "待ち合わせの5分前（相手はまだ来ない）",
+      "zh": "约好见面的前5分钟（对方还没来）",
+      "en": "Five Minutes Before the Meet-up (they're not here yet)"
     },
     "scenario": {
-      "ja": "急に雨が降りだし、近くの軒下に駆けこむ。",
-      "zh": "突然下起雨，你跑到附近的屋檐下。",
-      "en": "It suddenly starts to pour, and you dash under a nearby awning."
+      "ja": "待ち合わせの時間まで、あと5分。相手からの連絡はまだない。",
+      "zh": "离约好的时间只剩5分钟，对方还没有任何消息。",
+      "en": "Five minutes until the time you agreed to meet, and still no word from them."
     },
     "choices": {
-      "ja": "やむのを待つか、走り出すか、隣の人に話しかけるか。",
-      "zh": "是等雨停、冲进雨里，还是和旁边的人搭话。",
-      "en": "Do you wait it out, make a run for it, or talk to the person next to you?"
+      "ja": "連絡してみるか、そのまま待つか、それとも——。",
+      "zh": "是发消息问问、继续等，还是——。",
+      "en": "Do you message them, keep waiting, or——?"
     },
     "shot_count": 3,
     "total_seconds": 15
