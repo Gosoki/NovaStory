@@ -264,7 +264,7 @@ WILLIAMS_ROUND_N_BY_LANG = {"zh": WILLIAMS_ROUND_N, "ja": 16}
 
 # ---- 日本队列的第 4 条件 F(2026-10-27,docs/paper/06 ㉖;**在任何日本数据进库之前**写死)----
 # F =「想いを聞く」インタビュー:AI 一题一题地问作者对作品的想法(最喜欢哪里 / 想让观众有什么感受 /
-# 哪一瞬间最能传达),只能自己写,生成后只能手改。只出现在 ja 被试的 4 条件设计里。
+# 哪一瞬间最能传达,之后 AI 视需要追问 0-2 题,共 3-5 题),只能自己写,生成后只能手改。只出现在 ja 被试的 4 条件设计里。
 # ⚠️ 中国单队列与中日合并分析一律只用 C / D / E(stats 在建复合 z 之前就去掉 F,z 的参照样本因此
 #    与没有 F 时完全相同);F 只在日本内部与 E(和 C)比。
 CONFIRMATORY_CONDITIONS = ("C", "D", "E")
@@ -287,7 +287,8 @@ F_SECONDARY = (                       # 次要:不进确证判定,方向写在�
     ("pre_investment", "两侧"),
     ("ai_q_quality", "两侧"),         # E 与 F 都问:检查「AI 亲切所以分高」
 )
-F_MANIPULATION_CHECK = "F 里三题回答的总字数(guidance_json 中 source=interview 的 chosen)"
+F_MANIPULATION_CHECK = ("F 里全部回答的总字数与题数分布(3-5 题;guidance_json 中 source=interview 的 chosen;"
+                        "题数作描述,不作协变量进主检验)")
 
 # ---- 复合公式(as-run,见 analysis/stats.build_composites) ----
 # z 一律按**全样本**算(跨全部 trial 的均值/标准差),被试间差异交给 LMM 的随机截距

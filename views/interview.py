@@ -13,10 +13,13 @@ from views._streaming import RETRY, call_llm_json, stream_llm
 # Condition F —「想いを聞く」インタビュー(2026-10-27,docs/paper/06 ㉖)。
 #
 # 与 E 的区别是「问什么、怎么问」:E 一次给约 6 道选择题,问的是作品怎么拍(动机 / 转折 /
-# 关键画面 + AI 补充);F 一题一题地问作者自己对作品的想法,只能自己写。三题的观点固定:
+# 关键画面 + AI 补充);F 一题一题地问作者自己对作品的想法,只能自己写。共 3-5 题
+# (config.INTERVIEW_RANGE):前 3 题的观点固定 ——
 #   1. liked             这个创意最喜欢哪里          —— 固定题面,不调 AI
 #   2. audience_feeling  想让观众有什么感受          —— AI 按上一个回答调整措辞
 #   3. moment            那份感受在哪一瞬间最能传达  —— 同上
+# 第 3 题之后由 AI 判断还要不要追问(follow_up,最多再 2 题;回答短 / 模糊时追问,说清楚了就停),
+# 与 E「3 个固定观点 + AI 补 2-4 个」同一思路。问完后显示致谢 + 「生成」按钮。
 # 每题前的复述句(「『…』ということですね」)由这里的模板生成、只引用被试原文 —— 不让模型
 # 写,免得夸奖 / 共情 / 改写混进来(那会让「AI 亲切」冒充「自我投入」)。
 # 计时与 E 共用事件对 guidance_shown → guidance_submit(state.round_durations);问答存成
@@ -32,6 +35,7 @@ _EXAMPLE_MARKERS = ("例えば", "たとえば", "例:", "例：", "など", "�
 
 def begin() -> None:
     st.session_state["r_iv_turns"] = []
+    st.session_state["r_iv_done"] = False
     for k in list(st.session_state.keys()):
         if k.startswith("_iv_"):
             st.session_state.pop(k, None)
@@ -93,25 +97,53 @@ def _next_turn(topic: dict, i: int) -> dict | object:
             "question": q, "answer": None, "fallback": False}
 
 
+def _more_turn(topic: dict) -> dict | None | object:
+    """第 3 题之后:AI 判断要不要追问。返回下一题;None = 不再问;RETRY = 临时失败。"""
+    turns = st.session_state["r_iv_turns"]
+    lang = get_lang()
+    data = call_llm_json(
+        prompts.build_system_interview_more(lang),
+        prompts.build_user_interview_more(topic, st.session_state["r_intent"], turns, lang),
+        group=f"F-interview-more{len(turns) + 1}",
+    )
+    if data is RETRY:
+        return RETRY
+    if not (isinstance(data, dict) and data.get("more") is True):
+        return None   # 模型说不用再问(或 JSON 不可用):采访到此结束
+    q = _clean_question(data)
+    if q is None:
+        return None   # 想追问但题面不合要求(带例子 / 太长):宁可不问
+    return {"dimension": "follow_up", "echo": t("interview.echo", a=_clip(turns[-1]["answer"])),
+            "question": q, "answer": None, "fallback": False}
+
+
 def render(topic: dict) -> None:
     turns = st.session_state["r_iv_turns"]
+    lo, hi = config.INTERVIEW_RANGE
     if not turns:
         turns.append(_first_turn())
         state.log_event("guidance_shown", {"round": 1, "source": "interview",
-                                           "n_questions": config.INTERVIEW_N, "fallback": False},
+                                           "n_questions": f"{lo}-{hi}", "fallback": False},
                         once=True)
-    elif turns[-1]["answer"] is not None and len(turns) < config.INTERVIEW_N:
+    elif turns[-1]["answer"] is not None and not st.session_state["r_iv_done"]:
+        if len(turns) >= hi:
+            st.session_state["r_iv_done"] = True
+            st.rerun()
         _render_chat(turns)   # 等下一题时,已答的对话留在屏上(进度条出现在它下面)
         if not st.session_state.get("_iv_gen_failed"):
-            nxt = _next_turn(topic, len(turns))
+            fixed_dim = len(turns) < lo
+            nxt = _next_turn(topic, len(turns)) if fixed_dim else _more_turn(topic)
             if nxt is RETRY:
-                # 第 2、3 题有固定题面可退:网关连续失败两次就用它,不让被试卡在重试按钮上
+                # 网关连续失败两次就不再等:固定观点退回固定题面,追问则到此为止 —— 不让被试卡在重试按钮上
                 st.session_state["_iv_fail_n"] = st.session_state.get("_iv_fail_n", 0) + 1
                 if st.session_state["_iv_fail_n"] >= 2:
-                    nxt = _fixed_turn(len(turns))
+                    nxt = _fixed_turn(len(turns)) if fixed_dim else None
             if nxt is not RETRY:
                 st.session_state.pop("_iv_fail_n", None)
-                turns.append(nxt)
+                if nxt is None:
+                    st.session_state["r_iv_done"] = True
+                else:
+                    turns.append(nxt)
                 st.rerun()
         # 临时失败:明确的重试按钮(同 E 的出题页),不让被试卡死在这一屏。
         st.session_state["_iv_gen_failed"] = True
@@ -122,32 +154,31 @@ def render(topic: dict) -> None:
         return
 
     _render_chat(turns)
+    if st.session_state["r_iv_done"]:
+        # 问完了:致谢 + 生成按钮。生成被 rerun 打断(双击、手机休眠后重连)或失败时,回答都已存好,
+        # 下一次渲染仍是这里 —— 再按一次就重新生成,不会卡在没有按钮的空页。
+        st.info(t("interview.thanks"))
+        if st.button(t("interview.finish"), type="primary", width="stretch"):
+            _finish(topic)
+        return
     cur = len(turns) - 1
-    if turns[cur]["answer"] is not None:
-        return   # 不会走到这里:最后一题答完就进生成
     key = f"_iv_answer_{cur}"
     st.text_area(t("interview.answer_label"), key=key, height=90, max_chars=300)
-    last = cur == config.INTERVIEW_N - 1
-    if st.button(t("interview.finish") if last else t("interview.send"),
-                 type="primary", width="stretch"):
+    if st.button(t("interview.send"), type="primary", width="stretch"):
         answer = (st.session_state.get(key) or "").strip()
         if not answer:
             st.error(t("interview.need_answer"))
             return
         state.log_event("guidance_answer_saved", {"round": 1, "q": cur})
-        if last:
-            # 最后一题的答案**生成成功后才写进 turns**:生成被 rerun 打断(双击、手机休眠后重连)时,
-            # 下一次渲染仍是「第 3 题 + 输入框 + 按钮」,再按一次就重新生成 —— 不会卡在没有按钮的空页。
-            _finish(topic, answer)
-        else:
-            turns[cur]["answer"] = answer
-            st.rerun()
+        turns[cur]["answer"] = answer
+        st.rerun()
 
 
 def _render_chat(turns: list[dict]) -> None:
     st.subheader(t("interview.title"))
-    cur = min(len(turns), config.INTERVIEW_N)
-    st.caption(t("interview.progress", i=cur, n=config.INTERVIEW_N))
+    if not st.session_state["r_iv_done"]:
+        lo, hi = config.INTERVIEW_RANGE
+        st.caption(t("interview.progress", i=len(turns), lo=lo, hi=hi))
     for x in turns:
         with st.chat_message("assistant"):
             st.markdown(
@@ -161,16 +192,14 @@ def _render_chat(turns: list[dict]) -> None:
                 st.markdown(_postgen._pre(x["answer"]), unsafe_allow_html=True)
 
 
-def _finish(topic: dict, last_answer: str) -> None:
+def _finish(topic: dict) -> None:
     turns = st.session_state["r_iv_turns"]
-    answers = [x["answer"] for x in turns[:-1]] + [last_answer]
     items = [{
         "dimension": x["dimension"], "question": x["question"], "echo": x["echo"],
-        "options": [], "chosen": a, "picked_option": None,
+        "options": [], "chosen": x["answer"], "picked_option": None,
         "is_custom": True, "ai_decided": False, "fallback": bool(x.get("fallback")),
-    } for x, a in zip(turns, answers)]
+    } for x in turns]
     lang = get_lang()
-    st.info(t("interview.thanks"))
     out = stream_llm(
         prompts.build_system_script(topic, lang),
         prompts.build_user_script_from_answers(topic, st.session_state["r_intent"], items, lang),
@@ -178,8 +207,7 @@ def _finish(topic: dict, last_answer: str) -> None:
     )
     # 生成成功才提交这一轮(同 E 的 _finish_round):失败后重试不会重复记一轮问答。
     if not (out and out.strip()):
-        return   # 最后一题仍是「未答」,按钮再按一次就重新生成
-    turns[-1]["answer"] = last_answer
+        return   # 仍停在「问完了」这一屏,按钮再按一次就重新生成
     for it in items:
         state.log_event("guidance_answer", {"dimension": it["dimension"], "is_custom": True,
                                             "ai_decided": False})

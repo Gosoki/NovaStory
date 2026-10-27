@@ -55,7 +55,10 @@ LATIN_SQUARE_N = 18
 FOUR_COND_LANGS = frozenset({"ja"})
 N_ROUNDS_F = 4
 LATIN_SQUARE_N_F = 16
-INTERVIEW_N = 3   # F 的采访题数(第 1 题固定,第 2、3 题由 AI 按上一个回答调整措辞)
+# F 的采访题数(2026-10-27 用户:「还是保证在 3-5 问内吧」):前 3 题的观点固定(第 1 题题面也固定,第 2、3 题
+# 的措辞由 AI 按上一个回答调整);第 3 题之后由 AI 判断还要不要追问,最多再问 2 题 —— 与 E 的「3 个固定观点
+# + AI 补 2-4 个」同一思路。
+INTERVIEW_RANGE = (3, 5)
 
 
 def rounds_for_lang(lang: str) -> int:

@@ -579,3 +579,70 @@ def build_user_interview(
     if key == "en":
         return f"{block}\n\nQ&A so far:\n{qa}\n\nAsk next: {aspect}"
     return f"{block}\n\nこれまでの質問と答え:\n{qa}\n\n次に聞くこと:{aspect}"
+
+
+def build_system_interview_more(lang: str = _DEFAULT_LANG) -> str:
+    """F 第 3 题之后:判断要不要再追问一题(最多到 config.INTERVIEW_RANGE 的上限)。"""
+    if _norm(lang) == "zh":
+        return (
+            "你是一名短视频分镜创作的采访者。用户是没有影视经验的新手,会发来故事创意和到目前为止的问答。"
+            "请判断:为了弄清用户想通过这份分镜表达什么,还需不需要**再问一个问题**。\n"
+            "要求:\n"
+            "1. 到目前为止的回答已经能看清用户想表达的东西(想让观众感受到什么、哪个瞬间最重要)→ 不再问。"
+            "回答太短、太笼统,或者提到了某个画面 / 感受但没说清楚 → 再问一个。\n"
+            "2. 如果要问:只问用户**对作品的想法**(想表达的感受、想让观众体会到什么、提到的那个瞬间里最在意什么),"
+            "可以接着用户提到的具体画面或感受往下问;**不要问镜头、景别、秒数等拍摄技术问题**。\n"
+            "3. **不要写任何例子、选项、建议或你自己的看法**(不要用「比如」「例如」「……之类」);"
+            "不要夸奖,不要表达共情,不要复述用户的话。\n"
+            "4. 问题为一句话,50 字以内,中文。\n"
+            '5. 只输出 JSON:{"more": true 或 false, "question": "要问的问题(不问时为空字符串)"}'
+        )
+    if _norm(lang) == "en":
+        return (
+            "You are an interviewer helping with short-video storyboard creation. The user is a "
+            "novice with no filmmaking experience; you will receive their story idea and the Q&A "
+            "so far. Decide whether **one more question** is needed to understand what the user "
+            "wants this storyboard to express.\n"
+            "Requirements:\n"
+            "1. If the answers so far already make clear what the user wants to express (what viewers "
+            "should feel, which moment matters most) → do not ask more. If the answers are very short "
+            "or vague, or mention a scene or feeling without making it clear → ask one more.\n"
+            "2. If you ask: ask only about the user's **thoughts about the work** (the feeling they want "
+            "to convey, what viewers should experience, what matters most to them in a moment they "
+            "mentioned); you may build on a specific scene or feeling they mentioned. **Do not ask "
+            "about camera, shot size, seconds or other filming technicalities.**\n"
+            "3. **Do not write any examples, options, suggestions or opinions of your own** (no 'for "
+            "example', 'such as', 'e.g.'); no praise, no expressions of empathy, and do not restate "
+            "the user's words.\n"
+            "4. The question is one sentence, at most 25 words, in English.\n"
+            '5. Output JSON only: {"more": true or false, "question": "the question (empty string if not asking)"}'
+        )
+    return (
+        "あなたはショート動画の絵コンテ制作を手伝うインタビュアーです。"
+        "ユーザーは映像経験のない初心者で、物語のアイデアとこれまでの質問と答えが送られてきます。"
+        "ユーザーがこの絵コンテで何を表現したいのかをつかむために、**もう一問聞く必要があるか**を判断してください。\n"
+        "要件:\n"
+        "1. これまでの答えで、ユーザーが表現したいこと(観る人に何を感じてほしいか、どの瞬間がいちばん大事か)が"
+        "はっきりしていれば、もう聞かない。答えがとても短い・ぼんやりしている、場面や気持ちに触れているのに"
+        "はっきりしない、といった場合はもう一問聞く。\n"
+        "2. 聞く場合は、ユーザーの**作品への思い**(伝えたい気持ち、観る人に味わってほしいこと、触れていた瞬間で"
+        "いちばん大事にしたいこと)だけを聞くこと。ユーザーが触れた具体的な場面や気持ちを受けて聞いてよい。"
+        "**カメラ・画面サイズ・秒数などの撮影技術については聞かないこと。**\n"
+        "3. **答えの例・選択肢・提案・あなた自身の意見は一切書かないこと**(「例えば」「〜など」も使わない)。"
+        "ほめ言葉や共感の言葉も入れず、ユーザーの言葉の言い直しもしないこと。\n"
+        "4. 質問は敬体(です・ます)の一文、60字以内、日本語で。\n"
+        '5. JSONのみを出力: {"more": true または false, "question": "聞く質問(聞かない場合は空文字)"}'
+    )
+
+
+def build_user_interview_more(
+    topic: dict, intent: str, turns: list[dict], lang: str = _DEFAULT_LANG
+) -> str:
+    """turns: [{"question", "answer"}](已答的轮次)。"""
+    block = _topic_block(topic, intent, lang)
+    qa = "\n".join(f"Q: {x['question']}\nA: {x['answer']}" for x in turns if x.get("answer"))
+    if _norm(lang) == "zh":
+        return f"{block}\n\n到目前为止的问答:\n{qa}"
+    if _norm(lang) == "en":
+        return f"{block}\n\nQ&A so far:\n{qa}"
+    return f"{block}\n\nこれまでの質問と答え:\n{qa}"

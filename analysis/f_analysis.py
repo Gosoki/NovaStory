@@ -2,7 +2,7 @@
 
   主要检验  prereg.F_PRIMARY    逐镜头「这是我的想法」比例 mine_ratio,F vs E,双侧配对 t(+ Wilcoxon、95% CI)
   次要      prereg.F_SECONDARY  带事先写明的方向,只作描述,不进确证判定
-  操纵检查  prereg.F_MANIPULATION_CHECK  F 里三题回答的总字数(从库里的 guidance_json 读)
+  操纵检查  prereg.F_MANIPULATION_CHECK  F 里全部回答的总字数与题数分布(3-5 题;从库里的 guidance_json 读)
 
 纳入:CSV 是 v3 的逐 trial 表(已按 v3.included_participants 过滤:ja 要交满 4 份问卷);
 这里再只取 lang ∈ 4 条件设计的语言、且 F 与对比条件都有的被试。
@@ -63,7 +63,7 @@ def _fmt(r: dict | None) -> str:
 
 
 def manipulation_check(db_path: Path, ids: set[int]) -> str:
-    """F 里三题回答的总字数 + 退回固定题面的题数(题面由 AI 调整失败时)。"""
+    """F 里全部回答的总字数 + 题数分布(3-5 题)+ 退回固定题面的题数(题面由 AI 调整失败时)。"""
     if not db_path.exists():
         return f"(没有 {db_path},跳过)"
     con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
@@ -71,7 +71,7 @@ def manipulation_check(db_path: Path, ids: set[int]) -> str:
         rows = con.execute("SELECT participant_id, guidance_json FROM trials WHERE condition='F'").fetchall()
     finally:
         con.close()
-    chars, n_fb, n_items = [], 0, 0
+    chars, n_q, n_fb, n_items = [], [], 0, 0
     for pid, g in rows:
         if int(pid) not in ids or not g:
             continue
@@ -80,13 +80,15 @@ def manipulation_check(db_path: Path, ids: set[int]) -> str:
                 continue
             items = rnd.get("items", [])
             chars.append(sum(len(str(it.get("chosen") or "")) for it in items))
+            n_q.append(len(items))
             n_fb += sum(bool(it.get("fallback")) for it in items)
             n_items += len(items)
     if not chars:
         return "(库里没有可用的 F 采访记录)"
     c = pd.Series(chars)
-    return (f"n={len(c)}  三题回答总字数 中位 {c.median():.0f}(IQR {c.quantile(.25):.0f}–{c.quantile(.75):.0f},"
-            f"最少 {c.min()}、最多 {c.max()});退回固定题面 {n_fb}/{n_items} 题")
+    dist = pd.Series(n_q).value_counts().sort_index().to_dict()
+    return (f"n={len(c)}  回答总字数 中位 {c.median():.0f}(IQR {c.quantile(.25):.0f}–{c.quantile(.75):.0f},"
+            f"最少 {c.min()}、最多 {c.max()});题数分布 {dist};退回固定题面 {n_fb}/{n_items} 题")
 
 
 def main(argv: list[str] | None = None) -> int:

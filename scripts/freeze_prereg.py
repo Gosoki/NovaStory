@@ -140,7 +140,7 @@ def collect_knobs() -> dict:
         "config.FOUR_COND_LANGS": sorted(C.FOUR_COND_LANGS),
         "config.N_ROUNDS_F": C.N_ROUNDS_F,
         "config.LATIN_SQUARE_N_F": C.LATIN_SQUARE_N_F,
-        "config.INTERVIEW_N": C.INTERVIEW_N,
+        "config.INTERVIEW_RANGE": list(C.INTERVIEW_RANGE),
         "config.MIN_INTENT_CHARS": C.MIN_INTENT_CHARS,
         "config.TEMPERATURE": C.TEMPERATURE,
         "config.SUPPLEMENT_RANGE": list(C.SUPPLEMENT_RANGE),

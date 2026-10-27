@@ -150,6 +150,7 @@ ROUND_PAYLOAD_DEFAULTS: dict[str, Any] = {
     "r_g_fallback": False,
     # interview working state (condition F):[{"dimension","echo","question","answer","fallback"}]
     "r_iv_turns": [],
+    "r_iv_done": False,           # F:采访问完了(3-5 题),等被试按「生成」
     "r_llm_wait": 0.0,
     "r_llm_wait_post": 0.0,       # waits occurring after the first script_shown
     "r_llm_wait_in_guidance": 0.0,  # E round-1: waits inside [guidance_shown, guidance_submit)

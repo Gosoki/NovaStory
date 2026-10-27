@@ -273,7 +273,7 @@
   },
   "interview": {
     "title": "Build your story together with the AI",
-    "progress": "Question {i} / {n}",
+    "progress": "Question {i} (of {lo}–{hi})",
     "answer_label": "Your answer (a few words is fine)",
     "send": "Send",
     "finish": "Done — generate the script",
@@ -283,7 +283,7 @@
     "q3": "At which moment in the 15 seconds do you think that feeling comes across most?",
     "echo": "So: “{a}”.",
     "echo_intent": "Your idea: “{a}”.",
-    "thanks": "Thank you. The script will now be generated from what you said."
+    "thanks": "Thank you. Press the button below to generate the script from what you said."
   },
   "storyboard": {
     "col_no": "No.",
