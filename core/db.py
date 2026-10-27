@@ -249,7 +249,16 @@ def insert_participant(
                 tuple(sorted(config.FOUR_COND_LANGS)),
             ).fetchall()
             used = {int(r[0]): int(r[1]) for r in rows if r[0] is not None}
-            seq = min(range(config.seq_count_for_lang(lang)), key=lambda k: (used.get(k, 0), k))
+            if four:
+                # ja 的平局按「题目行优先、条件行其次」交错取(2026-10-28,docs/paper/18 §1-4):
+                # seq = 条件行 × 4 + 题目行(state.plan_for_seq),取 0, 4, 8, 12, 1, 5, … ——
+                # 每 4 人就是一个完整的 4×4 Williams 方阵,停在 16 / 32 以外的人数时条件 × 轮次、
+                # 条件 × 题目、一阶残留仍平衡。按编号取的话前 4 人全是 C→D→F→E,要到 16 才平衡。
+                n_rot = config.N_ROUNDS_F   # = 题目轮转数(state 里有断言)
+                seq = min(range(config.seq_count_for_lang(lang)),
+                          key=lambda k: (used.get(k, 0), k % n_rot, k // n_rot))
+            else:
+                seq = min(range(config.seq_count_for_lang(lang)), key=lambda k: (used.get(k, 0), k))
         cur = conn.execute(
             "INSERT INTO participants"
             " (created_at, lang, seq, demographics_json, screening_json, passed, token, status)"

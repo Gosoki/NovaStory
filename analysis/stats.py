@@ -60,9 +60,27 @@ _H4_QUALITY_DV = "structural_completeness"                 # H4 唯一的检验�
 
 # ---------------- 复合终点 ----------------
 
-def _z(s: pd.Series) -> pd.Series:
+def _z(s: pd.Series, by: pd.Series | None = None, ref: pd.Series | None = None) -> pd.Series:
+    """z 分。by = 分组标准化(合并时按队列,prereg.Z_REFERENCE);ref = 布尔掩码,用这些行的
+    均值 / SD 当固定尺子(敏感性 --z-ref zh)。两者都不给 = 全样本 z(单队列分析一直如此)。"""
+    if ref is not None:
+        r = s[ref]
+        sd = r.std(ddof=0)
+        return (s - r.mean()) / sd if sd else s * 0.0
+    if by is not None:
+        return s.groupby(by).transform(_z)
     sd = s.std(ddof=0)
     return (s - s.mean()) / sd if sd else s * 0.0
+
+
+def _z_scope(df: pd.DataFrame, z_ref: str | None = None) -> dict:
+    """复合 z 的参照(prereg.Z_REFERENCE,2026-10-28):z_ref 给了 → 用该队列当固定尺子(敏感性);
+    否则两个队列都在 → 队列内标准化;只有一个队列 → 全样本(与改之前逐位相同)。"""
+    if z_ref is not None:
+        return {"ref": df["lang"] == z_ref}
+    if "lang" in df and df["lang"].nunique() > 1:
+        return {"by": df["lang"]}
+    return {}
 
 
 def drop_attention_fail(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
@@ -77,11 +95,12 @@ def drop_attention_fail(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
     return df[~df["participant_id"].isin(bad)], len(bad)
 
 
-def build_composites(df: pd.DataFrame) -> pd.DataFrame:
+def build_composites(df: pd.DataFrame, z_ref: str | None = None) -> pd.DataFrame:
     """保真复合 = 0.5 × mean z(imagine, −violation, not_against) + 0.5 × z(embedding Δ)
     (embedding 缺席则退回主观三腿等权并告警;2026-09-01 拍板 2.5 起第三腿是 not_against,不是 mine_ratio);
-    所有权复合 = own_mean(docs/paper/04 §2.2)。缺哪项跳哪项并告警。"""
+    所有权复合 = own_mean(docs/paper/04 §2.2)。缺哪项跳哪项并告警。z 的参照见 _z_scope。"""
     df = df.copy()
+    zk = _z_scope(df, z_ref)
     # 保真复合(主终点)=「**主观三腿先平均、再与 embedding Δ 各半**」
     # (docs/paper/04 §2.1;用户 2026-08-03 拍板)。此前是四腿等权 → 唯一的客观腿被稀释到
     # 25%、3 条自评腿合占 75%;答辩火力点正是「无外部真人保真锚」,客观腿不能只占四分之一。
@@ -89,14 +108,14 @@ def build_composites(df: pd.DataFrame) -> pd.DataFrame:
     subj, subj_names = [], []
     for col, sign in zip(_FIDELITY_SUBJ_LEGS, (1, -1, 1)):
         if col in df and df[col].notna().any():  # 整列全 NaN 等同缺失(否则悄悄少一条腿)
-            subj.append(sign * _z(df[col]))
+            subj.append(sign * _z(df[col], **zk))
             subj_names.append(col)
     if subj:
         _warn_uneven_coverage(df, subj_names)
         _warn_missing_legs("fidelity_composite 的主观侧", _FIDELITY_SUBJ_LEGS, subj_names)
         subj_mean = _combine("fidelity_composite 的主观侧", subj, subj_names)
         if _FIDELITY_OBJ_LEG in df and df[_FIDELITY_OBJ_LEG].notna().any():
-            fid = 0.5 * subj_mean + 0.5 * _z(df[_FIDELITY_OBJ_LEG])
+            fid = 0.5 * subj_mean + 0.5 * _z(df[_FIDELITY_OBJ_LEG], **zk)
             lost = int((fid.isna() & subj_mean.notna()).sum())
             if lost:
                 # 逐行缺 embedding 的行会变 NaN。绝不用「这些行退回主观均值」补——那等于
@@ -119,7 +138,7 @@ def build_composites(df: pd.DataFrame) -> pd.DataFrame:
     eff, eff_names = [], []
     for col in _EFFORT_LEGS:
         if col in df and df[col].notna().any():
-            eff.append(_z(np.log1p(pd.to_numeric(df[col], errors="coerce").clip(lower=0))))
+            eff.append(_z(np.log1p(pd.to_numeric(df[col], errors="coerce").clip(lower=0)), **zk))
             eff_names.append(col)
     if eff:
         _warn_missing_legs("effort_composite", _EFFORT_LEGS, eff_names)
@@ -144,16 +163,17 @@ def build_quality(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def build_dose(df: pd.DataFrame) -> pd.DataFrame:
+def build_dose(df: pd.DataFrame, z_ref: str | None = None) -> pd.DataFrame:
     """H5 剂量复合(docs/paper/04 §3.1-4:自填率 + 答题净时 + 1−AI代答率)= 三者 z 的均值。
     仅 E 有引导数据,故在 E 子集内 z;z(1−x) ≡ −z(x),故 ai_decided 取负号。缺哪项跳哪项
     (g_* 列由 v3.py 产出,若尚未落盘则退化为在场成分)。"""
     df = df.copy()
     e = df["condition"] == "E"
+    zk = _z_scope(df.loc[e], z_ref)
     parts, names = [], []
     for col, sign in zip(_DOSE_LEGS, (1, 1, -1)):
         if col in df and df.loc[e, col].notna().any():
-            parts.append(sign * _z(df.loc[e, col]))
+            parts.append(sign * _z(df.loc[e, col], **zk))
             names.append(col)
     if parts:
         _warn_missing_legs("dose_composite", _DOSE_LEGS, names)
@@ -371,12 +391,31 @@ def _lang_gate(df: pd.DataFrame, dv: str) -> dict:
           "不进 Holm 族):")
     print(inter.round(4).to_string(index=False))
     print(f"  整体 condition×lang Wald χ²(2) p={p_omni:.4f}(描述性,不门控)")
-    print(f"  → 门控 p_int={p_int:.4f}:" + (
-        f"⛔ < {prereg.LANG_INTERACTION_ALPHA} → HETEROGENEOUS,不报合并结论,以分国估计为准" if het
-        else f"≥ {prereg.LANG_INTERACTION_ALPHA} → 合并(⚠️ 不显著 ≠ 两国相同,分国估计照报)"))
+    p_welch = _welch_gate(df, dv) if prereg.GATE_WELCH_CHECK else float("nan")
+    if np.isfinite(p_welch):
+        # prereg.GATE_WELCH_CHECK(06 ㉒-8):LMM 的 E−D 误差项偏窄 → 用被试层 E−D 差的 Welch t 交叉核对,
+        # 任一 p < α_int 即判 HETEROGENEOUS(对合并更保守)
+        print(f"  Welch 复核:两队列被试层 {gate} 差 p={p_welch:.4f}")
+        het = het or p_welch < prereg.LANG_INTERACTION_ALPHA
+    print(f"  → 门控 p_int={p_int:.4f}" + (f" / Welch p={p_welch:.4f}" if np.isfinite(p_welch) else "") + ":" + (
+        f"⛔ 有一个 < {prereg.LANG_INTERACTION_ALPHA} → HETEROGENEOUS,不报合并结论,以分国估计为准" if het
+        else f"都 ≥ {prereg.LANG_INTERACTION_ALPHA} → 合并(⚠️ 不显著 ≠ 两国相同,分国估计照报)"))
     print("\n[M1] 分国估计(描述性,95% CI,未校正;无论门控结果都报):")
     print(per.round(4).to_string(index=False))
-    return {"p_int": p_int, "heterogeneous": het}
+    return {"p_int": p_int, "p_welch": p_welch, "heterogeneous": het}
+
+
+def _welch_gate(df: pd.DataFrame, dv: str) -> float:
+    """两队列被试层 E−D 差(门控对比)的 Welch t 的 p;任一队列不足 2 人返回 nan。"""
+    hi, lo = prereg.LANG_GATE_CONTRAST.split("-")
+    w = df.pivot_table(index=["lang", "participant_id"], columns="condition", values=dv)
+    if hi not in w or lo not in w:
+        return float("nan")
+    d = (w[hi] - w[lo]).dropna()
+    groups = [g.to_numpy() for _, g in d.groupby(level="lang")]
+    if len(groups) != 2 or min(len(g) for g in groups) < 2:
+        return float("nan")
+    return float(stats.ttest_ind(*groups, equal_var=False).pvalue)
 
 
 def _cohort_design(df: pd.DataFrame) -> dict:
@@ -395,6 +434,19 @@ def _cohort_design(df: pd.DataFrame) -> dict:
 
 def _paired(df: pd.DataFrame, dv: str) -> pd.DataFrame:
     return df.pivot_table(index="participant_id", columns="condition", values=dv)
+
+
+def paired_t_pairs(df: pd.DataFrame, dv: str) -> pd.DataFrame:
+    """每个对比用自己的误差项的配对 t(prereg.PAIRED_CHECK,06 ㉒-8)—— 只作 LMM 的复核,不改判定。"""
+    wide = _paired(df, dv)
+    rows = []
+    for a, b in _PAIRS:
+        if a in wide and b in wide:
+            d = (wide[a] - wide[b]).dropna()
+            if len(d) >= 5 and d.std(ddof=1) > 0:
+                rows.append({"pair": f"{a}-{b}", "n": len(d), "mean_diff": float(d.mean()),
+                             "p": float(stats.ttest_1samp(d, 0.0).pvalue)})
+    return pd.DataFrame(rows)
 
 
 def wilcoxon_pairs(df: pd.DataFrame, dv: str) -> pd.DataFrame:
@@ -556,7 +608,7 @@ def analyze_endpoint(df: pd.DataFrame, dv: str, pooled: bool = False) -> tuple[s
         print(con.round(4).to_string(index=False))
         row = con[con["contrast"] == "E-D"]
         if len(row):
-            ed_stat = {"p_holm": float(row.iloc[0]["p_holm"]),
+            ed_stat = {"p_holm": float(row.iloc[0]["p_holm"]), "p_raw": float(row.iloc[0]["p_raw"]),
                        "estimate": float(row.iloc[0]["estimate"]), **gate}
     except Exception as e:  # noqa: BLE001
         err = f"{type(e).__name__}: {e}"
@@ -568,6 +620,11 @@ def analyze_endpoint(df: pd.DataFrame, dv: str, pooled: bool = False) -> tuple[s
     wp = wilcoxon_pairs(df, dv)
     if len(wp):
         print("\nWilcoxon 配对(稳健):\n", wp.round(4).to_string(index=False))
+    if prereg.PAIRED_CHECK:
+        tp = paired_t_pairs(df, dv)
+        if len(tp):
+            print("\n配对 t 复核(每个对比用自己的误差项;只作复核,不改判定,prereg.PAIRED_CHECK):\n",
+                  tp.round(4).to_string(index=False))
     return err, ed_stat
 
 
@@ -649,6 +706,9 @@ def main() -> None:
                          "zh、ja=只跑该队列(单队列模型;先筛语言再算 z,另一队列进库不改变它的数字)")
     ap.add_argument("--drop-attention-fail", action="store_true",
                     help="敏感性分析 V1:剔除注意力题失败者(非主分析;z 在剩余样本内重算)")
+    ap.add_argument("--z-ref", choices=prereg.COHORT_LANGS, default=None,
+                    help="敏感性(prereg.Z_REFERENCE_SENSITIVITY):复合 z 用该队列的均值/SD 当固定尺子;"
+                         "默认 = 合并时队列内标准化、单队列时全样本")
     args = ap.parse_args()
 
     if args.demo or not args.csv.exists():
@@ -675,7 +735,7 @@ def main() -> None:
     n_attn, n_before_attn = None, raw["participant_id"].nunique() if "participant_id" in raw else 0
     if args.drop_attention_fail:   # 在 build_composites 之前:z 的参照样本随之而定
         raw, n_attn = drop_attention_fail(raw)
-    df = build_quality(build_dose(build_composites(raw)))
+    df = build_quality(build_dose(build_composites(raw, args.z_ref), args.z_ref))
 
     # ---- 人群筛选 + 抬头声明(2026-09-07 拍板:主分析 = 全样本)----
     n_all = n_before_attn
@@ -702,10 +762,14 @@ def main() -> None:
         design = _cohort_design(df)
         print(f"  队列 lang = { {k: v['n'] for k, v in design.items()} }(目标 {prereg.COHORT_TARGET_N})"
               " → **合并模型**(prereg 合并段;zh 为参照,(1|被试))")
+        print(f"  ⚠️ 合并 = 事先提交的**精度估计**(prereg.POOLED_ROLE),不是第二个确证检验;"
+              f"确证结论 = {prereg.CONFIRMATORY_COHORT} 单队列(make stats-zh,N = 35)")
         print(f"    M1 交互:{prereg.POOLED_RHS_INTERACTION}")
         print(f"    M0 合并:{prereg.POOLED_RHS_MAIN}")
         print(f"    门控:{prereg.LANG_GATE_CONTRAST} 的队列差 p<{prereg.LANG_INTERACTION_ALPHA} → HETEROGENEOUS"
-              "(不报合并结论);复合 z 在合并样本上算,分国单独分析见 make stats-zh / stats-ja")
+              "(不报合并结论);复合 z " + (f"用 {args.z_ref} 的均值/SD 当固定尺子(敏感性)" if args.z_ref
+                                         else "在各队列内标准化(prereg.Z_REFERENCE)")
+              + ",分国单独分析见 make stats-zh / stats-ja")
         for lg, v in design.items():
             full = v["seq_covered"] == v["round_n"]
             confirmatory &= full
@@ -719,9 +783,10 @@ def main() -> None:
         print(f"  队列 lang = {langs or '(CSV 无 lang 列)'} → 单队列模型"
               + (f"(--lang {args.lang} 筛选;两队列都在库时主分析是合并模型 = make stats)"
                  if args.lang != "all" else ""))
-    descriptive_only = langs == ["ja"]   # prereg 合并段:日本单队列 N 18–36(MDES dz≈0.70–0.48)只作描述
+    descriptive_only = langs == ["ja"]   # prereg 合并段:日本单队列 N 16–32(MDES dz≈0.75–0.51)只作描述
     if descriptive_only:
-        print("  ⚠️ 日本单队列(N 18–36):按 prereg 合并段**只作描述**,下面的判定不是确证结论;主结论见合并模型(make stats)")
+        print("  ⚠️ 日本单队列(N 16–32):按 prereg 合并段**只作描述**,下面的判定不是确证结论;"
+              "确证结论 = 中国单队列(make stats-zh),合并精度估计见 make stats,方向复核见 make stats-ja-pred")
     print(f"  novice 定义:{prereg.NOVICE_DEF}(prereg.is_novice,2026-10-15 暂定)")
     print(f"  等价界 SESOI:{prereg.SESOI_BY_ENDPOINT}")
     print(f"  判定分支:{' | '.join(prereg.DECISION_BRANCHES)}")
@@ -744,6 +809,17 @@ def main() -> None:
         if err:
             failed[dv] = err
 
+    # ---- 主族 Holm(prereg.MAIN_FAMILY,06 ㉒-5):两个主终点的 E−D,决定次要终点能否作推断 ----
+    fam = [(dv, (p_by_dv.get(dv) or {}).get("p_raw")) for dv, _ in prereg.MAIN_FAMILY]
+    if all(p is not None for _, p in fam):
+        adj = _holm([p for _, p in fam])
+        print(f"\n########## 主族 Holm(两个主终点的 E−D;prereg.MAIN_FAMILY)"
+              f"{'(敏感性分析 V1,非主分析)' if n_attn is not None else ''}##########")
+        for (dv, p), q in zip(fam, adj):
+            print(f"  {dv}: p_raw={p:.4f} → p_holm(主族)={q:.4f}")
+        print("  → " + ("至少一个被拒绝:次要终点可作推断(仍按端点内 Holm)" if min(adj) < prereg.ALPHA
+                        else "都未拒绝:**次要终点只作描述**(05 §4 #6)"))
+
     # ---- 冻结的判定三分支,只对**主终点**执行(次要终点不做等价声明)----
     v1 = "(敏感性分析 V1,非主分析)" if n_attn is not None else ""
     print(f"\n########## 主终点判定(冻结三分支;prereg.DECISION_BRANCHES){v1}##########")
@@ -761,7 +837,7 @@ def main() -> None:
                 "HETEROGENEOUS": "⛔ HETEROGENEOUS(两队列 E−D 不同,不报合并结论)"}.get(d["verdict"], d["verdict"])
         extra = f" · 等价检验在 {d['equiv_dv']} 上" if d.get("equiv_dv") != dv and d.get("equiv_dv") else ""
         print(f"  {'[敏感性 V1·非主分析] ' if n_attn is not None else ''}"
-              f"{'[描述性] ' if descriptive_only else ''}{dv}: {mark}{extra}")
+              f"{'[描述性] ' if descriptive_only else ''}{'[合并·精度估计] ' if pooled else ''}{dv}: {mark}{extra}")
         print(f"      {d}")
 
     print("\n########## H4 质量(描述性;2026-09-01 拍板 2.4 起不作确证性非劣主张)##########")

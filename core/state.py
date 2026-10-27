@@ -44,6 +44,7 @@ _COND_ORDERS_F = (
 )
 _TOPIC_ORDERS_F = ((0, 1, 2, 3), (1, 2, 3, 0), (2, 3, 0, 1), (3, 0, 1, 2))
 assert len(_COND_ORDERS_F) * len(_TOPIC_ORDERS_F) == config.LATIN_SQUARE_N_F
+assert len(_TOPIC_ORDERS_F) == config.N_ROUNDS_F   # core/db.py 的 ja 交错分配按 N_ROUNDS_F 取题目行
 
 # Seed topics written to data/topics.json on first launch when the file is
 # missing. Live session always reads from topics.json via load_topics().

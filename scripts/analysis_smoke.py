@@ -279,6 +279,21 @@ def run(tmp: Path) -> None:
     assert all(dv in out_fa for dv, _ in ((x.split(" · ")[0], y) for x, y in prereg.F_SECONDARY)), \
         "F 的次要项没有逐条打印"
     ok("F 的日本内部分析:主检验 mine_ratio F−E 读出注入的 +0.200,次要项逐条打印")
+    # F 主检验的判定三分支(prereg.F_PRIMARY["decision"],2026-10-28):显著报方向;不显著走 TOST ±1/6
+    assert "→ 判定:显著:F 高于 E" in out_fa, "注入 +0.2 后 F 主检验没判出方向"
+    sesoi, a_ = prereg.F_PRIMARY["sesoi"], prereg.F_PRIMARY["alpha"]
+    tight = {"n": 30, "mean": 0.01, "ci_lo": -0.03, "ci_hi": 0.05, "p_t": 0.6}
+    wide = {"n": 16, "mean": 0.05, "ci_lo": -0.15, "ci_hi": 0.25, "p_t": 0.6}
+    assert A_f.verdict(tight, sesoi, a_).endswith("等价") and "INCONCLUSIVE" in A_f.verdict(wide, sesoi, a_), \
+        (A_f.verdict(tight, sesoi, a_), A_f.verdict(wide, sesoi, a_))
+    ok("F 主检验的判定三分支:显著 → 方向;CI 窄 → 等价;CI 宽 → INCONCLUSIVE")
+
+    # 复合 z 的参照(prereg.Z_REFERENCE,06 ㉒-6,2026-10-28):两队列 → 队列内标准化;--z-ref zh → zh 当固定尺子
+    two = pd.concat([zh_part, ja_part.assign(imagine=ja_part["imagine"] + 1.0, violation=ja_part["violation"] - 1.0)])
+    by_lang = A_stats.build_composites(two).groupby("lang")["fidelity_composite"].mean()
+    ref_zh = A_stats.build_composites(two, "zh").groupby("lang")["fidelity_composite"].mean()
+    assert by_lang.abs().max() < 1e-9 and abs(ref_zh["zh"]) < 1e-9 and ref_zh["ja"] > 0.3, (by_lang, ref_zh)
+    ok("复合 z:合并时队列内标准化(两国整体平移不进复合);--z-ref zh 时 ja 的平移按 zh 的尺子保留")
 
     ja_het = ja_part.copy()
     ja_het.loc[ja_het["condition"] == "E", "own_mean"] += 3.0

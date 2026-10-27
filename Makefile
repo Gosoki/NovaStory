@@ -9,7 +9,7 @@ BASELINE_LANG ?= ja
 # embed 缺省每位被试各比自己语言的基线;设了 EMBED_LANG 就只算这一种语言(其余记 NaN)
 EMBED_LANG ?=
 
-.PHONY: help dev baseline norming v3 events pilot embed judge stats stats-zh stats-ja stats-novice power figures analysis smoke robust smoke-e2e i18n freeze freeze-check precompress serve
+.PHONY: help dev baseline norming v3 events pilot embed judge stats stats-zh stats-ja stats-novice stats-f stats-ja-pred power figures analysis smoke robust smoke-e2e i18n freeze freeze-check precompress serve
 
 dev:        ## 本地开发起服务(热重载;生产 config.toml 默认关)
 	.venv/bin/streamlit run app.py --server.runOnSave true --server.fileWatcherType auto
@@ -47,14 +47,17 @@ judge:      ## 盲评保真 LLM-judge(OpenAI×3+ICC),judge_fidelity 合入 CSV(�
 stats:      ## LMM / E−D 主对比(Holm)/ 三分支判定 / Wilcoxon / 剂量-反应【默认跑全样本 = 主分析人群;zh+ja 都在库 → 合并模型】
 	$(PY) analysis/stats.py
 
-stats-zh:   ## 只跑中国队列(单队列模型;先筛语言再 z → 日本数据进库后仍逐位复现 zh_v1 N=35 = logs/03c,除第 5 行队列说明)
+stats-zh:   ## 只跑中国队列(确证结论;单队列模型;先筛语言再 z → 日本数据进库后仍复现 zh_v1 N=35 = logs/03c 的全部数字;2026-10-28 起另加配对 t 复核与主族 Holm 两段)
 	$(PY) analysis/stats.py --lang zh
 
-stats-ja:   ## 只跑日本队列(单队列模型;N≈18 → MDES dz≈0.70,分国结果只作描述)
+stats-ja:   ## 只跑日本队列(单队列模型;N 16–32 → MDES dz≈0.75–0.51,分国结果只作描述)
 	$(PY) analysis/stats.py --lang ja
 
-stats-f:    ## 第 4 条件 F 的日本内部分析(prereg.F_PRIMARY:逐镜头 mine_ratio F vs E 双侧;次要 + 操纵检查;2026-10-27)
+stats-f:    ## 第 4 条件 F 的日本内部分析(prereg.F_PRIMARY:逐镜头 mine_ratio F vs E 双侧 + 判定三分支;次要 + 操纵检查 + 机制)
 	$(PY) analysis/f_analysis.py
+
+stats-ja-pred: ## 日本队列的方向复核预测(prereg.JA_DIRECTION_PREDICTIONS P1–P3 + 描述性 B1–B3;2026-10-28;只读 embedding 缓存)
+	$(PY) analysis/ja_predictions.py
 
 stats-novice: ## 同上但只跑 novice 子集(**事后探索性**,非确证;结论里必须标 exploratory)
 	$(PY) analysis/stats.py --population novice

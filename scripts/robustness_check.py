@@ -232,10 +232,22 @@ def section_a() -> None:
     seqs = sorted(s for _, s, _ in got)
     from core import config as _cfg
     n_seq = _cfg.seq_count_for_lang("ja")   # ja = 4 条件设计的 16 格空间(2026-10-27)
-    expect = sorted(list(range(n_seq)) + list(range(n - n_seq)))
+    # 第二轮按交错顺序取(2026-10-28):0, 4, 8, 12, 1, 5, 9, 13, …
+    rot = _cfg.N_ROUNDS_F
+    second = sorted(range(n_seq), key=lambda k: (k % rot, k // rot))[:n - n_seq]
+    expect = sorted(list(range(n_seq)) + second)
     ck(not errs, "24 人同时通过筛查无异常", f"{time.time() - t0:.2f}s")
     ck(seqs == expect, "拉丁方 seq 无重复无跳号", f"得到 {seqs[:6]}…")
     ck(len({t for _, _, t in got}) == len(got), "续接 token 唯一")
+
+    # ja 交错分配(2026-10-28):逐个入组时每 4 人凑成一个 4×4 Williams 方阵;zh 仍按编号取
+    conc_db, db.DB_PATH = db.DB_PATH, Path(tempfile.mkdtemp()) / "order.db"
+    db.init_db()
+    ja_order = [db.insert_participant("ja", {"a": 0}, {"is_novice": True}, passed=True)[1] for _ in range(8)]
+    zh_order = [db.insert_participant("zh", {"a": 0}, {"is_novice": True}, passed=True)[1] for _ in range(4)]
+    db.DB_PATH = conc_db   # 下面的 events 并发写仍在并发库上
+    ck(ja_order == [0, 4, 8, 12, 1, 5, 9, 13] and zh_order == [0, 1, 2, 3],
+       "ja 交错取格(每 4 人一个完整方阵)、zh 按编号取", f"ja {ja_order} · zh {zh_order}")
 
     ev_err: list[str] = []
 

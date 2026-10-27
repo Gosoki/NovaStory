@@ -50,8 +50,8 @@ NOVICE_DEF = "NOT (written=='yes' AND quiz_correct==2)"
 NOVICE_CRITERION_FIELDS = ("published_idx", "background", "written", "self_rating", "quiz_correct")
 
 
-# 纳入规则:只分析**走完全部 N_ROUNDS 轮**的被试(以问卷提交数为准,不看 status ——
-# 三轮问卷都交了、只是没点最后那份总问卷的人,任务数据是完整的,不该丢)。
+# 纳入规则:只分析**走完全部轮次**的被试(zh 3 轮、ja 4 轮,core.config.rounds_for_lang;以问卷提交数为准,
+# 不看 status —— 每轮问卷都交了、只是没点最后那份总问卷的人,任务数据是完整的,不该丢)。
 #
 # 这条以前只存在于 `analysis/v3.py` 的一句注释里(「status 用于纳入规则(离脱者不进
 # 分析)」),但**从来没有被执行过** —— 和文档批过两次的 `NOVICE_DEF` / `DECISION_BRANCHES`
@@ -203,10 +203,10 @@ PRIMARY_ENDPOINTS = ("ownership_composite", "fidelity_composite")
 SECONDARY_ENDPOINTS = ("satisfaction", "effort_composite",
                        "post_investment", "total_investment")
 
-# ---- 中日两队列合并分析 ——【2026-09-24 草案,docs/paper/06 ⑰-1 选项 (b);待用户拍板】----
+# ---- 中日两队列合并分析 ——【2026-09-24 草案,docs/paper/06 ⑰-1 选项 (b);2026-10-28 定稿,见下方「口径」段】----
 # 背景:中国队列(zh)N=36 已采完(剔除研究员演示 pid 1 后分析 N=35)、先出一版结论(zh_v1);日本队列(ja)后采,
-# 目标 36(两整轮),至少 18(一整轮)(用户 2026-10-23;原目标约 18,2026-09-23)。
-# 日本单独 N=18 → MDES dz≈0.70,「两国各一套结论」撑不住,只剩合并建模(10 · 2026-09-23)。
+# 4 条件设计,目标 32(两整轮),至少 16(一整轮)(2026-10-27;取代 10-23 的 36 / 18)。
+# 日本单独 N=16 → 配对 MDES dz≈0.75(N=32 ≈0.51),「两国各一套结论」撑不住(10 · 2026-09-23)。
 # 本节在**见到任何日本数据之前**写死合并怎么做;stats 从这里读,不临场决定。
 # ⚠️ lang 与队列 / 采集时间 / 模型版本 / 招募场景完全共线(先中后日,10 · 2026-09-07),
 #    所以 lang 的主效应与交互**只能读作「队列差异」**,不能读作「语言 / 文化效应」。
@@ -238,7 +238,7 @@ POOLED_RHS_MAIN = "C(condition) + C(topic_c) + order + order:is_ja"             
 # 只看 E−D、不看 2 自由度的整体 condition×lang:判定分支只对 E−D 下结论,门控就只管它;
 # 整体检验把 E−C / D−C 的队列差也掺进来,既稀释功效,又会让一个不下结论的对比挡住主结论。
 # 整体 χ²(2) 与 E−C / D−C 的队列差照样打印(描述性,不门控)。
-# α_int = 0.10 而不是 0.05:ja 最少只有 18 人,交互的 MDES ≈ 0.73 个配对差 SD(所有权约 0.95 分),
+# α_int = 0.10 而不是 0.05:ja 最少只有 16 人,交互能抓到的所有权队列差约 1 分(N=32 约 0.8 分;docs/paper/18 §3),
 # 检验本来就很弱;门控放宽 = 对「合并」更保守。交互检验不进 Holm 族(它是模型检查,不是主张)。
 # ⚠️ 门控不显著 ≠ 两国效应相同 → **分国估计(95% CI)无论门控结果如何都报**。
 LANG_INTERACTION_ALPHA = 0.10
@@ -247,20 +247,76 @@ LANG_GATE_CONTRAST = "E-D"
 # TOST(合并时):仍是原来的配对 TOST,配对差来自两队列全部被试(df = N−1)。这正是 M0
 # 「两队列 E−D 相同」假设下的检验;若两队列均值其实不同,差异会进配对差的 SD,只会让
 # TOST 更难通过(保守)。界与量纲不变(SESOI_BY_ENDPOINT / EQUIV_DV_BY_ENDPOINT)。
-# z 合成的复合:合并时在**合并样本**上 z(与下方「z 一律按全样本」一致);单队列分析
-# (--lang zh/ja)**先筛语言再 z** → zh_v1 的数字在日本数据进库后仍可逐位复现,
-# 但与合并模式里 zh 的分国估计不在同一把 z 尺上(原始分终点不受影响)。
+# z 合成的复合:见下方 Z_REFERENCE(2026-10-28 起合并时**各队列内**标准化);单队列分析
+# (--lang zh/ja)**先筛语言再 z** → zh_v1 的数字在日本数据进库后仍可逐位复现。
 # H5 剂量-反应(被试间 OLS)合并时加 C(lang) 协变量,防两队列的水平差冒充剂量效应。
 #
-# 队列完整性:每个队列都覆盖一整轮 Williams(WILLIAMS_ROUND_N 个 seq 各 ≥1 名完成者),
-# 合并结果才算确证性。不满一整轮(例如 ja 只有 12 人 → 条件顺序 [3,3,3,3,0,0],
-# E 从没排在第 1 轮)时,队列内条件与轮次位置部分混杂 → 合并结果**降为探索性**,
-# 确证结论以 zh 单队列(zh_v1)为准。满一整轮但各 seq 人数不等(例如 24 人):照常合并并告警。
+# 队列完整性:每个队列都覆盖一整轮 Williams(WILLIAMS_ROUND_N_BY_LANG 个 seq 各 ≥1 名完成者),
+# 合并的精度估计才按事先计划报;不满一整轮(例如 ja 只有 12 人)时队列内条件与轮次位置部分混杂
+# → 合并结果**降为探索性**。满一整轮但各 seq 人数不等(例如 24 人):照常合并并告警
+# (ja 是交错分配,每 4 人一个完整 4×4 方阵,core/db.py)。
 # ⛔ 任何情况下都**不为了凑平衡丢弃已完成的被试**(违反纳入规则与同意书承诺)。
 
 # 一整轮 Williams 的序列数按队列分(2026-10-27):zh = 3 条件 18 序列,ja = 4 条件 16 序列
 # (core.config.seq_count_for_lang;analysis_smoke 断言两者一致)。
 WILLIAMS_ROUND_N_BY_LANG = {"zh": WILLIAMS_ROUND_N, "ja": 16}
+
+# ---- 合并分析与日本队列的口径 ——【2026-10-28 定:用户授权按 docs/paper/06 ㉒ 的建议拍板(18 §1);
+#      **在任何日本数据进库之前**提交】----
+# ㉒-7 (b) 确证归属:**确证结论 = 中国单队列 N = 35**(zh_v1,make stats-zh);中日合并 = 事先提交的
+#   **精度估计**(不是第二个确证检验 —— 合并参数是看过中国结果后才定的,并不比中国单队列更干净);
+#   日本单独 = 描述 + 方向复核(下方 JA_DIRECTION_PREDICTIONS)。不论日本结果如何,确证结论都不改。
+CONFIRMATORY_COHORT = "zh"
+POOLED_ROLE = "precision_estimate"
+# ㉒-5 Holm 两层都报:主族 = 两个主终点的 E−D(2 个检验 Holm;05 §4 #6,决定次要终点能否作推断,
+#   都未拒绝 → 次要只作描述);端点内 = E−D / E−C / D−C 三个对比 Holm(stats.contrasts)。
+MAIN_FAMILY = tuple((dv, "E-D") for dv in PRIMARY_ENDPOINTS)
+# ㉒-6 复合 z 的参照:合并时**每条腿在各队列内标准化**,再按冻结权重合成(某条腿两国整体平移 ——
+#   embedding 最可能 —— 不再撑大合并 SD、悄悄改掉 50/50 的权重);敏感性 = 用 zh 各腿的均值 / SD
+#   当固定尺子(stats --z-ref zh)。单队列分析两者都等于原来的全样本 z。TOST 的界仍是原始 0.5 分。
+Z_REFERENCE = "within_cohort"
+Z_REFERENCE_SENSITIVITY = "zh"
+# ㉒-8 误差项复核:LMM 只有随机截距(三个对比共用一个误差项,E−D 的 SE 对保真等终点偏窄 12–18%,14 §2)
+#   → 每个对比另报**配对 t**(各自的误差项),只作复核,不改中国的冻结判定;合并门控另用两队列被试层
+#   E−D 差的 **Welch t** 交叉核对:LMM 与 Welch 任一 p < α_int 即判 HETEROGENEOUS(对合并更保守)。
+PAIRED_CHECK = True
+GATE_WELCH_CHECK = True
+# ㉒-10 日本上的方向复核预测(看过中国数据才得到的探索性发现,在日本这份留出样本上复核;
+#   只写方向,成败都报;analysis/ja_predictions.py 执行)。人群 = ja 全样本(纳入规则同主分析),只用 C/D/E 的 trial。
+JA_DIRECTION_PREDICTIONS = (
+    {"id": "P1", "dv": "dist_base", "contrasts": (("E", "C"),), "direction": ">",
+     "test": "单侧配对 t,α = .05",
+     "definition": "1 − cos(终稿, 同语言同题机器基线质心);text-embedding-3-small,文本先 core.shots.strip_format",
+     "china": "E−C +0.058,dz .54,p .003(17 §2,探索性,未过校正)"},
+    {"id": "P2", "dv": "violation", "contrasts": (("D", "C"), ("D", "E")), "direction": ">",
+     "test": "两个单侧配对 t 都 p < .05 才算复核成功",
+     "definition": "逐轮「最終的な脚本は…意図にどの程度反していましたか」7 点原始分",
+     "china": "D−C dz .41、D−E dz .42(14 §2.4,探索性)"},
+    {"id": "P3", "dv": "mine_ratio", "contrasts": (("E", "D"),), "direction": ">",
+     "test": "单侧配对 t,α = .05",
+     "definition": "逐镜头标「主に自分のアイデア」的占比",
+     "china": "E−D +0.18,p .007(14 §5-2,探索性)"},
+)
+JA_DESCRIPTIVE_CHECKS = (   # 只看方向是否与中国一致,不做检验
+    {"id": "B1", "what": "E 的引导问答里一个字没写(全是点选或交给 AI)的被试比例", "expect": "≥ 0.5",
+     "china": "71%(25/35)"},
+    {"id": "B2", "what": "D 用过 AI 修改入口(≥1 次修改请求)的被试比例", "expect": "< 0.5", "china": "29%(10/35)"},
+    {"id": "B3", "what": "C/D/E trial 层上 embed_fidelity 与三条主观保真腿(imagine、−violation、not_against)"
+                         "相关系数的最大值", "expect": "< 0.3", "china": "−.01 到 .08"},
+)
+# ㉒-11 预先声明的敏感性(日本数据进库后执行;报加与不加两个版本,**不替换**主估计):
+JA_SENSITIVITY = (
+    "每个 trial 是否碰到过请求重启(技术摩擦;E 与 F 都要看)",
+    "入组批次 / 场次(研究员手工场次表,用完成码对上)",
+    "E 所在的轮次(1–4)",
+    "剔除注意力题失败者(V1)与日本的中点作答率、第 4 轮 straightline 率(对 TOST 反保守)",
+)
+# 日本的停止规则(与结果无关):满 16 人时只按招募速度与截止日决定开不开第二轮;满 32 停;
+# 采集截止 = 修论提交日前 4 周(日期向指導教員确认后填进 JA_COLLECTION_DEADLINE)。到截止日不满 16 人 →
+# F 的检验与合并都降为探索性。采集期间只看流程健康指标(完成人数、退回率、未完成调用),不看任何因变量。
+JA_STOP_RULE = ("16 → 视招募速度与截止日决定是否开第二轮;32 → 停;截止 = 修论提交日前 4 周;"
+                "截止时 < 16 → F 与合并降为探索性;采集期间不看因变量")
+JA_COLLECTION_DEADLINE: str | None = None   # "YYYY-MM-DD",确认修论提交日后填
 
 # ---- 日本队列的第 4 条件 F(2026-10-27,docs/paper/06 ㉖;**在任何日本数据进库之前**写死)----
 # F =「想いを聞く」インタビュー:AI 一题一题地问作者对作品的想法(最喜欢哪里 / 想让观众有什么感受 /
@@ -269,29 +325,55 @@ WILLIAMS_ROUND_N_BY_LANG = {"zh": WILLIAMS_ROUND_N, "ja": 16}
 #    与没有 F 时完全相同);F 只在日本内部与 E(和 C)比。
 CONFIRMATORY_CONDITIONS = ("C", "D", "E")
 F_CONDITION = "F"
+# F 的研究问题(RQ4,2026-10-27 加入:中国结果之后、日本数据之前):生成前由 AI 提问时,「选 AI 给的选项」(E)
+# 与「用自己的话回答对作品的想法」(F),是否改变镜头层面的想法来源归属。F−E 是两套提问风格的**整包**比较
+# (问什么 × 怎么答 × 能否交给 AI × 题数 × 原话复述 × 生成后通道),不归因到单一维度;F 不是新的提案手法。
 F_PRIMARY = {
-    "dv": "mine_ratio",               # 逐镜头「这是我的想法」比例(中国数据里最敏感的指标,E−D dz .48)
+    "dv": "mine_ratio",               # 逐镜头「主に自分のアイデア」的占比(中国数据里最敏感的指标,E−D dz .48)
+    # 构念 = 镜头层面的「想法来源归属」,**不是**所有权:F 的回答按生成 prompt「必ず脚本に反映」写进脚本,
+    # 三档标签里没有「AI の選択肢を自分で選んだ」—— F>E 有一部分是按构造会出现的方向(docs/paper/18 §1-2)。
+    # 关于所有权的结论只看 F_SECONDARY 的 own_mean。
+    "construct": "镜头层面的想法来源归属(不是所有权)",
     "contrast": ("F", "E"),
     "alternative": "two-sided",       # 两种归属感来源方向相反(本人原话 vs 所选选项),不预设方向
     "alpha": 0.05,
     "test": "配对 t(每位 ja 被试一个 F−E 差值),另报 Wilcoxon 与 95% CI",
     "population": "ja 全样本(交满 4 份问卷,纳入规则同主分析)",
+    # 判定(同 DECISION_BRANCHES 的三分支):显著 → 报方向(F>E 或 E>F);不显著 → TOST ±sesoi;
+    # 通过 → 等价;不通过 → INCONCLUSIVE(只写「未检测到差异」+ 95% CI,⛔ 不写「两者相同」「无影响」)。
+    # sesoi = 1/6:3 个镜头里平均差半个镜头 —— 与所有权「半个刻度」同一逻辑。N=16 时真差为 0 的
+    # TOST 通过率只有约 4–13%(N=32 约 39–59%),INCONCLUSIVE 是最可能的零结果读法。
+    "sesoi": 1 / 6,
+    "decision": ("significant -> report direction",
+                 "not significant -> TOST(±sesoi)",
+                 "TOST pass -> equivalent | TOST fail -> INCONCLUSIVE ('no difference detected' + 95% CI)"),
 }
 F_SECONDARY = (                       # 次要:不进确证判定,方向写在这里供事后对照
-    ("own_mean", "F > E"),            # 所有权原始均值(7 点);Pierce 的自我投入路径、Joshi & Vogel
-    ("imagine", "E ≥ F"),             # 选项让人把意图说清楚(Paludan 2025、DiscoverLLM)
+    ("own_mean", "F > E"),            # 所有权原始均值(7 点);弱先验:Joshi & Vogel GI'26 支持,Chi 2026 / Gero DIS'26 反向
+    ("imagine", "E ≥ F"),             # 选项让人把意图说清楚(DiscoverLLM;Paludan 2025 为预印本)
     ("fidelity_composite", "E ≥ F"),
-    ("mine_ratio · F−C", "两侧"),
+    ("mine_ratio · F−C", "两侧"),     # ⚠️ 有题序污染:E / F 的 AI 提问题紧挨逐镜头标注,C 没有
     ("satisfaction", "两侧"),
     ("tlx1", "两侧"),
     ("pre_investment", "两侧"),
+    ("total_investment", "两侧"),
     ("ai_q_quality", "两侧"),         # E 与 F 都问:检查「AI 亲切所以分高」
 )
+# 不比较:F−D(D 有 AI 修改入口、F 只能手改 → 生成后指标的差由设计决定);F 也不进中国与合并分析。
+F_NOT_COMPARED = (("F", "D"), "D 有 AI 修改入口而 F 没有,生成后的投入与修改指标之差由设计决定")
 F_MANIPULATION_CHECK = ("F 里全部回答的总字数与题数分布(3-5 题;guidance_json 中 source=interview 的 chosen;"
                         "题数作描述,不作协变量进主检验)")
+# 机制(描述性,复现中国挖掘报告 SPA1 / SPA2 的定义,analysis/f_analysis.py 执行):
+#   镜头层条件 logit(按 trial 分层,只用镜头标签有「mine」也有非 mine 的 trial),
+#   mine ~ z(本人文字重合) + z(所选 AI 选项重合) + 镜头位置;E、F 各拟合一次。
+#   重合 = 镜头文字(画面 + 台词)的字符 bigram 落在该来源的 bigram 集里的比例;来源先去掉题面与分镜格式词的 bigram。
+#   本人文字 = 创意陈述 + 自己写的回答(F 的全部回答 / E 的自写回答);所选选项 = E 里点选的 AI 选项(F 没有)。
+#   预期方向:本人文字重合 OR > 1(复现 SPA1);所选选项重合两侧(中国 OR 0.79,不显著)。
+F_MECHANISM = ("镜头层条件 logit:mine ~ z(本人文字 bigram 重合) + z(所选 AI 选项 bigram 重合) + 镜头位置,"
+               "按 trial 分层,E / F 各一次;本人文字重合预期 OR>1,选项重合两侧;描述性")
 
 # ---- 复合公式(as-run,见 analysis/stats.build_composites) ----
-# z 一律按**全样本**算(跨全部 trial 的均值/标准差),被试间差异交给 LMM 的随机截距
+# z 一律按**全样本**算(跨全部 trial 的均值/标准差;两个队列都在时按队列内 —— 见 Z_REFERENCE),被试间差异交给 LMM 的随机截距
 # (1|被试) 吸收——不用被试内 z:每被试每条件仅 1 轮,被试内 SD 由 3 个点估计、噪声过大,
 # 且与随机截距功能重叠(用户 2026-08-03 拍板;docs/paper/04 §2.1 已同步)。
 # ⚠️ 未拍板的歧义:「全样本」指**当次分析人群的全部 trial**,还是**全部纳入被试(含经验者)**?
@@ -357,12 +439,30 @@ def as_dict() -> dict:
             "rhs_main": POOLED_RHS_MAIN,
             "lang_interaction_alpha": LANG_INTERACTION_ALPHA,
             "gate_contrast": LANG_GATE_CONTRAST,
+            # 2026-10-28 定稿(06 ㉒)
+            "confirmatory_cohort": CONFIRMATORY_COHORT,
+            "pooled_role": POOLED_ROLE,
+            "main_family": [list(x) for x in MAIN_FAMILY],
+            "z_reference": Z_REFERENCE,
+            "z_reference_sensitivity": Z_REFERENCE_SENSITIVITY,
+            "paired_check": PAIRED_CHECK,
+            "gate_welch_check": GATE_WELCH_CHECK,
         },
-        # ---- 日本队列的第 4 条件 F(2026-10-27,06 ㉖)----
+        "ja": {
+            "direction_predictions": [{k: ([list(c) for c in v] if k == "contrasts" else v) for k, v in p.items()}
+                                      for p in JA_DIRECTION_PREDICTIONS],
+            "descriptive_checks": [dict(x) for x in JA_DESCRIPTIVE_CHECKS],
+            "sensitivity": list(JA_SENSITIVITY),
+            "stop_rule": JA_STOP_RULE,
+            "collection_deadline": JA_COLLECTION_DEADLINE,
+        },
+        # ---- 日本队列的第 4 条件 F(2026-10-27,06 ㉖;判定规则与机制 2026-10-28)----
         "f_condition": {
             "confirmatory_conditions": list(CONFIRMATORY_CONDITIONS),
             "primary": {k: (list(v) if isinstance(v, tuple) else v) for k, v in F_PRIMARY.items()},
             "secondary": [list(x) for x in F_SECONDARY],
+            "not_compared": [list(F_NOT_COMPARED[0]), F_NOT_COMPARED[1]],
             "manipulation_check": F_MANIPULATION_CHECK,
+            "mechanism": F_MECHANISM,
         },
     }
