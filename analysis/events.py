@@ -134,6 +134,7 @@ def per_trial_events(ev: pd.DataFrame, keep_ids: set | None = None) -> pd.DataFr
 
 
 from core.config import N_ROUNDS as _N_ROUNDS  # noqa: E402
+from core.config import rounds_for_lang as _rounds_for_lang  # noqa: E402
 
 _PARTICIPANT_TIME_COLS = ["t_consent", "t_intro", "t_screening", "t_intake_total",
                           "t_final_survey", "t_session_total", "completed"]
@@ -162,8 +163,8 @@ def _gap(g: pd.DataFrame, a: str, b: str, *, pair_last_occurrence: bool = False)
     return d if d >= 0 else np.nan
 
 
-def _completed_ids(ev: pd.DataFrame) -> set:
-    """走完全部 N_ROUNDS 轮的被试(以 questionnaire_submit 事件计)。
+def _completed_ids(ev: pd.DataFrame, parts: pd.DataFrame | None = None) -> set:
+    """走完全部轮次的被试(以 questionnaire_submit 事件计;ja 4 轮、其余 3 轮,2026-10-27)。
 
     这里**故意**不直接用 v3.included_participants:那个规则还带 prereg.ANALYSIS_REQUIRES_ALL_ROUNDS
     与 dev 过滤,而这一列只是流失分析用的「走完没有」标记,永远按事件计。"""
@@ -171,7 +172,10 @@ def _completed_ids(ev: pd.DataFrame) -> set:
     if not len(q):
         return set()
     n = q.drop_duplicates(["participant_id", "round_idx"]).groupby("participant_id").size()
-    return {int(i) for i in n[n >= _N_ROUNDS].index}
+    need: dict = {}
+    if parts is not None and {"id", "lang"} <= set(parts.columns):
+        need = {int(r.id): _rounds_for_lang(r.lang or "") for r in parts.itertuples()}
+    return {int(i) for i, k in n.items() if k >= need.get(int(i), _N_ROUNDS)}
 
 
 def per_participant(ev: pd.DataFrame, parts: pd.DataFrame) -> pd.DataFrame:
@@ -220,7 +224,7 @@ def per_participant(ev: pd.DataFrame, parts: pd.DataFrame) -> pd.DataFrame:
     # 进度集计**仍会包含他们。给一列 completed 让分析侧能随手切开,避免有人把离脱者
     # 的时长混进 v3 的口径里 —— v3 / embed / judge / pilot_check 四处都是过滤过的。
     if len(out):
-        done_ids = _completed_ids(ev)
+        done_ids = _completed_ids(ev, parts)
         out["completed"] = out["participant_id"].isin(done_ids)
     if parts.empty:
         return out

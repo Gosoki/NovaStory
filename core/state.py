@@ -35,6 +35,16 @@ _COND_ORDERS = (
 _TOPIC_ORDERS = ((0, 1, 2), (1, 2, 0), (2, 0, 1))
 assert len(_COND_ORDERS) * len(_TOPIC_ORDERS) == config.LATIN_SQUARE_N
 
+# 日本队列(ja)的 4 条件设计(2026-10-27,docs/paper/06 ㉖):seq (0-15) = cond_row * 4 + topic_row。
+# 4 阶 Williams 方阵:每个条件在每个位置各出现一次,且 12 种「X 紧接在 Y 之后」各出现一次
+# → 一阶残留平衡。4 个题目轮换让条件×题目、题目×位置都平衡。16 人一整轮,32 人两轮。
+_COND_ORDERS_F = (
+    ("C", "D", "F", "E"), ("D", "E", "C", "F"),
+    ("E", "F", "D", "C"), ("F", "C", "E", "D"),
+)
+_TOPIC_ORDERS_F = ((0, 1, 2, 3), (1, 2, 3, 0), (2, 3, 0, 1), (3, 0, 1, 2))
+assert len(_COND_ORDERS_F) * len(_TOPIC_ORDERS_F) == config.LATIN_SQUARE_N_F
+
 # Seed topics written to data/topics.json on first launch when the file is
 # missing. Live session always reads from topics.json via load_topics().
 # title/scenario/choices carry {"ja": ..., "zh": ..., "en": ...} — ja is the formal-study
@@ -94,6 +104,23 @@ _SEED_TOPICS = [
         "shot_count": 3,
         "total_seconds": 15,
     },
+    # 第 4 题只给日本队列的 4 条件设计用(2026-10-27,06 ㉖);中国队列只用前 3 题。
+    {
+        "title": {"ja": "急な雨（雨やどりの数分）", "zh": "突如其来的雨（躲雨的几分钟）",
+                  "en": "A Sudden Shower (a few minutes out of the rain)"},
+        "scenario": {
+            "ja": "急に雨が降りだし、近くの軒下に駆けこむ。",
+            "zh": "突然下起雨，你跑到附近的屋檐下。",
+            "en": "It suddenly starts to pour, and you dash under a nearby awning.",
+        },
+        "choices": {
+            "ja": "やむのを待つか、走り出すか、隣の人に話しかけるか。",
+            "zh": "是等雨停、冲进雨里，还是和旁边的人搭话。",
+            "en": "Do you wait it out, make a run for it, or talk to the person next to you?",
+        },
+        "shot_count": 3,
+        "total_seconds": 15,
+    },
 ]
 
 
@@ -121,6 +148,8 @@ ROUND_PAYLOAD_DEFAULTS: dict[str, Any] = {
                                   # pagination (Streamlit clears unmounted widgets)
     "r_g_idx": 0,
     "r_g_fallback": False,
+    # interview working state (condition F):[{"dimension","echo","question","answer","fallback"}]
+    "r_iv_turns": [],
     "r_llm_wait": 0.0,
     "r_llm_wait_post": 0.0,       # waits occurring after the first script_shown
     "r_llm_wait_in_guidance": 0.0,  # E round-1: waits inside [guidance_shown, guidance_submit)
@@ -224,20 +253,29 @@ def _attempt_resume() -> None:
         return
 
     # Need the round plan from here on; bail (don't half-restore) if topics.json
-    # has been edited below N_ROUNDS — same guard as enter_intro.
+    # has been edited below this participant's round count — same guard as enter_intro.
     topics = load_topics()
-    if len(topics) < config.N_ROUNDS:
+    # 空 lang 按「非 ja」处理,与 db.insert_participant 的序列空间同口径
+    p_lang = p.get("lang") or ""
+    n_rounds = config.rounds_for_lang(p_lang)
+    if len(topics) < n_rounds:
         # 以前直接 return:已入组、已消耗 seq 的被试会被丢回同意页,重填问卷后才撞错 —— 还可能
         # 再入组一次。恢复身份、停在一个明确的错误页上等研究员修题库。
         _restore_identity()
         st.session_state["stage"] = "blocked"
         return
     _restore_identity()
-    st.session_state["round_plan"] = plan_for_seq(p["seq"], topics[: config.N_ROUNDS])
+    try:
+        st.session_state["round_plan"] = plan_for_seq(p["seq"], topics, p_lang)
+    except ValueError:
+        # seq 不在这一设计的范围里(例:4 条件设计之前用 3 条件 18 序列入组的旧 ja 行,seq 16/17)。
+        # 以前会在 init_state 里抛,这个 token 的页面每次打开都崩;改为停在明确的错误页。
+        st.session_state["stage"] = "blocked"
+        return
     done_rounds = db.count_questionnaires(p["id"])
-    if done_rounds >= config.N_ROUNDS:
+    if done_rounds >= n_rounds:
         # all rounds answered but status != done → final survey not submitted yet
-        st.session_state["round_idx"] = config.N_ROUNDS
+        st.session_state["round_idx"] = n_rounds
         st.session_state["stage"] = "final_survey"
         # 这里也要铸新段 id:否则 session_resumed / final_survey_* 会以 attempt=NULL 写进第 3 轮,
         # 破坏「每段都有 attempt」(LOG4),以后按段切的脚本会把它当旧格式行。
@@ -409,14 +447,25 @@ def forget_resume_url() -> None:
 
 # ---------------- assignment & round flow ----------------
 
-def plan_for_seq(seq: int, topics: list[dict]) -> list[dict]:
-    if not 0 <= seq < config.LATIN_SQUARE_N:
+def plan_for_seq(seq: int, topics: list[dict], lang: str = "zh") -> list[dict]:
+    """seq → 本场的轮次计划。ja 走 4 条件 16 序列,其余语言走原来的 3 条件 18 序列。
+    默认值是 zh(不是 DEFAULT_LANG):不带语言调用的旧代码 / 分析脚本拿到的是中国队列的设计。"""
+    four = lang in config.FOUR_COND_LANGS
+    cond_orders, topic_orders = (_COND_ORDERS_F, _TOPIC_ORDERS_F) if four else (_COND_ORDERS, _TOPIC_ORDERS)
+    n_seq = config.seq_count_for_lang(lang)
+    if not 0 <= seq < n_seq:
         # 负数会走 Python 负索引静默返回别的排列,越界才抛 —— 两种都不该静默。
-        raise ValueError(f"seq {seq} out of range [0, {config.LATIN_SQUARE_N})")
-    n_topic = len(_TOPIC_ORDERS)   # 3 = 题目轮转数,不是 N_ROUNDS(两者恰好相等,别混)
-    conds = _COND_ORDERS[seq // n_topic]
-    topic_idx = _TOPIC_ORDERS[seq % n_topic]
+        raise ValueError(f"seq {seq} out of range [0, {n_seq})")
+    n_topic = len(topic_orders)   # 题目轮转数,不是轮数(两者恰好相等,别混)
+    conds = cond_orders[seq // n_topic]
+    topic_idx = topic_orders[seq % n_topic]
     return [{"condition": c, "topic": dict(topics[i])} for c, i in zip(conds, topic_idx)]
+
+
+def rounds_total() -> int:
+    """本场被试一共几轮:有计划就按计划,没有(还在入组前)就按会话语言。"""
+    plan = st.session_state.get("round_plan") or []
+    return len(plan) if plan else config.rounds_for_lang(st.session_state.get("lang", DEFAULT_LANG))
 
 
 def enter_intro(participant_id: int, seq: int, token: str = "") -> None:
@@ -429,13 +478,15 @@ def enter_intro(participant_id: int, seq: int, token: str = "") -> None:
     before the briefing would fold the whole briefing into round 1's reading
     time. start_rounds (called by the intro page's button) starts it."""
     topics = load_topics()
-    if len(topics) < config.N_ROUNDS:
-        raise RuntimeError(f"topics.json needs >= {config.N_ROUNDS} topics")
+    lang = st.session_state.get("lang", DEFAULT_LANG)
+    n_rounds = config.rounds_for_lang(lang)
+    if len(topics) < n_rounds:
+        raise RuntimeError(f"topics.json needs >= {n_rounds} topics")
     st.session_state["participant_id"] = participant_id
     st.session_state["seq"] = seq
     st.session_state["stage"] = "intro"
     st.session_state["round_idx"] = 1
-    st.session_state["round_plan"] = plan_for_seq(seq, topics[: config.N_ROUNDS])
+    st.session_state["round_plan"] = plan_for_seq(seq, topics, lang)
     if token:
         try:
             st.query_params["t"] = token
@@ -479,12 +530,13 @@ def reset_round_payload() -> None:
     for k in list(st.session_state.keys()):
         # ⚠️ 别在这里清 _q_*:advance_round 在问卷提交的那次 rerun 里调用本函数,此时问卷 widget
         # 仍挂载,同一 run 内删它的 key 会让 Streamlit 炸;_q_ 键按轮次编号,下一轮天然不冲突。
-        if k in ("_script_edit", "_intent_input", "_revision_input", "_gen_failed") or k.startswith("_g_"):
+        if (k in ("_script_edit", "_intent_input", "_revision_input", "_gen_failed")
+                or k.startswith("_g_") or k.startswith("_iv_")):
             st.session_state.pop(k, None)
 
 
 def advance_round() -> None:
-    if st.session_state["round_idx"] >= config.N_ROUNDS:
+    if st.session_state["round_idx"] >= rounds_total():
         st.session_state["stage"] = "final_survey"  # whole-study survey before done
         return
     st.session_state["round_idx"] += 1
@@ -623,7 +675,7 @@ def round_durations(condition: str) -> dict:
         "t_llm_wait": round(st.session_state["r_llm_wait"], 2),
         "t_total": _delta("round_start", "trial_submit"),
     }
-    if condition == "E":
+    if condition in ("E", "F"):   # F 的采访沿用 E 的事件对(guidance_shown → guidance_submit)
         pre = _delta("guidance_shown", "guidance_submit")
         if pre is not None:  # net of the final-script generation wait in-window
             out["t_pregen"] = round(max(0.0, pre - st.session_state["r_llm_wait_in_guidance"]), 2)

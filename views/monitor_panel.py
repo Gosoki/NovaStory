@@ -12,10 +12,11 @@ from core import config, db
 from i18n import t
 
 _TARGET_N = 36
+_TARGET_N_JA = prereg.COHORT_TARGET_N["ja"]   # 日本队列:16 序列 × 2(2026-10-27,06 ㉖;至少 16 = 一整轮)
 
 
 def _cond_label(c: str) -> str:
-    return t(f"monitor.cond_{c}") if c in ("C", "D", "E") else c
+    return t(f"monitor.cond_{c}") if c in ("C", "D", "E", "F") else c
 
 
 def _loads(x) -> dict:
@@ -83,9 +84,15 @@ def _overview(parts: pd.DataFrame) -> None:
         c[1].metric(t("monitor.inprog"), inprog)
         c[2].metric(t("monitor.out"), out)
         c[3].metric(t("monitor.novice_share"), "—" if pd.isna(nov) else f"{nov:.0%}")
-    st.progress(min(done / _TARGET_N, 1.0),
-                text=t("monitor.progress", n=_TARGET_N, done=done,
-                       remain=max(_TARGET_N - done, 0)))
+    # 库里一有 ja 行,进度条就只数日本队列(中国 36 人早已满,混在一起这条线永远是 100%)
+    is_ja = parts["lang"].isin(config.FOUR_COND_LANGS) if "lang" in parts else None
+    if is_ja is not None and is_ja.any():
+        target, n_done = _TARGET_N_JA, int(((parts["status"] == "done") & is_ja).sum())
+    else:
+        target, n_done = _TARGET_N, done
+    st.progress(min(n_done / target, 1.0),
+                text=t("monitor.progress", n=target, done=n_done,
+                       remain=max(target - n_done, 0)))
     # 2026-09-07 拍板:主分析人群 = 全样本 → **招募够不够看上面那条进度条**。
     # 下面这个 novice 人数只是样本经验构成的参考,决定的是事后探索性切分还有没有解释力。
     st.caption(t("monitor.novice_done", n=int(nov_flags.sum())))
@@ -150,7 +157,7 @@ def _sessions(parts: pd.DataFrame, trials: pd.DataFrame) -> None:
         # 否则研究员看到的「最后活动」会比实际早 9 小时,判断人走没走时会误判。
         c[2].write(_jst(r.get("created_at")))
         c[3].write(_jst(last_seen.get(pid)))
-        c[4].write(f"{int(n_rounds.get(pid, 0))}/{config.N_ROUNDS}")
+        c[4].write(f"{int(n_rounds.get(pid, 0))}/{config.rounds_for_lang(r.get('lang') or '')}")
         with c[5].popover(t("monitor.release")):
             st.caption(t("monitor.release_help"))
             if st.button(t("monitor.release_confirm"), key=f"_rel_{pid}",
@@ -217,7 +224,9 @@ def _data_health(trials: pd.DataFrame, dev_ids: set[int] = frozenset()) -> None:
     n_shot_tot = sum(int(p.get("n_shots") or 0) for p in img)
     n_shot_ok = sum(int(p.get("n_ok") or 0) for p in img)
     img_rate = (n_shot_ok / n_shot_tot) if n_shot_tot else float("nan")
+    # 只看 E 的出题:F 的 guidance_shown 永远 fallback=False(F 的退回是逐题记在 guidance_json 里的)
     gs = pj[typ == "guidance_shown"]
+    gs = gs[gs.map(lambda x: _loads(x).get("source") != "interview")]
     fb_rate = gs.map(lambda x: bool(_loads(x).get("fallback"))).mean() if len(gs) else float("nan")
     done_pay = pj[typ == "llm_done"].map(_loads)
     # 与 analysis/events 同口径:正式模型不返回 system_fingerprint,退到 served_model,
@@ -332,11 +341,21 @@ def _progress(parts: pd.DataFrame) -> None:
             # Show all 18 cells (missing → 0) so laggards are visible; keep
             # recruiting until each hits target (over-recruit absorbs dropouts, #21).
             done = parts[parts["status"] == "done"]
+            # 两个序列空间分开看(db.insert_participant):库里一有 ja 行,就看日本的 16 格。
+            is_ja = parts["lang"].isin(config.FOUR_COND_LANGS) if "lang" in parts else None
+            if is_ja is not None and is_ja.any():
+                done = done[done["lang"].isin(config.FOUR_COND_LANGS)]
+                n_cells, per, cohort = config.LATIN_SQUARE_N_F, _TARGET_N_JA // config.LATIN_SQUARE_N_F, "ja"
+            else:
+                if "lang" in done:
+                    done = done[~done["lang"].isin(config.FOUR_COND_LANGS)]
+                n_cells, per, cohort = config.LATIN_SQUARE_N, _TARGET_N // config.LATIN_SQUARE_N, "zh"
             seqc = done["seq"].dropna().astype(int).value_counts()
-            seqc = seqc.reindex(range(config.LATIN_SQUARE_N), fill_value=0)
+            seqc = seqc.reindex(range(n_cells), fill_value=0)
             seqc.index = seqc.index.map(lambda i: f"seq{i}")
             st.bar_chart(seqc, height=220)
-            st.caption(t("monitor.seq_target", n=_TARGET_N // config.LATIN_SQUARE_N))
+            st.caption(t("monitor.seq_cohort", cohort=cohort, n=n_cells))
+            st.caption(t("monitor.seq_target", n=per))
         else:
             st.caption(t("monitor.no_seq"))
     with c2:

@@ -53,6 +53,9 @@ stats-zh:   ## 只跑中国队列(单队列模型;先筛语言再 z → 日本�
 stats-ja:   ## 只跑日本队列(单队列模型;N≈18 → MDES dz≈0.70,分国结果只作描述)
 	$(PY) analysis/stats.py --lang ja
 
+stats-f:    ## 第 4 条件 F 的日本内部分析(prereg.F_PRIMARY:逐镜头 mine_ratio F vs E 双侧;次要 + 操纵检查;2026-10-27)
+	$(PY) analysis/f_analysis.py
+
 stats-novice: ## 同上但只跑 novice 子集(**事后探索性**,非确证;结论里必须标 exploratory)
 	$(PY) analysis/stats.py --population novice
 

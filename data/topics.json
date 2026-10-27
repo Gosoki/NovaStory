@@ -55,5 +55,24 @@
     },
     "shot_count": 3,
     "total_seconds": 15
+  },
+  {
+    "title": {
+      "ja": "急な雨（雨やどりの数分）",
+      "zh": "突如其来的雨（躲雨的几分钟）",
+      "en": "A Sudden Shower (a few minutes out of the rain)"
+    },
+    "scenario": {
+      "ja": "急に雨が降りだし、近くの軒下に駆けこむ。",
+      "zh": "突然下起雨，你跑到附近的屋檐下。",
+      "en": "It suddenly starts to pour, and you dash under a nearby awning."
+    },
+    "choices": {
+      "ja": "やむのを待つか、走り出すか、隣の人に話しかけるか。",
+      "zh": "是等雨停、冲进雨里，还是和旁边的人搭话。",
+      "en": "Do you wait it out, make a run for it, or talk to the person next to you?"
+    },
+    "shot_count": 3,
+    "total_seconds": 15
   }
 ]

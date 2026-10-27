@@ -156,7 +156,7 @@ def render() -> None:
     # 已经 INSERT、拉丁方 seq 已被消耗 —— 留下一个永远走不完的孤儿被试,还挪动了后续
     # 所有人的轮转。deploy_check 在部署前拦一次;这里兜住「采数期间有人改坏
     # topics.json」的运行时窗口。
-    if len(state.load_topics()) < config.N_ROUNDS:
+    if len(state.load_topics()) < config.rounds_for_lang(st.session_state.get("lang", DEFAULT_LANG)):
         st.error(t("errors.not_ready"))
         return
 

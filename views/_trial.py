@@ -16,7 +16,7 @@ def submit_trial(final_text: str) -> None:
     parsed = shots.parse_shots(final_text)
 
     guidance_json = None
-    if cond == "E" and st.session_state["r_guidance_rounds"]:
+    if cond in ("E", "F") and st.session_state["r_guidance_rounds"]:
         guidance_json = json.dumps(
             {"rounds": st.session_state["r_guidance_rounds"]}, ensure_ascii=False
         )

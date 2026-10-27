@@ -93,6 +93,35 @@ def check_clean_db() -> None:
         add(G, "空库起跑", "库存在但无 participants。")
 
 
+def check_ja_legacy_rows() -> None:
+    """日本队列开采前,库里不该已有「真被试」的 ja 行(2026-10-27,4 条件设计)。
+
+    ja 自 2026-10-27 起是 4 条件 16 序列。此前用真实流程留下的 ja 行(研究员自测、误扫码)会:
+    ① seq 16/17 的行续接时 plan_for_seq 越界 → 那个 token 的页面每次打开都崩;
+    ② seq < 16 的行续接时拿到另一套 4 条件计划;③ 占着日本的格子;④ 只做过 3 轮的人被 v3 静默排除。
+    devtools 注入的行(dev=true)不算。"""
+    db = ROOT / "data" / "novastory.db"
+    if not db.exists():
+        return
+    try:
+        con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+        rows = con.execute(
+            "SELECT id, seq, created_at FROM participants WHERE lang='ja' AND passed=1"
+            " AND (json_valid(screening_json)=0 OR COALESCE(json_extract(screening_json,'$.dev'),0)!=1)"
+        ).fetchall()
+        con.close()
+    except Exception as e:  # noqa: BLE001
+        add(Y, "既存 ja 行", f"读取异常({e})。"); return
+    if rows:
+        bad = [r for r in rows if r[1] is not None and r[1] >= 16]
+        add(R if bad else Y, "既存 ja 行",
+            f"库里已有 {len(rows)} 条非 dev 的 ja 被试行(id {[r[0] for r in rows[:6]]}…)"
+            + (f",其中 {len(bad)} 条 seq ≥ 16 —— 续接时会崩" if bad else "")
+            + " → 第一位日本被试之前确认它们不是真被试,在监控面板「释放」掉(07 §3.6 第 10 步)。")
+    else:
+        add(G, "既存 ja 行", "没有非 dev 的 ja 被试行(日本 4 条件设计从空格子开始)。")
+
+
 def check_run_on_save() -> None:
     cfg = ROOT / ".streamlit" / "config.toml"
     if cfg.exists() and re.search(r"^\s*runOnSave\s*=\s*true", cfg.read_text(), re.M):
@@ -179,11 +208,13 @@ def check_baseline(sec: dict) -> None:
     short = {k: v for k, v in counts.items() if v < prereg.MIN_BASELINE_PER_TOPIC}
     blank = {k: v for k, v in empties.items() if v}
 
-    if len(files) < _cfg.N_ROUNDS:
+    # data/baseline/ 根目录 = ja 基线;日本队列(4 条件设计)用前 4 题(2026-10-27)。
+    need = _cfg.rounds_for_lang("ja")
+    have = {f.name for f in files}
+    if any(f"topic{i}.jsonl" not in have for i in range(need)):
         # 只生成了一部分题:embed 会对缺题的被试整轮拿不到 Δ,而绿灯会让人以为已经齐了。
-        have = {f.name for f in files}
-        add(R, "机器基线", f"只有 {len(files)}/{_cfg.N_ROUNDS} 题有基线(缺 "
-                          f"{[f'topic{i}.jsonl' for i in range(_cfg.N_ROUNDS) if f'topic{i}.jsonl' not in have]})"
+        add(R, "机器基线", f"ja 只有 {len(have & {f'topic{i}.jsonl' for i in range(need)})}/{need} 题有基线(缺 "
+                          f"{[f'topic{i}.jsonl' for i in range(need) if f'topic{i}.jsonl' not in have]})"
                           " → 补跑 make baseline。")
     elif blank:
         # 空稿会把该题质心整体拉偏,且下游不会报警。baseline_gen 现在拒绝写空行,
@@ -240,11 +271,13 @@ def check_topics() -> None:
         add(R, "题库 topics.json", "顶层不是数组 → 会静默回退种子主题。")
         return
     topics = state.load_topics()
-    if len(topics) < config.N_ROUNDS:
-        add(R, "题库 topics.json", f"只有 {len(topics)} 题 < N_ROUNDS={config.N_ROUNDS} →"
+    # 用到的题数取两种设计里多的那个:ja 的 4 条件设计用前 4 题(2026-10-27),zh / en 用前 3 题。
+    n_used = max(config.N_ROUNDS, config.N_ROUNDS_F)
+    if len(topics) < n_used:
+        add(R, "题库 topics.json", f"只有 {len(topics)} 题 < {n_used}(ja 的 4 条件设计)→"
                                    f" 被试提交筛查后才崩,且已消耗一个 seq。")
         return
-    used = topics[: config.N_ROUNDS]
+    used = topics[:n_used]
     bad, gone = [], []
     for i, t in enumerate(used):
         # choices 只进**被试看到的题目卡**(§15 的浅色括号行);2026-09-06 起它不再进
@@ -288,7 +321,7 @@ def check_topics() -> None:
         # 两题同名会静默塌成一个键,那一题的所有 trial 都被配到另一题的基线上,Δ 的零点直接错配。
         extra = ("；**标题重复**会让 analysis/embed.py 的 title2idx 静默塌键,"
                  "该题的 Δ 会拿另一题的基线当零点。" if dup_title else "")
-        add(R, "题库 topics.json", f"前 {config.N_ROUNDS} 题里有内容重复:{' · '.join(dup[:4])}"
+        add(R, "题库 topics.json", f"前 {n_used} 题里有内容重复:{' · '.join(dup[:4])}"
                                    f" → 每位被试会在两个轮次拿到同一道题,轮间不可比{extra}")
     elif gone:
         add(R, "题库 topics.json", f"字段整个缺失:{' · '.join(gone[:4])} —— 无语言可回退,"
@@ -298,7 +331,7 @@ def check_topics() -> None:
         add(Y, "题库 topics.json", f"{len(topics)} 题可用,但:{' · '.join(bad[:4])}"
                                    f"(缺的语言会回退到 ja/zh,被试可能看到混语)。")
     else:
-        add(G, "题库 topics.json", f"{len(topics)} 题、前 {config.N_ROUNDS} 题三语齐、"
+        add(G, "题库 topics.json", f"{len(topics)} 题、前 {n_used} 题三语齐、"
                                    f"镜数/秒数合法。⚠️ 采数期间禁止再改(会静默重配在跑被试的题目)。")
 
 
@@ -640,6 +673,7 @@ def main() -> None:
     check_password(sec)
     check_model(sec)
     check_clean_db()
+    check_ja_legacy_rows()
     check_run_on_save()
     check_perms()
     check_gitignore()

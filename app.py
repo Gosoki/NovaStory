@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 
 import streamlit as st
 
-from core import config, db, state
+from core import db, state
 from i18n import DEFAULT_LANG, t
 from views import (
     _scroll, consent, final_survey, intro, researcher, round_common, screening,
@@ -256,9 +256,10 @@ def _inject_css() -> None:
 
 def _progress_bar() -> None:
     i = st.session_state["round_idx"]
+    n = state.rounds_total()
     st.progress(
-        (i - 1) / config.N_ROUNDS,
-        text=t("round.progress", i=i, n=config.N_ROUNDS),
+        (i - 1) / n,
+        text=t("round.progress", i=i, n=n),
     )
 
 

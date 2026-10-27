@@ -232,6 +232,8 @@ def run(tmp: Path) -> None:
     # 门控必须拦下(只测「放行」的话,一个永远放行的门控也是绿的)。
     from core import config as C_cfg  # noqa: PLC0415
     assert prereg.WILLIAMS_ROUND_N == C_cfg.LATIN_SQUARE_N, "prereg.WILLIAMS_ROUND_N ≠ config.LATIN_SQUARE_N"
+    assert prereg.WILLIAMS_ROUND_N_BY_LANG["ja"] == C_cfg.seq_count_for_lang("ja"), \
+        "prereg 的日本一整轮 ≠ config 的 ja 序列数(4 条件设计,2026-10-27)"
     zh_part = merged.assign(lang="zh")
     ja_part = merged.assign(lang="ja", participant_id=merged["participant_id"] + 100000)
     zh_csv, mix_csv = tmp / "zh_only.csv", tmp / "mixed.csv"
@@ -242,6 +244,42 @@ def run(tmp: Path) -> None:
     for tag in ("[M1] 队列 × 条件 交互", "[M1] 分国估计", "[M0 合并模型] LMM 计划对比"):
         assert out_pool.count(tag) == len(endpoints), f"合并模式缺「{tag}」段(应每终点一次)"
     assert "⛔ 最终警告" not in out_pool and "⛔ HETEROGENEOUS(两队列" not in out_pool, out_pool[-800:]
+    # 日本多一道只有 ja 才做的第 4 题(2026-10-27):旧写法 C(topic)*is_ja 在这里秩亏、全部终点拟合失败。
+    # 把 ja 的一道题改名成只在 ja 出现的题 → 合并模型必须照常拟合(题目嵌套在队列里 = topic_c)
+    t0_title = ja_part["topic"].iloc[0]
+    ja_t4 = ja_part.assign(topic=ja_part["topic"].where(ja_part["topic"] != t0_title, "只有ja才做的第4题"))
+    t4_csv = tmp / "mixed_ja_only_topic.csv"
+    pd.concat([zh_part, ja_t4]).to_csv(t4_csv, index=False)
+    _, out_t4 = quiet(lambda: _cli(A_stats.main, ["--csv", str(t4_csv)]))
+    assert "**合并模型**" in out_t4 and "全部优化器均失败" not in out_t4 and "⛔ 最终警告" not in out_t4, \
+        f"ja 独有一道题时合并模型拟合失败(题目没嵌套进队列?):\n{out_t4[-1200:]}"
+    ok("ja 独有一道题(4 条件设计的第 4 题)时合并模型照常拟合")
+
+    # 第 4 条件 F(2026-10-27)不进 C/D/E 主分析与中日合并:加上 F 行,除提示行外输出逐字相同
+    f_dir = tmp / "with_f"
+    f_dir.mkdir(exist_ok=True)
+    f_csv = f_dir / mix_csv.name   # 同名文件:抬头里若打印路径,也只差目录
+    pd.concat([zh_part, ja_part, ja_part[ja_part["condition"] == "E"].assign(condition="F")]) \
+        .to_csv(f_csv, index=False)
+    _, out_f = quiet(lambda: _cli(A_stats.main, ["--csv", str(f_csv)]))
+    def _strip(o: str) -> str:
+        return "\n".join(ln.replace(str(f_dir), str(tmp)) for ln in o.splitlines() if "第 4 条件 F" not in ln)
+    assert "第 4 条件 F" in out_f, "混进 F 行却没有提示"
+    assert _strip(out_f) == _strip(out_pool), "加了 F 行之后 C/D/E 的结果变了(F 没在建复合之前排除?)"
+    ok("第 4 条件 F 的 trial 不进 C/D/E 主分析与中日合并(输出除提示行外逐字相同)")
+
+    # F 的日本内部分析(analysis/f_analysis.py,prereg.F_PRIMARY):F = E 的复制 + mine_ratio +0.2 → 主检验差值必须是 +0.200
+    from analysis import f_analysis as A_f  # noqa: PLC0415
+    ja_f = ja_part[ja_part["condition"] == "E"].assign(condition="F")
+    ja_f["mine_ratio"] = ja_f["mine_ratio"] + 0.2
+    fa_csv = tmp / "ja_with_f.csv"
+    pd.concat([ja_part, ja_f]).to_csv(fa_csv, index=False)
+    rc, out_fa = quiet(lambda: A_f.main(["--csv", str(fa_csv), "--db", str(tmp / "no.db")]))
+    assert rc == 0 and "[主要] mine_ratio  F − E" in out_fa and "差=+0.200" in out_fa, out_fa[-1200:]
+    assert all(dv in out_fa for dv, _ in ((x.split(" · ")[0], y) for x, y in prereg.F_SECONDARY)), \
+        "F 的次要项没有逐条打印"
+    ok("F 的日本内部分析:主检验 mine_ratio F−E 读出注入的 +0.200,次要项逐条打印")
+
     ja_het = ja_part.copy()
     ja_het.loc[ja_het["condition"] == "E", "own_mean"] += 3.0
     ja_het["imagine"] += 1.0   # 让两队列的 z 参照分布不同 —— 下面「先筛再 z」的比对才有牙

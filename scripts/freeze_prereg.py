@@ -76,6 +76,8 @@ HASHED_FILES = [
     "core/state.py",
     "views/_postgen.py",
     "views/guidance.py",
+    "views/interview.py",      # F 的采访:问答 item 形状、复述、计时事件(2026-10-27)
+    "views/group_f.py",
     "views/_streaming.py",
     "views/_trial.py",
     # 2026-09-07 补齐:下面这些同样「改了就改数据」,而 prereg/v3/stats 的哈希都不会动。
@@ -134,6 +136,11 @@ def collect_knobs() -> dict:
         "v3._TAGS": list(A_v3._TAGS),
         "config.N_ROUNDS": C.N_ROUNDS,
         "config.LATIN_SQUARE_N": C.LATIN_SQUARE_N,
+        # 日本队列的 4 条件设计(2026-10-27,06 ㉖)
+        "config.FOUR_COND_LANGS": sorted(C.FOUR_COND_LANGS),
+        "config.N_ROUNDS_F": C.N_ROUNDS_F,
+        "config.LATIN_SQUARE_N_F": C.LATIN_SQUARE_N_F,
+        "config.INTERVIEW_N": C.INTERVIEW_N,
         "config.MIN_INTENT_CHARS": C.MIN_INTENT_CHARS,
         "config.TEMPERATURE": C.TEMPERATURE,
         "config.SUPPLEMENT_RANGE": list(C.SUPPLEMENT_RANGE),
@@ -148,6 +155,8 @@ def collect_knobs() -> dict:
     from core import state as S
     knobs["state._COND_ORDERS"] = [list(x) for x in S._COND_ORDERS]
     knobs["state._TOPIC_ORDERS"] = [list(x) for x in S._TOPIC_ORDERS]
+    knobs["state._COND_ORDERS_F"] = [list(x) for x in S._COND_ORDERS_F]
+    knobs["state._TOPIC_ORDERS_F"] = [list(x) for x in S._TOPIC_ORDERS_F]
     # stats 侧的腿集合与 H4 DV 名 —— 命名随版本变过,缺哪个就记 None 而不是让脚本崩
     for name in ("_H4_QUALITY_DV", "_H4_LEGS", "_FIDELITY_SUBJ_LEGS", "_FIDELITY_OBJ_LEG",
                  "_FIDELITY_LEGS", "_EFFORT_LEGS", "_DOSE_LEGS", "_PAIRS"):

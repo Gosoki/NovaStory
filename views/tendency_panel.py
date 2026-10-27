@@ -13,7 +13,7 @@ import streamlit as st
 from core import db
 from i18n import get_lang, t
 
-CONDS = ("C", "D", "E")
+CONDS = ("C", "D", "E", "F")   # F = 日本队列的第 4 条件(2026-10-27);只显示数据里实际有的条件
 # 题目代码对应 q.<code> 的题目原文;own_mean 是 own1-3 的均分(所有权主终点)
 ITEMS = ("own_mean", "own1", "own2", "own3", "soa1", "soa2",
          "imagine", "violation", "satisfaction", "tlx1")
@@ -161,24 +161,26 @@ def render() -> None:
     show_beh = c_beh.checkbox(t("tendency.show_behavior"), key="_td_beh")
     base = pp[["participant_id", "age", "date", "order", "novice"]]
 
+    conds = _present(long)
     if view == "single":
-        cond = c_pick.selectbox(t("tendency.cond"), CONDS, key="_td_cond")
-        cols = ["round_idx", "topic", *ITEMS, *((*E_ITEMS, "ai_q_helpful") if cond == "E" else ()),
+        cond = c_pick.selectbox(t("tendency.cond"), conds, key="_td_cond")
+        cols = ["round_idx", "topic", *ITEMS, *((*E_ITEMS, "ai_q_helpful") if cond in ("E", "F") else ()),
                 "shot_mine", "shot_ai_ok", "shot_ai_against", "straightline",
                 *(BEHAVIOR if show_beh else ())]
         tab = base.merge(long.loc[long["condition"] == cond, ["participant_id", *cols]],
                          on="participant_id", how="left")
-        colored = [*ITEMS, *(E_ITEMS if cond == "E" else ())]
+        colored = [*ITEMS, *(E_ITEMS if cond in ("E", "F") else ())]
     elif view == "side":
         wide = long.pivot(index="participant_id", columns="condition",
                           values=[*ITEMS, *(BEHAVIOR if show_beh else ())])
         wide.columns = [f"{c}·{k}" for c, k in wide.columns]
-        ordered = [f"{c}·{k}" for c in (*ITEMS, *(BEHAVIOR if show_beh else ())) for k in CONDS]
+        ordered = [f"{c}·{k}" for c in (*ITEMS, *(BEHAVIOR if show_beh else ())) for k in conds]
         tab = base.merge(wide[ordered].reset_index(), on="participant_id", how="left").merge(
             pp[["participant_id", *FS, "fs_overall_sat"]], on="participant_id", how="left")
-        colored = [f"{c}·{k}" for c in ITEMS for k in CONDS] + ["fs_overall_sat"]
+        colored = [f"{c}·{k}" for c in ITEMS for k in conds] + ["fs_overall_sat"]
     else:
-        pair = c_pick.selectbox(t("tendency.diff"), ("E−D", "E−C", "D−C"), key="_td_pair")
+        pairs = ("E−D", "E−C", "D−C", *(("F−E", "F−C") if "F" in conds else ()))
+        pair = c_pick.selectbox(t("tendency.diff"), pairs, key="_td_pair")
         a, b = pair.split("−")
         wide = long.pivot(index="participant_id", columns="condition", values=list(ITEMS))
         diff = pd.DataFrame({f"{c} {pair}": wide[(c, a)] - wide[(c, b)] for c in ITEMS})
@@ -211,6 +213,12 @@ def render() -> None:
         st.markdown(f"- `own_mean`：{t('tendency.legend_own_mean')}")
         st.markdown(f"- `shot_*`：{t('q.tag_mine')} / {t('q.tag_ai_ok')} / {t('q.tag_ai_against')}")
         st.markdown(t("tendency.legend_other"))
+
+
+def _present(long) -> list[str]:
+    """数据里实际出现的条件(按 C/D/E/F 的顺序):中国队列没有 F 列,日本有。"""
+    have = set(long["condition"].dropna())
+    return [c for c in CONDS if c in have]
 
 
 def _composition(pp) -> None:
@@ -250,7 +258,7 @@ def _distribution(long) -> None:
     ).properties(height=54, width=420))
     c1, c2 = st.columns([3, 2])
     c1.altair_chart(chart)
-    means = long.groupby("condition")[list(ITEMS)].mean().T.reindex(columns=list(CONDS))
+    means = long.groupby("condition")[list(ITEMS)].mean().T.reindex(columns=_present(long))
     means["E−D"] = means["E"] - means["D"]
     means.index.name = "item"
     # 均值不上色:色块按四舍五入取档,4.49 与 4.51 会被染成两档,把 0.02 分的差画成档次差

@@ -46,6 +46,27 @@ MIN_INTENT_CHARS = 8
 # state.py asserts this stays in sync. (deep-review 2026-07-19 #1)
 LATIN_SQUARE_N = 18
 
+# ---- 日本队列:4 条件设计(2026-10-27,docs/paper/06 ㉖)----
+# ja 被试做 C / D / E / F 四个条件;zh / en 保持上面的 3 条件 18 序列 —— 中国队列是已采完的
+# 数据,它的轮数、序列表、序列计数一个都不能变。F =「想いを聞く」インタビュー(views/interview.py)。
+# 4 条件 Williams 方阵 4 个序列 × 4 个题目轮换 = 16(state._COND_ORDERS_F / _TOPIC_ORDERS_F)。
+# ⚠️ 轮数写死在各语言的文案里(ja「4 つのお題 / 全 4 ラウンド / 約15〜20分」,zh / en 是 3):
+#    改这个集合时要同步改 i18n/locales 的 consent.body、intro.flow、final_survey.hint / q_noticed。
+FOUR_COND_LANGS = frozenset({"ja"})
+N_ROUNDS_F = 4
+LATIN_SQUARE_N_F = 16
+INTERVIEW_N = 3   # F 的采访题数(第 1 题固定,第 2、3 题由 AI 按上一个回答调整措辞)
+
+
+def rounds_for_lang(lang: str) -> int:
+    """这一语言的被试做几轮(ja 4、其余 3)。"""
+    return N_ROUNDS_F if lang in FOUR_COND_LANGS else N_ROUNDS
+
+
+def seq_count_for_lang(lang: str) -> int:
+    """这一语言的序列空间大小(ja 16、其余 18)。两个空间分开计数,见 db.insert_participant。"""
+    return LATIN_SQUARE_N_F if lang in FOUR_COND_LANGS else LATIN_SQUARE_N
+
 # ---- guided elicitation (condition E) ----
 # Round 1 = 3 fixed expert dimensions + 2-4 AI-chosen supplements (5-7 total);
 # follow-up rounds 1-3 questions each. Both enforced in the prompts

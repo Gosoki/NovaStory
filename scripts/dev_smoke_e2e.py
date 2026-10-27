@@ -23,9 +23,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from streamlit.testing.v1 import AppTest  # noqa: E402
 
-from core import db, llm  # noqa: E402
+from core import config, db, llm  # noqa: E402
 from i18n import DEFAULT_LANG, LANG_LABELS  # noqa: E402
 from i18n import translator as _T  # noqa: E402
+from views import questionnaire as _q  # noqa: E402
 
 # 跑哪种语言的全流程(make smoke-e2e 两种都跑)。下面的按钮 / 选项标签写的是中文,
 # 非 zh 时由 L() 按 i18n 键换成目标语言 —— 同一套步骤,不复制一份测试。
@@ -136,14 +137,20 @@ _JA = {
 # 被试输入(创意 / 修改请求 / 手改 / 引导自填),按语言给,ja 界面里不混中文输入。
 _INPUT = {
     "zh": {"intents": ("主角发现卷子上的题目昨晚全梦到过", "末班车开走后他跟着夜跑团回家",
-                       "告白的话写在毕业帽内侧被风吹走"),
+                       "告白的话写在毕业帽内侧被风吹走", "躲雨时和陌生人分享了一把伞"),
            "request": "更搞笑一点", "edit": "\n（我手改的：结尾加一个彩蛋镜头）",
-           "custom": "我自己写的：荒诞但温柔"},
+           "custom": "我自己写的：荒诞但温柔",
+           "interview": ("梦里的题目全中了这种荒诞感", "先是不敢相信，最后忍不住笑", "交卷时手在发抖的那一下"),
+           "iv_question": "那你希望观众在那一刻有什么感受？"},
     "ja": {"intents": ("答案用紙の問題を、ゆうべ全部夢で見ていたと気づく",
                        "終電を逃した彼は、夜のランニング集団について帰る",
-                       "卒業帽の内側に書いた告白が風で飛ばされる"),
+                       "卒業帽の内側に書いた告白が風で飛ばされる",
+                       "雨やどり中、知らない人と一本の傘を分け合う"),
            "request": "もっと笑える感じにして", "edit": "\n（自分で手直し：最後におまけのカットを追加）",
-           "custom": "自分で書いた：ばかばかしいけど優しい"},
+           "custom": "自分で書いた：ばかばかしいけど優しい",
+           "interview": ("知らない人なのに、ふっと気持ちが通じるところ", "あたたかくて、少し照れくさい気持ち",
+                         "傘を差し出して目が合う瞬間"),
+           "iv_question": "その場面で、観る人にはどんな気持ちになってほしいですか？"},
 }[E2E_LANG if E2E_LANG == "ja" else "zh"]
 if E2E_LANG == "ja":
     _SCRIPT = _JA["script"]
@@ -160,6 +167,8 @@ def _stub_stream(system, user, *, group, user_id="", temperature=None):
 
 def _stub_json(system, user, *, group, user_id="", retries=None, temperature=None):
     _PROMPTS.append((group, system, user))
+    if group.startswith("F-interview"):   # F:模型只给下一题的题面
+        return {"question": _INPUT["iv_question"]}
     return _R1_QUESTIONS if group == "E-guidance-r1" else _FU_QUESTIONS
 
 
@@ -317,34 +326,12 @@ def run() -> None:
     btn_click(at, "开始")                          # intro "start" button
     assert at.session_state["stage"] == "rounds" and at.session_state["seq"] == 0
 
-    # seq 0 → conditions C, D, E with topics 1, 2, 3
-    # --- R1: C — one-shot ---
-    at.text_area(key="_intent_input").set_value(_INPUT["intents"][0])
-    btn_click(at, "确定，开始创作")
-    btn_click(at, "提交这一版，进入问卷")      # C 只生成一次,提交文案是中性的
-    _answer_questionnaire(at, round_idx=1)
-
-    # --- R2: D — revise via chat + hand-edit (attention round) ---
-    at.text_area(key="_intent_input").set_value(_INPUT["intents"][1])
-    btn_click(at, "确定，开始创作")
-    inject(at, "_revision_input", _INPUT["request"])
-    btn_click(at, "告诉 AI")                # → v2 (ai)
-    assert at.session_state["r_n_ai_rounds"] == 1
-    inject(at, "_script_edit", _SCRIPT_REV + EDIT_MARK)
-    btn_click(at, "满意了，提交这一版")       # persist → v3 (user_edit) → questionnaire
-    _answer_questionnaire(at, round_idx=2, attention=True)
-
-    # --- R3: E — guidance round-1 → script → follow-up → hand-edit ---
-    at.text_area(key="_intent_input").set_value(_INPUT["intents"][2])
-    btn_click(at, "确定，开始创作")
-    _answer_guidance(at, rnd=1, n=6, custom_idx=1, ai_idx=2)
-    assert at.session_state["r_phase"] == "postgen"
-    btn_click(at, "让 AI 继续引导")          # → follow-up questions
-    _answer_guidance(at, rnd=2, n=2)
-    assert at.session_state["r_n_ai_rounds"] == 1
-    inject(at, "_script_edit", _SCRIPT_REV + EDIT_MARK)
-    btn_click(at, "满意了，提交这一版")
-    _answer_questionnaire(at, round_idx=3, ai_q=True)
+    # seq 0:zh → C, D, E;ja(4 条件设计)→ C, D, F, E。按计划逐轮跑,每种条件一个步骤函数。
+    plan = [r["condition"] for r in at.session_state["round_plan"]]
+    assert plan == _EXPECTED_PLAN, f"seq 0 的轮次计划不对:{plan}"
+    for ridx, cond in enumerate(plan, start=1):
+        assert at.session_state["round_idx"] == ridx
+        _ROUND_STEPS[cond](at, ridx)
 
     # --- whole-study final survey ---
     assert at.session_state["stage"] == "final_survey", at.session_state["stage"]
@@ -361,6 +348,67 @@ def run() -> None:
     print(f"E2E SMOKE PASSED（{E2E_LANG}）")
 
 
+_EXPECTED_PLAN = ["C", "D", "F", "E"] if E2E_LANG in config.FOUR_COND_LANGS else ["C", "D", "E"]
+
+
+def _round_c(at, ridx: int) -> None:
+    """C — one-shot."""
+    at.text_area(key="_intent_input").set_value(_INPUT["intents"][ridx - 1])
+    btn_click(at, "确定，开始创作")
+    btn_click(at, "提交这一版，进入问卷")      # C 只生成一次,提交文案是中性的
+    _answer_questionnaire(at, round_idx=ridx, attention=ridx == _q._ATTENTION_ROUND)
+
+
+def _round_d(at, ridx: int) -> None:
+    """D — revise via chat + hand-edit."""
+    at.text_area(key="_intent_input").set_value(_INPUT["intents"][ridx - 1])
+    btn_click(at, "确定，开始创作")
+    inject(at, "_revision_input", _INPUT["request"])
+    btn_click(at, "告诉 AI")                # → v2 (ai)
+    assert at.session_state["r_n_ai_rounds"] == 1
+    inject(at, "_script_edit", _SCRIPT_REV + EDIT_MARK)
+    btn_click(at, "满意了，提交这一版")       # persist → v3 (user_edit) → questionnaire
+    _answer_questionnaire(at, round_idx=ridx, attention=ridx == _q._ATTENTION_ROUND)
+
+
+def _round_e(at, ridx: int) -> None:
+    """E — guidance round-1 → script → follow-up → hand-edit."""
+    at.text_area(key="_intent_input").set_value(_INPUT["intents"][ridx - 1])
+    btn_click(at, "确定，开始创作")
+    _answer_guidance(at, rnd=1, n=6, custom_idx=1, ai_idx=2)
+    assert at.session_state["r_phase"] == "postgen"
+    btn_click(at, "让 AI 继续引导")          # → follow-up questions
+    _answer_guidance(at, rnd=2, n=2)
+    assert at.session_state["r_n_ai_rounds"] == 1
+    inject(at, "_script_edit", _SCRIPT_REV + EDIT_MARK)
+    btn_click(at, "满意了，提交这一版")
+    _answer_questionnaire(at, round_idx=ridx, ai_q=True,
+                          attention=ridx == _q._ATTENTION_ROUND)
+
+
+def _round_f(at, ridx: int) -> None:
+    """F — 3 道采访题(只能自己写)→ 生成 → 只能手改。"""
+    at.text_area(key="_intent_input").set_value(_INPUT["intents"][ridx - 1])
+    btn_click(at, "确定，开始创作")
+    assert at.session_state["r_phase"] == "interview", at.session_state["r_phase"]
+    # 空答案不能送出
+    btn_click(at, "发送")
+    assert at.session_state["r_iv_turns"][0]["answer"] is None, "空答案被收下了"
+    for i, ans in enumerate(_INPUT["interview"]):
+        at.text_area(key=f"_iv_answer_{i}").set_value(ans)
+        btn_click(at, "完成作答，生成脚本" if i == config.INTERVIEW_N - 1 else "发送")
+    assert at.session_state["r_phase"] == "postgen", at.session_state["r_phase"]
+    assert not [b for b in at.button if b.label in (L("告诉 AI"), L("让 AI 继续引导"))], \
+        "F 生成后只能手改,不该出现 D / E 的 AI 修改入口"
+    inject(at, "_script_edit", _SCRIPT + EDIT_MARK)
+    btn_click(at, "满意了，提交这一版")
+    _answer_questionnaire(at, round_idx=ridx, ai_q=True,
+                          attention=ridx == _q._ATTENTION_ROUND)
+
+
+_ROUND_STEPS = {"C": _round_c, "D": _round_d, "E": _round_e, "F": _round_f}
+
+
 def _assert_no_zh_leak() -> None:
     """ja 会话:界面每一屏 + 每条发给 LLM 的提示词都不含简体字;分镜提示词要的是 ja 字段标记。"""
     for group, system, user in _PROMPTS:
@@ -368,7 +416,7 @@ def _assert_no_zh_leak() -> None:
             bad = sorted({ch for ch in txt if ch in _ZH_ONLY})
             if bad:
                 _LEAKS.append(f"[prompt {group}/{part}] 含简体字 {''.join(bad)}")
-    script_sys = [s for g, s, _ in _PROMPTS if "guidance" not in g]
+    script_sys = [s for g, s, _ in _PROMPTS if "guidance" not in g and "interview" not in g]
     assert script_sys and all("【画面】" in s and "【秒数】" in s for s in script_sys), \
         "ja 会话的分镜提示词里没有 ja 字段标记(【画面】/【秒数】)"
     assert not _LEAKS, "ja 会话里混进了简体中文:\n  " + "\n  ".join(dict.fromkeys(_LEAKS))
@@ -448,10 +496,12 @@ def _assert_db() -> None:
     scr = json.loads(p.iloc[0]["screening_json"])
     assert scr.get("script_confidence") == 2, scr.get("script_confidence")
 
-    assert list(tr["condition"]) == ["C", "D", "E"]
+    assert list(tr["condition"]) == _EXPECTED_PLAN
     assert tr["model"].notna().all() and tr["t_total"].notna().all()
 
-    c, d, e = tr.iloc[0], tr.iloc[1], tr.iloc[2]
+    by = {r["condition"]: r for _, r in tr.iterrows()}
+    c, d, e = by["C"], by["D"], by["E"]
+    rnd = {k: int(v["round_idx"]) for k, v in by.items()}   # 条件 → 第几轮
 
     import pandas as pd
 
@@ -481,13 +531,32 @@ def _assert_db() -> None:
     assert e["n_ai_rounds"] == 1 and e["n_hand_edits"] == 1
     assert e["t_pregen"] is not None and e["t_postgen"] is not None
 
+    if "F" in by:   # 4 条件设计(ja):F = 3 道采访题,只能自己写,生成后只手改
+        f = by["F"]
+        gf = json.loads(f["guidance_json"])["rounds"]
+        assert len(gf) == 1 and gf[0]["source"] == "interview", gf
+        items = gf[0]["items"]
+        assert [it["dimension"] for it in items] == ["liked", "audience_feeling", "moment"], items
+        assert [it["chosen"] for it in items] == list(_INPUT["interview"]), items
+        assert all(it["is_custom"] and not it["ai_decided"] and not it["options"] for it in items)
+        assert items[0]["question"] == L("这个创意里，你最喜欢的是哪一部分？"), items[0]["question"]
+        assert items[1]["question"] == _INPUT["iv_question"] and not items[1]["fallback"]
+        assert all(it["echo"] for it in items), "复述句没落库"
+        assert [x["author"] for x in json.loads(f["script_versions"])] == ["ai", "user_edit"]
+        assert f["n_ai_rounds"] == 0 and f["n_hand_edits"] == 1
+        assert f["t_pregen"] is not None and f["t_postgen"] is not None
+
     assert (tr["parse_ok"] == 1).all(), "两行排版没能 100% 解析"
-    assert len(q) == 3 and q["imagine_match"].notna().all()
+    assert len(q) == len(_EXPECTED_PLAN) and q["imagine_match"].notna().all()
     assert q["satisfaction"].notna().all()
-    aqq = q.set_index("round_idx")["ai_q_quality"]  # E-only (round 3); NULL for C/D
-    assert pd.notna(aqq[3]) and pd.isna(aqq[1]) and pd.isna(aqq[2]), aqq.to_dict()
-    aqa = q.set_index("round_idx")["ai_q_amount"]   # E-only (round 3); NULL for C/D
-    assert aqa[3] == 4 and pd.isna(aqa[1]) and pd.isna(aqa[2]), aqa.to_dict()
+    # AI 提问题:E 与 F 有(F 自 2026-10-27 起),C / D 是 NULL
+    aqq = q.set_index("round_idx")["ai_q_quality"]
+    aqa = q.set_index("round_idx")["ai_q_amount"]
+    for cond, r_ in rnd.items():
+        if cond in ("E", "F"):
+            assert pd.notna(aqq[r_]) and aqa[r_] == 4, (cond, aqq.to_dict(), aqa.to_dict())
+        else:
+            assert pd.isna(aqq[r_]) and pd.isna(aqa[r_]), (cond, aqq.to_dict(), aqa.to_dict())
 
     # intake stage: logged before the participant row existed (round_idx 0,
     # keyed by session_id) and backfilled with the id at screening — that
@@ -519,13 +588,18 @@ def _assert_db() -> None:
     print(f"intake ok：同意 {row['t_consent']:.1f}s · 说明 {row['t_intro']:.1f}s · "
           f"背景问卷 {row['t_screening']:.1f}s · 总问卷 {row['t_final_survey']:.1f}s")
 
-    r3 = set(ev[ev["round_idx"] == 3]["type"])
+    r_e = set(ev[ev["round_idx"] == rnd["E"]]["type"])
     for needed in ("round_start", "intent_submit", "guidance_shown", "guidance_answer",
                    "guidance_submit", "script_shown", "continue_guidance_click",
                    "hand_edit_saved", "trial_submit", "questionnaire_submit"):
-        assert needed in r3, f"missing event {needed} in round 3: {r3}"
-    r2ev = set(ev[ev["round_idx"] == 2]["type"])
-    assert "revision_request" in r2ev and "hand_edit_saved" in r2ev
+        assert needed in r_e, f"missing event {needed} in E round: {r_e}"
+    r_d = set(ev[ev["round_idx"] == rnd["D"]]["type"])
+    assert "revision_request" in r_d and "hand_edit_saved" in r_d
+    if "F" in rnd:
+        r_f = set(ev[ev["round_idx"] == rnd["F"]]["type"])
+        for needed in ("guidance_shown", "guidance_answer_saved", "guidance_answer",
+                       "guidance_submit", "script_shown", "hand_edit_saved", "trial_submit"):
+            assert needed in r_f, f"missing event {needed} in F round: {r_f}"
     print(f"db ok: trials={len(tr)} questionnaires={len(q)} events={len(ev)}")
 
 
@@ -580,7 +654,7 @@ def _resume_check() -> None:
     ss = at.session_state
     assert ss["participant_id"] == pid, ss["participant_id"]
     assert ss["stage"] == "rounds" and ss["round_idx"] == 2, (ss["stage"], ss["round_idx"])
-    assert ss["seq"] == seq and len(ss["round_plan"]) == 3
+    assert ss["seq"] == seq and len(ss["round_plan"]) == config.rounds_for_lang("ja")
     assert len(db.load_table("participants")) == before, "resume inserted a duplicate row"
     print("resume ok: refresh restored round 2, no duplicate participant / seq")
 

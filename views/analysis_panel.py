@@ -143,6 +143,7 @@ def render() -> None:
             div = v3.diversity_by_group(df)
             st.dataframe(div if len(div) else None)
             st.markdown(t("analysis.stats_title"))
+            pt, _n_f = A_stats.drop_non_confirmatory(pt)   # F 不进 C/D/E 分析(与 make stats 同口径)
             comp, warns = _run_capturing_warnings(lambda: A_stats.build_composites(pt))
             for w in warns:  # 例:保真复合缺 embed_fidelity 这条腿
                 st.warning(f"⚠️ {w}")
@@ -193,6 +194,7 @@ def render() -> None:
             # 以前出图分支三样都没做 —— 而进论文的正是图。
             pt, _ = preserve_merged(v3.per_trial(df), csv_path)
             pt = _drop_attn(pt)
+            pt, _n_f = A_stats.drop_non_confirmatory(pt)   # F 不进 C/D/E 分析(与 make stats 同口径)
             comp, warns = _run_capturing_warnings(lambda: A_stats.build_composites(pt))
             for w in warns:
                 st.warning(f"⚠️ {w}")

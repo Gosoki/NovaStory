@@ -211,7 +211,7 @@ SECONDARY_ENDPOINTS = ("satisfaction", "effort_composite",
 # ⚠️ lang 与队列 / 采集时间 / 模型版本 / 招募场景完全共线(先中后日,10 · 2026-09-07),
 #    所以 lang 的主效应与交互**只能读作「队列差异」**,不能读作「语言 / 文化效应」。
 COHORT_LANGS = ("zh", "ja")              # 两个正式队列;其余语言(en = 研究员测试)出现即拒绝合并
-COHORT_TARGET_N = {"zh": 36, "ja": 36}   # ja 目标两整轮;做不满就停在 18 = 一整轮 Williams(10 · 2026-10-23)
+COHORT_TARGET_N = {"zh": 36, "ja": 32}   # ja = 4 条件设计的两整轮;做不满就停在 16 = 一整轮(10 · 2026-10-27)
 WILLIAMS_ROUND_N = 18                    # = core.config.LATIN_SQUARE_N(本模块不 import 带 streamlit 的 config;
                                          #   analysis_smoke 断言两者相等)
 
@@ -223,8 +223,14 @@ WILLIAMS_ROUND_N = 18                    # = core.config.LATIN_SQUARE_N(本模�
 # 顺序(练习)效应同理:两批在不同场景、不同设备上做。代价只有 3 个自由度。
 # 这样 M1 的分国条件对比 = 两个单队列模型叠在一起(只共享方差成分),
 # 队列内平衡时点估计与 `stats.py --lang zh/ja` 单独拟合相同。
-POOLED_RHS_INTERACTION = "C(condition)*is_ja + C(topic)*is_ja + order*is_ja"   # M1
-POOLED_RHS_MAIN = "C(condition) + C(topic)*is_ja + order*is_ja"                # M0
+# 〔2026-10-27 改写参数化,模型空间不变〕原写法 `C(topic)*is_ja` 要求每道题两国都有;日本的 4 条件
+# 设计多了一道只有 ja 才做的第 4 题 →「zh × 第 4 题」是空格,设计矩阵秩亏,M0 / M1 在每个终点上都
+# 拟合失败。改成把题目直接嵌套进队列:topic_c = lang + ":" + topic(每个「队列 × 题目」一格),
+# 它已经吸收了队列主效应,所以不再单列 is_ja;条件 × 队列交互用两列数值 D_ja / E_ja
+# (= 1[D]·is_ja、1[E]·is_ja)。两国题目相同时(原 3 题),这与原写法张成同一个模型空间,
+# 估计与检验逐位相同;多出第 4 题时仍满秩。stats.fit_lmm 负责生成 topic_c / D_ja / E_ja。
+POOLED_RHS_INTERACTION = "C(condition) + D_ja + E_ja + C(topic_c) + order + order:is_ja"   # M1
+POOLED_RHS_MAIN = "C(condition) + C(topic_c) + order + order:is_ja"                        # M0
 
 # 门控(每个终点各一次):M1 里 **E−D 的队列差** (E−D)_ja − (E−D)_zh 的 1 自由度 Wald 检验。
 #   p ≥ α_int → 合并:在 M0 上走原来的三计划对比 + 族内 Holm + DECISION_BRANCHES
@@ -251,6 +257,37 @@ LANG_GATE_CONTRAST = "E-D"
 # E 从没排在第 1 轮)时,队列内条件与轮次位置部分混杂 → 合并结果**降为探索性**,
 # 确证结论以 zh 单队列(zh_v1)为准。满一整轮但各 seq 人数不等(例如 24 人):照常合并并告警。
 # ⛔ 任何情况下都**不为了凑平衡丢弃已完成的被试**(违反纳入规则与同意书承诺)。
+
+# 一整轮 Williams 的序列数按队列分(2026-10-27):zh = 3 条件 18 序列,ja = 4 条件 16 序列
+# (core.config.seq_count_for_lang;analysis_smoke 断言两者一致)。
+WILLIAMS_ROUND_N_BY_LANG = {"zh": WILLIAMS_ROUND_N, "ja": 16}
+
+# ---- 日本队列的第 4 条件 F(2026-10-27,docs/paper/06 ㉖;**在任何日本数据进库之前**写死)----
+# F =「想いを聞く」インタビュー:AI 一题一题地问作者对作品的想法(最喜欢哪里 / 想让观众有什么感受 /
+# 哪一瞬间最能传达),只能自己写,生成后只能手改。只出现在 ja 被试的 4 条件设计里。
+# ⚠️ 中国单队列与中日合并分析一律只用 C / D / E(stats 在建复合 z 之前就去掉 F,z 的参照样本因此
+#    与没有 F 时完全相同);F 只在日本内部与 E(和 C)比。
+CONFIRMATORY_CONDITIONS = ("C", "D", "E")
+F_CONDITION = "F"
+F_PRIMARY = {
+    "dv": "mine_ratio",               # 逐镜头「这是我的想法」比例(中国数据里最敏感的指标,E−D dz .48)
+    "contrast": ("F", "E"),
+    "alternative": "two-sided",       # 两种归属感来源方向相反(本人原话 vs 所选选项),不预设方向
+    "alpha": 0.05,
+    "test": "配对 t(每位 ja 被试一个 F−E 差值),另报 Wilcoxon 与 95% CI",
+    "population": "ja 全样本(交满 4 份问卷,纳入规则同主分析)",
+}
+F_SECONDARY = (                       # 次要:不进确证判定,方向写在这里供事后对照
+    ("own_mean", "F > E"),            # 所有权原始均值(7 点);Pierce 的自我投入路径、Joshi & Vogel
+    ("imagine", "E ≥ F"),             # 选项让人把意图说清楚(Paludan 2025、DiscoverLLM)
+    ("fidelity_composite", "E ≥ F"),
+    ("mine_ratio · F−C", "两侧"),
+    ("satisfaction", "两侧"),
+    ("tlx1", "两侧"),
+    ("pre_investment", "两侧"),
+    ("ai_q_quality", "两侧"),         # E 与 F 都问:检查「AI 亲切所以分高」
+)
+F_MANIPULATION_CHECK = "F 里三题回答的总字数(guidance_json 中 source=interview 的 chosen)"
 
 # ---- 复合公式(as-run,见 analysis/stats.build_composites) ----
 # z 一律按**全样本**算(跨全部 trial 的均值/标准差),被试间差异交给 LMM 的随机截距
@@ -314,9 +351,17 @@ def as_dict() -> dict:
             "cohort_langs": list(COHORT_LANGS),
             "cohort_target_n": dict(COHORT_TARGET_N),
             "williams_round_n": WILLIAMS_ROUND_N,
+            "williams_round_n_by_lang": dict(WILLIAMS_ROUND_N_BY_LANG),
             "rhs_interaction": POOLED_RHS_INTERACTION,
             "rhs_main": POOLED_RHS_MAIN,
             "lang_interaction_alpha": LANG_INTERACTION_ALPHA,
             "gate_contrast": LANG_GATE_CONTRAST,
+        },
+        # ---- 日本队列的第 4 条件 F(2026-10-27,06 ㉖)----
+        "f_condition": {
+            "confirmatory_conditions": list(CONFIRMATORY_CONDITIONS),
+            "primary": {k: (list(v) if isinstance(v, tuple) else v) for k, v in F_PRIMARY.items()},
+            "secondary": [list(x) for x in F_SECONDARY],
+            "manipulation_check": F_MANIPULATION_CHECK,
         },
     }

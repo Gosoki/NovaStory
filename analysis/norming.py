@@ -75,7 +75,8 @@ def main() -> None:
         raise SystemExit(f"缺少 {lang} 机器基线目录 {base}(norming 的唯一输入)—— "
                          f"先跑: make baseline BASELINE_LANG={lang}")
     rows = []
-    topics = _state.load_topics()[: config.N_ROUNDS]   # 与被试同一份归一化后的题库
+    # 与被试同一份归一化后的题库;题数按语言(ja 4 条件设计用前 4 题,2026-10-27)
+    topics = _state.load_topics()[: config.rounds_for_lang(lang)]
     for i, topic in enumerate(topics):
         texts = _load_texts(i, lang)
         title = _state.topic_text(topic, "title", lang) or f"topic{i}"

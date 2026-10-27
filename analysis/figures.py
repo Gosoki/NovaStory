@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from analysis import prereg, v3  # noqa: E402
-from analysis.stats import build_composites  # noqa: E402
+from analysis.stats import build_composites, drop_non_confirmatory  # noqa: E402
 
 DEFAULT_DB = ROOT / "data" / "novastory.db"
 CSV = ROOT / "data" / "analysis" / "v3_per_trial.csv"
@@ -174,6 +174,7 @@ def main(argv: list[str] | None = None) -> None:
     langs = sorted(raw["lang"].dropna().unique()) if "lang" in raw else []
     if len(langs) > 1:
         print(f"⚠️ 图里混有多个队列 {langs}(不分队列、无 lang 项);分国图用 --lang zh / --lang ja")
+    raw, _ = drop_non_confirmatory(raw)   # 第 4 条件 F 不进 C/D/E 的图(与 make stats 同口径)
     pt = build_composites(raw)
     if args.population == "novice":
         if "novice" not in pt.columns:

@@ -7,14 +7,14 @@ import streamlit as st
 
 from core import config, prompts, state
 from i18n import get_lang, t
-from views import _postgen, _scroll, group_c, group_d, group_e, guidance, questionnaire
+from views import _postgen, _scroll, group_c, group_d, group_e, group_f, guidance, interview, questionnaire
 
 
 def render() -> None:
     rd = state.current_round()
     cond, topic = rd["condition"], rd["topic"]
 
-    st.header(t("round.title", i=st.session_state["round_idx"], n=config.N_ROUNDS))
+    st.header(t("round.title", i=st.session_state["round_idx"], n=state.rounds_total()))
     _step_strip(cond)
     _topic_card(topic)
 
@@ -36,11 +36,16 @@ def render() -> None:
             group_c.render_pipeline(topic)
         elif cond == "D":
             group_d.render_pipeline(topic)
+        elif cond == "F":
+            group_f.render_pipeline(topic)
+            st.rerun()  # F: begin switched phase to "interview"
         else:
             group_e.render_pipeline(topic)
             st.rerun()  # E: begin_round switched phase to "guidance"
     elif phase == "guidance":
         guidance.render(topic)
+    elif phase == "interview":
+        interview.render(topic)
     elif phase == "postgen":
         if cond == "C":
             _postgen.render_readonly(topic)
@@ -53,10 +58,10 @@ def render() -> None:
 def _step_strip(cond: str) -> None:
     """Visual stepper; every condition previews its own steps the same way."""
     steps = [t("round.step_intent")]
-    if cond == "E":
+    if cond in ("E", "F"):
         steps.append(t("round.step_guidance"))
     steps.append(t("round.step_generate"))
-    if cond in ("D", "E"):
+    if cond in ("D", "E", "F"):
         steps.append(t("round.step_polish"))
     steps.append(t("round.step_questionnaire"))
 
@@ -84,8 +89,8 @@ def _current_step(cond: str, n_steps: int) -> int:
         return 1  # generate / view
     if cond == "D":
         return 1 if phase == "pipeline" else 2  # generate → polish
-    # E
-    if phase in ("pipeline", "guidance"):
+    # E / F(F 的采访只在生成之前,所以进得来就是第 1 步)
+    if phase in ("pipeline", "guidance", "interview"):
         # follow-up guidance rounds happen mid-polish
         return 1 if not st.session_state["r_versions"] else 3
     return 3   # postgen:进得来就一定已有版本(生成成功 / 取消追问都以此为前提)→ polish

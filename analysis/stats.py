@@ -213,6 +213,16 @@ _LMM_TERMS = ("condition", "topic", "round_idx", "participant_id")
 _RHS_SINGLE = "C(condition) + C(topic) + order"   # 单队列模型;合并模型的 rhs 在 prereg 合并段
 
 
+def drop_non_confirmatory(raw: pd.DataFrame) -> tuple[pd.DataFrame, int]:
+    """去掉 C/D/E 以外的 trial(第 4 条件 F,2026-10-27)。主分析、中日合并、研究员面板、图**共用这一个**,
+    而且必须在 build_composites 之前调 —— 复合 z 的参照样本因此与没有 F 时完全相同。
+    F 只在日本内部与 E 比(prereg.F_PRIMARY,analysis/f_analysis.py)。返回 (留下的行, 去掉的行数)。"""
+    if "condition" not in raw:
+        return raw, 0
+    keep = raw["condition"].isin(prereg.CONFIRMATORY_CONDITIONS)
+    return raw[keep], int((~keep).sum())
+
+
 def fit_lmm(df: pd.DataFrame, dv: str, rhs: str = _RHS_SINGLE):
     """_OPTIMIZERS 全部试一遍,在**已收敛**的拟合里取 REML 对数似然最高的那个。
     lbfgs 在本设计上常抛 Singular matrix 而 powell/bfgs/nm 拟合同一模型无碍(N=36 合成数据
@@ -239,8 +249,12 @@ def fit_lmm(df: pd.DataFrame, dv: str, rhs: str = _RHS_SINGLE):
         print(f"  注:{dv} 按模型项去空丢了 {dropped}/{len(df)} 行(各项空值数 {na})——"
               "这是**数据缺失**,不是优化器/数值问题。")
     d["order"] = d["round_idx"].astype(float)
-    if "is_ja" in rhs:   # 合并模型:zh 为参照(prereg 合并段)
+    if "is_ja" in rhs or "_ja" in rhs:   # 合并模型:zh 为参照(prereg 合并段)
         d["is_ja"] = (d["lang"] == "ja").astype(float)
+        d["D_ja"] = (d["condition"] == "D").astype(float) * d["is_ja"]   # 条件 × 队列交互(M1)
+        d["E_ja"] = (d["condition"] == "E").astype(float) * d["is_ja"]
+    if "topic_c" in rhs:   # 题目嵌套在队列里(两国题面不同;ja 多一道第 4 题)
+        d["topic_c"] = d["lang"].astype(str) + ":" + d["topic"].astype(str)
     formula = f"Q('{dv}') ~ {rhs}"
     errs, fits = [], []
     with warnings.catch_warnings():
@@ -319,7 +333,7 @@ def lang_interaction(fit) -> tuple[pd.DataFrame, pd.DataFrame, float]:
     ③ 整体 condition×lang 的 2 自由度 Wald p(描述性,不门控)。"""
     names = list(fit.model.exog_names)
     D, E = "C(condition)[T.D]", "C(condition)[T.E]"
-    Dj, Ej = f"{D}:is_ja", f"{E}:is_ja"
+    Dj, Ej = "D_ja", "E_ja"   # prereg.POOLED_RHS_INTERACTION 里的两列数值交互(2026-10-27 改写)
 
     def vec(w: dict) -> np.ndarray:
         v = np.zeros(len(names))
@@ -369,9 +383,10 @@ def _cohort_design(df: pd.DataFrame) -> dict:
     """每个队列:人数、覆盖了几个 Williams seq、各 seq 人数是否相等(prereg 合并段的完整性规则)。"""
     out = {}
     for lg, g in df.drop_duplicates("participant_id").groupby("lang"):
+        n_round = prereg.WILLIAMS_ROUND_N_BY_LANG.get(lg, prereg.WILLIAMS_ROUND_N)
         cnt = (pd.to_numeric(g["seq"], errors="coerce").dropna().astype(int).value_counts()
-               .reindex(range(prereg.WILLIAMS_ROUND_N), fill_value=0))
-        out[lg] = {"n": len(g), "seq_covered": int((cnt > 0).sum()),
+               .reindex(range(n_round), fill_value=0))
+        out[lg] = {"n": len(g), "seq_covered": int((cnt > 0).sum()), "round_n": n_round,
                    "balanced": bool((cnt > 0).all() and cnt.nunique() == 1)}
     return out
 
@@ -651,6 +666,12 @@ def main() -> None:
         print(f"⛔ CSV 里混有正式队列 {prereg.COHORT_LANGS} 以外的语言:{langs}(en = 研究员测试/脱离协议)。"
               "\n   拒绝合并 —— 先剔除这些会话,或用 `--lang zh` / `--lang ja` 只跑一个队列。")
         sys.exit(1)
+    # 第 4 条件 F 只在日本内部比(prereg.F_PRIMARY);C/D/E 的主分析与中日合并**不含 F**。
+    # 必须在 build_composites 之前去掉:复合 z 的参照样本因此与没有 F 时完全相同。
+    raw, n_not_cde = drop_non_confirmatory(raw)
+    if n_not_cde:
+        print(f"  ⚠️ 已排除 {n_not_cde} 个非 C/D/E 的 trial(第 4 条件 F):"
+              "C/D/E 主分析与中日合并不含 F;F 只在日本内部与 E 比(prereg.F_PRIMARY)。")
     n_attn, n_before_attn = None, raw["participant_id"].nunique() if "participant_id" in raw else 0
     if args.drop_attention_fail:   # 在 build_composites 之前:z 的参照样本随之而定
         raw, n_attn = drop_attention_fail(raw)
@@ -686,9 +707,9 @@ def main() -> None:
         print(f"    门控:{prereg.LANG_GATE_CONTRAST} 的队列差 p<{prereg.LANG_INTERACTION_ALPHA} → HETEROGENEOUS"
               "(不报合并结论);复合 z 在合并样本上算,分国单独分析见 make stats-zh / stats-ja")
         for lg, v in design.items():
-            full = v["seq_covered"] == prereg.WILLIAMS_ROUND_N
+            full = v["seq_covered"] == v["round_n"]
             confirmatory &= full
-            print(f"    {lg}: {v['n']} 人,覆盖 {v['seq_covered']}/{prereg.WILLIAMS_ROUND_N} 个 Williams seq"
+            print(f"    {lg}: {v['n']} 人,覆盖 {v['seq_covered']}/{v['round_n']} 个 Williams seq"
                   + (" ✅" if v["balanced"] else " ⚠️ 各 seq 人数不等(照常合并,残留效应平衡打折)" if full
                      else " ⛔ 未满一整轮"))
         if not confirmatory:

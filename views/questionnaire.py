@@ -410,7 +410,9 @@ def render() -> None:
     # condition where the AI asks structured questions). ai_q_amount = did it ask
     # too few / just right / too many; ai_q_best = which single question landed
     # (optional). Both exploratory, stored E-only (NULL for C/D).
-    if state.current_round()["condition"] == "E":
+    # 2026-10-27 起 F(AI 的采访式提问)也问这三题,用来比较两边对「AI 提问」的感受
+    # (检查「AI 亲切所以分高」的可能,docs/paper/06 ㉖)。
+    if state.current_round()["condition"] in ("E", "F"):
         likert("ai_q_quality", t("q.ai_q_quality"))
         likert("ai_q_amount", t("q.ai_q_amount"), anchors="amount")
         # ⚠️ ai_q_best 曾经在这里。它会把被试的全部引导问答**原样复读一遍**,
@@ -449,7 +451,7 @@ def render() -> None:
         shot_annotations.append({"shot": 0, "tag": lbl2tag.get(sel)})
 
     # E 专属、可选:哪些引导问题真的帮到了。放在逐镜头标注**之后**(见上方注释)。
-    if state.current_round()["condition"] == "E":
+    if state.current_round()["condition"] in ("E", "F"):
         answers["ai_q_best"] = _ai_q_best_pick(ridx)
 
     if st.button(t("q.submit"), type="primary", width="stretch"):

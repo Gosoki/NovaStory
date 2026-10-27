@@ -231,7 +231,8 @@ def section_a() -> None:
 
     seqs = sorted(s for _, s, _ in got)
     from core import config as _cfg
-    expect = sorted(list(range(_cfg.LATIN_SQUARE_N)) + list(range(n - _cfg.LATIN_SQUARE_N)))
+    n_seq = _cfg.seq_count_for_lang("ja")   # ja = 4 条件设计的 16 格空间(2026-10-27)
+    expect = sorted(list(range(n_seq)) + list(range(n - n_seq)))
     ck(not errs, "24 人同时通过筛查无异常", f"{time.time() - t0:.2f}s")
     ck(seqs == expect, "拉丁方 seq 无重复无跳号", f"得到 {seqs[:6]}…")
     ck(len({t for _, _, t in got}) == len(got), "续接 token 唯一")

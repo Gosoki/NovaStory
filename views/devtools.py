@@ -8,7 +8,7 @@ from __future__ import annotations
 import streamlit as st
 
 from analysis import prereg
-from core import db, llm, shots, state
+from core import config, db, llm, shots, state
 from i18n import DEFAULT_LANG, get_lang, t
 from views import questionnaire as _q
 
@@ -76,8 +76,11 @@ def render() -> None:
               cond=rd["condition"], phase=st.session_state["r_phase"])
         )
         st.button(t("admin.fill_current"), width="stretch", on_click=_fill_current)
-        cols = st.columns(3)
-        for col, cond in zip(cols, ("C", "D", "E")):
+        # 按设计给全套条件(ja 4 条件设计 = C/D/E/F),别按当前计划取:切换后计划里会少一个条件,切不回去
+        four = len(st.session_state["round_plan"]) == config.N_ROUNDS_F
+        conds = ("C", "D", "E", "F") if four else ("C", "D", "E")
+        cols = st.columns(len(conds))
+        for col, cond in zip(cols, conds):
             col.button(
                 t("admin.switch_to", cond=cond),
                 width="stretch",
@@ -192,7 +195,7 @@ def _fill_questionnaire() -> None:
     st.session_state[f"_q_violation_{ridx}"] = 2
     st.session_state[f"_q_imagine_{ridx}"] = 6
     st.session_state[f"_q_sat_{ridx}"] = 5
-    if state.current_round()["condition"] == "E":
+    if state.current_round()["condition"] in ("E", "F"):
         st.session_state[f"_q_ai_q_quality_{ridx}"] = 6
         st.session_state[f"_q_ai_q_amount_{ridx}"] = 4  # ai_q_best radio is optional
     if ridx == _q._ATTENTION_ROUND:

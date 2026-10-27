@@ -5,7 +5,7 @@ import re
 
 import streamlit as st
 
-from core import config, db, state
+from core import db, state
 from i18n import get_lang, t
 from views import _scale, _scroll
 
@@ -36,7 +36,7 @@ def render() -> None:
 
     plan = st.session_state["round_plan"]
     lang = get_lang()
-    rounds = list(range(1, config.N_ROUNDS + 1))
+    rounds = list(range(1, state.rounds_total() + 1))
 
     # Options are the localized label strings (round # + topic title as a neutral
     # memory aid); a format_func radio isn't reliably test-drivable. Map back to

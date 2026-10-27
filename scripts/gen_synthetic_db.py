@@ -211,7 +211,8 @@ def generate(out: Path, n: int = 36, seed: int = 7) -> dict:
         if is_dev:  # views/devtools.py _skip_intake 的形状
             screening.update({"dev": True, "is_novice": True})
             demographics["dev"] = True
-        pid, seq, _tok = db.insert_participant("ja", demographics, screening, passed=True)
+        # 合成库模拟的是 3 条件 18 序列的设计 = zh 的序列空间(ja 自 2026-10-27 起是 4 条件 16 序列)
+        pid, seq, _tok = db.insert_participant("zh", demographics, screening, passed=True)
         if is_dev:
             dev_pid = pid
         db.update_participant(pid, status="done", attention_ok=1, attention_raw=2,

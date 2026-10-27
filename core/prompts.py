@@ -499,3 +499,83 @@ def build_user_guidance_followup(
     if _norm(lang) == "en":
         return f"{block}\n\nCurrent storyboard draft:\n{current_script.strip()}"
     return f"{block}\n\n現在の絵コンテ草案:\n{current_script.strip()}"
+
+
+# ---------------- interview (condition F, 2026-10-27, docs/paper/06 ㉖) ----------------
+# F =「想いを聞く」インタビュー:AI が一問ずつ、作者がこの作品に込めたいことを聞く(選択肢なし、
+# 自分で書く)。第 1 問は固定文(views/interview.py)、第 2・3 問の**言い回し**だけを AI が
+# 直前の答えに合わせて作る。聞く観点そのものは固定(_INTERVIEW_DIMS)。復唱の一文(「〜ということ
+# ですね」)はコード側のテンプレートで作り、AI には書かせない —— 被試の原文だけを返すため(褒め言葉・
+# 共感・言い換えが混ざると「AI が親切だから高評価」という交絡になる)。最終生成は E と同じ
+# build_user_script_from_answers を使う。
+
+_INTERVIEW_DIMS = {
+    "audience_feeling": {
+        "zh": "在用户最喜欢的那一部分里,希望观众产生什么样的感受",
+        "en": "how they want viewers to feel in the part they like most",
+        "ja": "いちばん気に入っている部分で、観る人にどんな気持ちになってほしいか",
+    },
+    "moment": {
+        "zh": "这份感受在 15 秒里的哪一瞬间最能传达出来",
+        "en": "at which moment within the 15 seconds that feeling comes across most",
+        "ja": "その気持ちが、15秒のうちどの瞬間にいちばん伝わるか",
+    },
+}
+
+
+def build_system_interview(lang: str = _DEFAULT_LANG) -> str:
+    if _norm(lang) == "zh":
+        return (
+            "你是一名短视频分镜创作的采访者。用户是没有影视经验的新手,会发来故事创意和到目前为止的问答。"
+            "你的任务是只写**下一个问题**。\n"
+            "要求:\n"
+            "1. 只问指定的方面(见「接下来要问」),不要换方面,也不要一次问两件事。\n"
+            "2. 接住用户上一个回答里的话,写成对这个人说的一句自然的问题。\n"
+            "3. **不要写任何例子、选项、建议或你自己的看法**(不要用「比如」「例如」「……之类」);"
+            "不要夸奖,不要表达共情,不要复述用户的话(复述由系统另行显示)。\n"
+            "4. 一句话,50 字以内,中文。\n"
+            '5. 只输出 JSON:{"question":"..."}'
+        )
+    if _norm(lang) == "en":
+        return (
+            "You are an interviewer helping with short-video storyboard creation. The user is a "
+            "novice with no filmmaking experience; you will receive their story idea and the "
+            "Q&A so far. Your only job is to write the **next question**.\n"
+            "Requirements:\n"
+            "1. Ask only about the specified aspect (see 'Ask next'); do not switch aspects or "
+            "ask two things at once.\n"
+            "2. Pick up the words of the user's previous answer and phrase one natural question "
+            "addressed to this person.\n"
+            "3. **Do not write any examples, options, suggestions or opinions of your own** (no "
+            "'for example', 'such as', 'e.g.'); no praise, no expressions of empathy, and do not "
+            "restate the user's words (the system shows that separately).\n"
+            "4. One sentence, at most 25 words, in English.\n"
+            '5. Output JSON only: {"question":"..."}'
+        )
+    return (
+        "あなたはショート動画の絵コンテ制作を手伝うインタビュアーです。"
+        "ユーザーは映像経験のない初心者で、物語のアイデアとこれまでの質問と答えが送られてきます。"
+        "あなたの仕事は、**次の質問を一つだけ**書くことです。\n"
+        "要件:\n"
+        "1. 指定された観点(「次に聞くこと」)だけを聞くこと。観点を変えたり、二つのことを同時に聞いたりしない。\n"
+        "2. 直前のユーザーの答えの言葉を受けて、その人に向けた自然な一文の質問にすること。\n"
+        "3. **答えの例・選択肢・提案・あなた自身の意見は一切書かないこと**(「例えば」「〜など」も使わない)。"
+        "ほめ言葉や共感の言葉も入れず、ユーザーの言葉の言い直しもしないこと(復唱はシステムが別に表示します)。\n"
+        "4. 敬体(です・ます)の一文、60字以内、日本語で。\n"
+        '5. JSONのみを出力: {"question":"..."}'
+    )
+
+
+def build_user_interview(
+    topic: dict, intent: str, turns: list[dict], next_dim: str, lang: str = _DEFAULT_LANG
+) -> str:
+    """turns: [{"question", "answer"}](已答的轮次);next_dim ∈ _INTERVIEW_DIMS。"""
+    block = _topic_block(topic, intent, lang)
+    key = _norm(lang) if _norm(lang) in ("zh", "en") else "ja"
+    aspect = _INTERVIEW_DIMS[next_dim][key]
+    qa = "\n".join(f"Q: {x['question']}\nA: {x['answer']}" for x in turns if x.get("answer"))
+    if key == "zh":
+        return f"{block}\n\n到目前为止的问答:\n{qa}\n\n接下来要问:{aspect}"
+    if key == "en":
+        return f"{block}\n\nQ&A so far:\n{qa}\n\nAsk next: {aspect}"
+    return f"{block}\n\nこれまでの質問と答え:\n{qa}\n\n次に聞くこと:{aspect}"

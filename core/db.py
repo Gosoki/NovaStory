@@ -208,9 +208,9 @@ def insert_participant(
 ) -> tuple[int, Optional[int], str]:
     """Insert a participant; returns (id, seq, token).
 
-    seq (0..LATIN_SQUARE_N-1, i.e. 0-17, a Williams-design sequence) is assigned at
-    insert time as (count of previously passed non-dev participants) % LATIN_SQUARE_N (18),
-    None when screened out.
+    seq (a Williams-design sequence: 0-17 for zh/en, 0-15 for ja — see
+    config.seq_count_for_lang) is assigned at insert time as the least-used cell among
+    passed non-dev participants of the same sequence space, None when screened out.
     token is an opaque resume handle put in the URL (?t=) so a refresh/reconnect
     restores the session instead of re-screening (which would consume a 2nd seq).
     """
@@ -233,14 +233,23 @@ def insert_participant(
             #     已经有人了,于是重复,而 5 的空缺永远没人补。
             #   · 现在:5 是唯一还空着的格子,下一个人正好补上。
             # 也因此,释放中途退出的被试不再破坏 Williams 平衡。
+            # 两个序列空间分开计数(2026-10-27):ja = 4 条件 16 序列,其余语言 = 原来的 3 条件
+            # 18 序列。只在同一空间里挑格子 —— 否则日本行会占掉中国的格子号(补中国被试时落不进
+            # seq 0),中国行也会挤歪日本的平衡。库里还没有 ja 行时,与改之前逐个等价。
+            four = lang in config.FOUR_COND_LANGS
+            placeholders = ",".join("?" * len(config.FOUR_COND_LANGS))
+            same_space = (f"lang IN ({placeholders})" if four
+                          else f"(lang IS NULL OR lang NOT IN ({placeholders}))")
             rows = conn.execute(
                 "SELECT seq, COUNT(*) FROM participants WHERE passed=1 AND seq IS NOT NULL"
+                f" AND {same_space}"
                 " AND (json_valid(screening_json) = 0"
                 "      OR COALESCE(json_extract(screening_json, '$.dev'), 0) != 1)"
-                " GROUP BY seq"
+                " GROUP BY seq",
+                tuple(sorted(config.FOUR_COND_LANGS)),
             ).fetchall()
             used = {int(r[0]): int(r[1]) for r in rows if r[0] is not None}
-            seq = min(range(config.LATIN_SQUARE_N), key=lambda k: (used.get(k, 0), k))
+            seq = min(range(config.seq_count_for_lang(lang)), key=lambda k: (used.get(k, 0), k))
         cur = conn.execute(
             "INSERT INTO participants"
             " (created_at, lang, seq, demographics_json, screening_json, passed, token, status)"

@@ -56,7 +56,7 @@ def included_participants(db_path) -> set[int]:
     (`pilot_check` 更是用了第三种口径 `status=='done'`,同一份报告里两个分母。)"""
     con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     try:
-        parts = pd.read_sql("SELECT id, created_at, screening_json FROM participants", con)
+        parts = pd.read_sql("SELECT id, created_at, lang, screening_json FROM participants", con)
         quest = pd.read_sql("SELECT participant_id, round_idx FROM questionnaires", con)
     finally:
         con.close()
@@ -67,7 +67,9 @@ def included_participants(db_path) -> set[int]:
         if len(quest):
             n = (quest.drop_duplicates(["participant_id", "round_idx"])
                       .groupby("participant_id").size())
-            ids &= {int(i) for i in n[n >= config.N_ROUNDS].index}
+            # 轮数按被试语言(2026-10-27):ja 是 4 条件设计,要交满 4 份;其余 3 份。
+            need = {int(r.id): config.rounds_for_lang(r.lang or "") for r in parts.itertuples()}
+            ids &= {int(i) for i, k in n.items() if k >= need.get(int(i), config.N_ROUNDS)}
         else:
             ids = set()
     return ids
@@ -100,7 +102,7 @@ def load(db_path: Path) -> pd.DataFrame:
         # 试测早期没人走完 3 轮时会一个不剩 —— 那时的空结果必须与「库里本来就没数据」
         # 区分开,否则看到「N=0」的人会以为埋点坏了,而其实是纳入规则在正常工作。
         print(f"    纳入规则:{n_before} 人中排除 {n_before - n_after} 人"
-              f"(其中名单剔除的非被试会话 {n_listed} 人;其余为 dev 测试被试或未走完 {config.N_ROUNDS} 轮)"
+              f"(其中名单剔除的非被试会话 {n_listed} 人;其余为 dev 测试被试或未走完全部轮次)"
               + ("  ⚠️ 全部被排除 —— 库里有数据,但还没有人走完全部轮次"
                  if n_after == 0 else ""))
     # avoid column collisions on merge (id/created_at exist in both)
