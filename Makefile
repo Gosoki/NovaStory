@@ -10,7 +10,7 @@ BASELINE_LANG ?= ja
 # 若 v3 刚把它们清空,embed 会拒绝执行 —— 这时不带 EMBED_LANG 重跑,已缓存的不计费)
 EMBED_LANG ?=
 
-.PHONY: help dev baseline norming v3 events pilot embed judge stats stats-zh stats-ja stats-novice stats-f stats-ja-pred power figures analysis smoke robust smoke-e2e i18n freeze freeze-check precompress serve
+.PHONY: help dev baseline norming v3 events pilot embed judge stats stats-zh stats-ja stats-novice stats-f stats-ja-pred audit-db power figures analysis smoke robust smoke-e2e i18n freeze freeze-check precompress serve
 
 dev:        ## 本地开发起服务(热重载;生产 config.toml 默认关)
 	.venv/bin/streamlit run app.py --server.runOnSave true --server.fileWatcherType auto
@@ -59,6 +59,10 @@ stats-f:    ## 第 4 条件 F 的日本内部分析(prereg.F_PRIMARY:逐镜头 m
 
 stats-ja-pred: ## 日本队列的方向复核预测(prereg.JA_DIRECTION_PREDICTIONS P1–P3 + 描述性 B1–B3;2026-10-28;只读 embedding 缓存)
 	$(PY) analysis/ja_predictions.py
+
+DB ?= data/novastory.db
+audit-db:   ## 数据层审计(只读,只出汇总;拿到服务器新副本后:make audit-db DB=<副本路径>;docs/paper/19 §6)
+	$(PY) scripts/audit_db.py --db $(DB)
 
 stats-novice: ## 同上但只跑 novice 子集(**事后探索性**,非确证;结论里必须标 exploratory)
 	$(PY) analysis/stats.py --population novice
