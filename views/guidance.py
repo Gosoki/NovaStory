@@ -88,15 +88,18 @@ def render(topic: dict) -> None:
     st.text_input(t("guidance.custom_label"), key=cust_key, max_chars=300)
 
     cols = st.columns(2)
-    if idx > 0 and cols[0].button(t("guidance.prev"), width="stretch"):
+    # 按题加 key(2026-10-29 审计):没有 key 的按钮 id 只由标签决定、各题相同,双击「次の質問」时第二下
+    # 落在下一题的同一个按钮上(下一题还没答 → 报错;「前の質問」则连退两题)。外观不变。
+    if idx > 0 and cols[0].button(t("guidance.prev"), width="stretch", key=f"_g_prev_{g_round}_{idx}"):
         _save_current(g_round, idx)
         st.session_state["r_g_idx"] -= 1
         st.rerun()
     last = idx == len(qs) - 1
     label = t("guidance.finish") if last else t("guidance.next")
-    if cols[1].button(label, type="primary", width="stretch"):
+    if cols[1].button(label, type="primary", width="stretch", key=f"_g_next_{g_round}_{idx}"):
         if not _answered(g_round, idx, q):
-            st.error(t("errors.answer_or_skip"))
+            # 兜底开放题没有选项、也没有「AI に任せる」,提示不能叫被试去选
+            st.error(t("errors.answer_or_skip" if q.get("options") else "errors.answer_open"))
             return
         _save_current(g_round, idx)
         if last:

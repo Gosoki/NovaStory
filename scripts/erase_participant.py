@@ -30,7 +30,8 @@ BACKUP = ROOT / "backup"
 
 def find_pid(con: sqlite3.Connection, args) -> int | None:
     if args.pid:
-        return args.pid
+        # 输错的 id 不能照样报告「已删除」(2026-10-29 审计)
+        return args.pid if con.execute("SELECT 1 FROM participants WHERE id=?", (args.pid,)).fetchone() else None
     if args.code:
         r = con.execute("SELECT id FROM participants WHERE completion_code=?", (args.code.strip().upper(),)).fetchone()
         return r[0] if r else None
@@ -92,6 +93,7 @@ def main() -> None:
     if not args.yes:
         print("预览模式 —— 加 --yes 才会删除。")
         return
+    con.execute("PRAGMA secure_delete=ON")   # 删掉的原文不留在库文件的空闲页里
     with con:
         for t in tables:
             con.execute(f"DELETE FROM {t} WHERE participant_id=?", (pid,))
@@ -100,10 +102,18 @@ def main() -> None:
     for d in img_dirs:
         shutil.rmtree(d, ignore_errors=True)
     import pandas as pd
+    changed = []
     for c in csvs:
-        df = pd.read_csv(c)
-        if "participant_id" in df.columns:
+        # 只重写**真的含该被试**的 CSV,并按 round_trip 精度读(2026-10-29 审计):以前只要有 participant_id 列
+        # 就整份重写,浮点末位被改,冻结快照里登记了哈希的 CSV(zh_v1_*/MANIFEST)就对不上了
+        df = pd.read_csv(c, float_precision="round_trip")
+        if "participant_id" in df.columns and (df["participant_id"] == pid).any():
             df[df["participant_id"] != pid].to_csv(c, index=False)
+            changed.append(c)
+    if changed:
+        print(f"分析 CSV:{len(changed)} 份删掉了该被试的行:{[str(c.relative_to(ANALYSIS)) for c in changed]}"
+              + ("(⚠️ 其中有快照目录里的文件,快照的 MANIFEST 哈希要相应更新)"
+                 if any("zh_v1_" in str(c) or "MANIFEST" in {p.name for p in c.parent.iterdir()} for c in changed) else ""))
     jl = ANALYSIS / "judge.jsonl"
     if jl.exists():
         keep = [l for l in jl.read_text(encoding="utf-8").splitlines()
@@ -132,7 +142,8 @@ def main() -> None:
     if frozen:
         print(f"⚠️ data/analysis/ 下还有 {len(frozen)} 个文件可能仍含该被试,需人工处理(删掉或重新生成):"
               f"{[str(p.relative_to(ANALYSIS)) for p in frozen]}")
-    old = sorted(BACKUP.glob("novastory-*.db")) if BACKUP.exists() else []
+    old = (sorted([*BACKUP.glob("**/novastory-*.db"), *BACKUP.glob("**/storyboard_images-*.tar.gz"),
+                   *BACKUP.glob("**/analysis-extras-*.tar.gz")]) if BACKUP.exists() else [])
     if old:
         print(f"⚠️ 备份目录里还有 {len(old)} 份历史快照可能仍含该被试(最早 {old[0].name}):"
               " 要么现场删掉这些快照,要么按 docs/paper/07 §2.5 告知「バックアップからは最長 30 日で消えます」。")

@@ -39,8 +39,13 @@ def main() -> None:
 
     # 已入组的会话:把带续接 token 的 URL 记进浏览器,关掉标签页还能跳回来
     # (否则重新扫码 = 第二行被试 + 吃掉一个拉丁方 seq,见 core/state 的那段注释)。
+    # 做完之后反过来清掉(2026-10-29 审计):否则同一台设备的下一个人在同意页会看到「前回の続きから」,
+    # 点进去就是上一位的完成页,两小时内联系表单还开着,邮箱会写进上一位的行。
     if st.session_state.get("participant_id"):
-        state.remember_resume_url()
+        if st.session_state.get("stage") == "done":
+            state.forget_resume_url()
+        else:
+            state.remember_resume_url()
 
     stage = st.session_state["stage"]
     if stage == "consent":
@@ -236,6 +241,16 @@ header[data-testid="stHeader"] [data-testid="stExpandSidebarButton"]:active{
    钩子是 data-stale 属性(1.60 的已构建产物里唯一稳定的选择器);Streamlit 升级后若失效,
    表现只是「变暗回来了」,不会白屏。 */
 .stElementContainer[data-stale="true"]{opacity:1!important;transition:none!important}
+/* 例外:AI 调用等待中(views/_streaming 在本次运行里画了 .ns-busy 标记)时,上一次运行残留、
+   还没被重画的旧元素藏起来且不可点(2026-10-29 审计)。中国队列 E 出题时,进度条下面还完整显示着
+   旧的创意框和「制作を開始」按钮,被试以为没反应、连点 —— 每点一次就是一次 rerun,调用被打断
+   (现已能接着等,但旧按钮仍会改动状态)。只在有 AI 调用的运行里生效;不支持 :has() 的浏览器
+   退回原样(旧元素照常显示,不影响功能)。 */
+body:has(.stElementContainer:not([data-stale="true"]) .ns-busy) .stElementContainer[data-stale="true"]{
+  visibility:hidden!important; pointer-events:none!important;
+}
+.stElementContainer:has(.ns-busy){height:0!important;min-height:0!important;margin:0!important;
+  padding:0!important;overflow:hidden!important}
 .stExpander summary,
 [data-baseweb="tab-list"],[data-baseweb="tab"]{opacity:1!important}
 

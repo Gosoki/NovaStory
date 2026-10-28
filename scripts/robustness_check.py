@@ -63,10 +63,13 @@ _QS = {"questions": [
     {"dimension": "tone", "question": "基调？", "options": ["C", "D"], "why": ""},
 ]}
 # "ok" | "raise"(断网) | "empty"(网关返回空串,无异常) | "badjson"(JSON 解析不了)
-MODE = {"stream": "ok", "json": "ok"}
+MODE = {"stream": "ok", "json": "ok", "delay": 0.0}
+CALLS: list[str] = []   # 实际发到「API」的调用(组名)—— G 节查「打断后有没有重发」
 
 
 def _stub_stream(system, user, *, group, user_id="", temperature=None):
+    CALLS.append(group)
+    time.sleep(MODE["delay"])
     m = MODE["stream"]
     if m == "raise":
         raise llm.LLMCallError("Connection error: [Errno 111] Connection refused")
@@ -74,6 +77,8 @@ def _stub_stream(system, user, *, group, user_id="", temperature=None):
 
 
 def _stub_json(system, user, *, group, user_id="", retries=None, temperature=None):
+    CALLS.append(group)
+    time.sleep(MODE["delay"])
     m = MODE["json"]
     if m == "raise":
         raise llm.LLMCallError("Request timed out")
@@ -654,6 +659,70 @@ def section_f() -> None:
     ck(not any("@" in w.value for w in at.warning), "告警只报计数，不把邮箱地址显示出来")
 
 
+def section_g() -> None:
+    head("G. 等待中被 rerun 打断（点旧按钮 / 双击 / 重连 → fastReruns 停掉当前运行）")
+    from streamlit.runtime.scriptrunner_utils.script_run_context import get_script_run_ctx
+    from views import _streaming
+
+    real = _streaming.time
+
+    class _StopOnce:
+        """替身 time 模块:主线程在等待循环里第一次 sleep 时,向当前运行发 STOP。"""
+        def __init__(self) -> None:
+            self.left = 1
+
+        def time(self) -> float:
+            return real.time()
+
+        def sleep(self, sec: float) -> None:
+            ctx = get_script_run_ctx()
+            if self.left and ctx is not None:
+                self.left -= 1
+                ctx.script_requests.request_stop()
+            real.sleep(sec)
+
+    def run_interrupted(at: AppTest, act) -> None:
+        _streaming.time = _StopOnce()
+        try:
+            act(at)
+        finally:
+            _streaming.time = real
+        safe_run(at)   # 下一次运行(新的 runner)
+
+    def ev_types(pid: int) -> list[str]:
+        ev = db.load_table("events")
+        return list(ev.loc[ev["participant_id"] == pid, "type"])
+
+    MODE.update(stream="ok", json="ok", delay=0.6)
+    try:
+        # G1 E 出题(非流式):打断后接着等原来那次,不重发
+        CALLS.clear()
+        at = seed_round("E")
+        pid = at.session_state["participant_id"]
+        run_interrupted(at, write_intent)
+        types = ev_types(pid)
+        ck(CALLS.count("E-guidance-r1") == 1 and bool(at.session_state["r_g_questions"]),
+           "E 出题被打断：只发 1 次请求，下一次运行接上并显示问题",
+           f"实际发出 {CALLS.count('E-guidance-r1')} 次")
+        ck(types.count("llm_start") == 1 and types.count("llm_done") == 1 and "llm_reattach" in types,
+           "E 出题被打断：事件 = 1 start + reattach + 1 done", f"{types}")
+
+        # G2 C 生成(流式):打断后接着显示原来那份,C 仍然只生成一次
+        CALLS.clear()
+        at = seed_round("C")
+        pid = at.session_state["participant_id"]
+        run_interrupted(at, write_intent)
+        types = ev_types(pid)
+        ck(CALLS.count("C-final") == 1 and len(at.session_state["r_versions"]) == 1,
+           "C 生成被打断：只生成 1 次，草稿只有 1 版", f"实际发出 {CALLS.count('C-final')} 次")
+        ck(types.count("llm_start") == 1 and types.count("llm_done") == 1 and "llm_reattach" in types,
+           "C 生成被打断：事件 = 1 start + reattach + 1 done", f"{types}")
+        ck("_llm_inflight" not in at.session_state or not at.session_state["_llm_inflight"],
+           "取走结果后登记表清空（不残留在途调用）")
+    finally:
+        MODE.update(delay=0.0)
+
+
 def main() -> None:
     llm.generate_stream = _stub_stream
     llm.generate_json = _stub_json
@@ -665,6 +734,7 @@ def main() -> None:
     section_d()
     section_e()
     section_f()
+    section_g()
 
     print(f"\n{'=' * 68}")
     if _FAILS:

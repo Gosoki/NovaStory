@@ -31,6 +31,15 @@ _TAIL = re.compile(r"[。．.!！?？\s]+$")
 # 模型偶尔会无视「不给例子」—— 带这些标记的题面不用,退回固定题面。
 _EXAMPLE_MARKERS = ("例えば", "たとえば", "例:", "例：", "など", "比如", "例如", "之类",
                     "for example", "e.g.", "such as")
+# ja 题面的额外规则(2026-10-29 审计:合成题测试里这些都漏网了)。F 只在 ja 的 4 条件设计里出现。
+#   选项 / 举例:「それとも」「どちら」「とか」「みたいな」、「のような」(「どのような」除外)
+#   拍摄技术:提示里禁止问,题面里出现就不用
+_JA_CHOICE = re.compile(r"それとも|または|どちら|とか|みたいな|(?<!ど)のような")
+_JA_CAMERA = re.compile(r"カメラ|アングル|アップ|撮影|撮り方|秒数")
+_JA_KANA = re.compile(r"[ぁ-ゖァ-ヺ]")
+_MID_STOP = re.compile(r"[。．.!！?？]\s*\S")   # 句末符号后面还有字 = 不止一句(先夸奖 / 复述再问)
+_PAIRED_QUOTES = ("「」", "『』", "“”", '""', "''")
+_JA_MAX = 80   # 提示要求 60 字以内,留一点余量
 
 
 def begin() -> None:
@@ -63,11 +72,17 @@ def _clean_question(data) -> str | None:
     q = data.get("question")
     if not isinstance(q, str):
         return None
-    q = q.strip().strip("「」\"'").strip()
+    q = q.strip()
+    # 只剥成对的外层引号:「最後のひと口」の場面で…？ 这种开头引用原话的题,首尾不是一对,不能剥
+    if len(q) >= 2 and q[0] + q[-1] in _PAIRED_QUOTES:
+        q = q[1:-1].strip()
     if not (4 <= len(q) <= 200) or "\n" in q:   # 200:en 的 25 词问题也放得下
         return None
     low = q.lower()
-    if any(m in low for m in _EXAMPLE_MARKERS):
+    if any(m in low for m in _EXAMPLE_MARKERS) or _MID_STOP.search(q):
+        return None
+    if get_lang() == "ja" and (len(q) > _JA_MAX or not _JA_KANA.search(q)
+                               or _JA_CHOICE.search(q) or _JA_CAMERA.search(q)):
         return None
     return q
 

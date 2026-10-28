@@ -218,12 +218,20 @@ def main(argv: list[str] | None = None) -> int:
         print("⛔ CSV 里还没有 F 的 trial(日本数据还没进库?)—— 无可分析。")
         return 1
 
+    # prereg.JA_STOP_RULE:不满一整轮(16 序列各 ≥1 名完成者)→ F 的检验降为探索性
+    n_round = prereg.WILLIAMS_ROUND_N_BY_LANG.get(langs[0], 16) if len(langs) == 1 else 16
+    covered = (pd.to_numeric(df.drop_duplicates("participant_id")["seq"], errors="coerce").dropna()
+               .astype(int).nunique() if "seq" in df else 0)
+    explor = covered < n_round
+    if explor:
+        print(f"⛔ 只覆盖 {covered}/{n_round} 个序列(不满一整轮)→ 按 prereg.JA_STOP_RULE,下面 F 的判定**降为探索性**")
     hi, lo = prereg.F_PRIMARY["contrast"]
     print(f"\n[主要] {prereg.F_PRIMARY['dv']}  {hi} − {lo}(双侧,α={prereg.F_PRIMARY['alpha']};"
           f"构念 = {prereg.F_PRIMARY['construct']})")
     prim = paired(df, prereg.F_PRIMARY["dv"], hi, lo)
     print("  " + _fmt(prim))
-    print("  → 判定:" + verdict(prim, prereg.F_PRIMARY["sesoi"], prereg.F_PRIMARY["alpha"]))
+    print("  → " + ("[探索性] " if explor else "") + "判定:"
+          + verdict(prim, prereg.F_PRIMARY["sesoi"], prereg.F_PRIMARY["alpha"]))
     print("  ⚠️ F 的回答按生成 prompt 必须写进脚本 → F>E 有一部分按构造会出现;关于所有权只看下面的 own_mean")
 
     try:
@@ -232,7 +240,7 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as e:  # noqa: BLE001 —— 复合建不出来只影响一条次要
         print(f"  注:fidelity_composite 建不出来({type(e).__name__}: {e}),该次要项跳过")
         comp = df
-    print("\n[次要](只作描述;方向是事先写明的预测)")
+    print("\n[次要](只作描述;方向是事先写明的预测;「差」一律 = 前者 − 后者,例如 F−E < 0 即 E 更高)")
     for name, direction in prereg.F_SECONDARY:
         dv, _, pair = name.partition(" · ")
         a, b = (pair.split("−") if pair else (hi, lo))

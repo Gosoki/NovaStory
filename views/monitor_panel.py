@@ -23,9 +23,10 @@ def _loads(x) -> dict:
     if not isinstance(x, str) or not x.strip():
         return {}
     try:
-        return json.loads(x)
+        d = json.loads(x)
     except (ValueError, TypeError):
         return {}
+    return d if isinstance(d, dict) else {}   # 手改成数组 / 字符串的行不能让整个研究员页抛 AttributeError
 
 
 def _topic_title(x) -> str:
@@ -63,13 +64,25 @@ def render() -> None:
         st.info(t("monitor.empty"))
         return
 
+    # 库里一有 ja 行(2026-10-29 审计):健康 / 用量 / 平衡只统计日本队列 —— 混着中国的数据,「未完成调用」
+    # 一开采就是 54%,07 §3.6 第 8 步「超过 25% 就暂停放人」从第一天起就误触发;采集期间也不显示因变量。
+    scope = None
+    if "lang" in parts and parts["lang"].isin(config.FOUR_COND_LANGS).any():
+        scope = {int(i) for i in parts.loc[parts["lang"].isin(config.FOUR_COND_LANGS), "id"]}
+
     _overview(parts)
     _sessions(parts, trials)
-    _data_health(trials, dev_ids)
-    _usage(dev_ids)
-    _balance(trials)
+    if scope is not None:
+        st.caption(t("monitor.cohort_scope"))
+    _data_health(trials, dev_ids, scope)
+    _usage(dev_ids, scope)
+    _balance(trials if scope is None or "participant_id" not in trials
+             else trials[trials["participant_id"].isin(scope)])
     _progress(parts)
-    _descriptive(trials)
+    if scope is None:
+        _descriptive(trials)
+    else:
+        st.caption(t("monitor.dv_hidden"))
 
 
 def _overview(parts: pd.DataFrame) -> None:
@@ -140,8 +153,11 @@ def _sessions(parts: pd.DataFrame, trials: pd.DataFrame) -> None:
     ev = db.load_table("events")
     last_seen = (ev.groupby("participant_id")["ts"].max()
                  if {"participant_id", "ts"} <= set(ev.columns) else pd.Series(dtype=str))
-    n_rounds = (trials.groupby("participant_id").size()
-                if "participant_id" in trials else pd.Series(dtype=int))
+    # 按**问卷**数(与分析的纳入规则同口径,v3.included_participants),不按 trials:交满全部问卷、
+    # 只差总问卷的人已是有效被试,不能出现可点的释放按钮(2026-10-29 审计)
+    quest = db.load_table("questionnaires")
+    n_rounds = (quest.groupby("participant_id")["round_idx"].nunique()
+                if {"participant_id", "round_idx"} <= set(quest.columns) else pd.Series(dtype=int))
 
     st.caption(t("monitor.sessions_hint"))
     hdr = st.columns([1, 1, 2.2, 2.2, 1.2, 1.4])
@@ -157,7 +173,12 @@ def _sessions(parts: pd.DataFrame, trials: pd.DataFrame) -> None:
         # 否则研究员看到的「最后活动」会比实际早 9 小时,判断人走没走时会误判。
         c[2].write(_jst(r.get("created_at")))
         c[3].write(_jst(last_seen.get(pid)))
-        c[4].write(f"{int(n_rounds.get(pid, 0))}/{config.rounds_for_lang(r.get('lang') or '')}")
+        n_total = config.rounds_for_lang(r.get("lang") or "")
+        n_q = int(n_rounds.get(pid, 0))
+        c[4].write(f"{n_q}/{n_total}")
+        if n_q >= n_total:
+            c[5].caption(t("monitor.fs_only"))
+            continue
         with c[5].popover(t("monitor.release")):
             st.caption(t("monitor.release_help"))
             if st.button(t("monitor.release_confirm"), key=f"_rel_{pid}",
@@ -186,13 +207,16 @@ def _dup_contacts(parts: pd.DataFrame) -> None:
         st.warning(t("monitor.dup_contact", n=dup))
 
 
-def _data_health(trials: pd.DataFrame, dev_ids: set[int] = frozenset()) -> None:
+def _data_health(trials: pd.DataFrame, dev_ids: set[int] = frozenset(), scope: set[int] | None = None) -> None:
     """Live data-quality signals so a silent corruption (parse failures, LLM
     errors, guidance fallbacks, slow gens) is visible between sessions instead of
     a green progress bar hiding a broken primary DV (deep-review 2026-07-19, #30)."""
     ev = db.load_table("events")
     if dev_ids and "participant_id" in ev:
         ev = ev[~ev["participant_id"].isin(dev_ids)]
+    if scope is not None:
+        ev = ev[ev["participant_id"].isin(scope)] if "participant_id" in ev else ev
+        trials = trials[trials["participant_id"].isin(scope)] if "participant_id" in trials else trials
     st.markdown(f"**{t('monitor.health_title')}**")
     if ev.empty and trials.empty:
         st.caption(t("monitor.health_none"))
@@ -253,12 +277,36 @@ def _data_health(trials: pd.DataFrame, dev_ids: set[int] = frozenset()) -> None:
     # 少量未闭合是正常的(被试正在生成中、或刚好关了页面);持续偏高说明有人在反复触发。
     if n_start >= 10 and unclosed_rate > 0.25:
         st.warning(t("monitor.unclosed_warn", n=unclosed, total=n_start))
+    # 按条件(组名首字母 C / D / E / F):07 §3.6 第 7 步每晚要看的「哪个条件在被打断」
+    def _per_cond(kind: str) -> pd.Series:
+        return pj[typ == kind].map(lambda x: str(_loads(x).get("group", "?")).split("-")[0]).value_counts()
+    s_, d_, e_, r_ = (_per_cond(k) for k in ("llm_start", "llm_done", "llm_error", "llm_reattach"))
+    conds = sorted(set(s_.index) | set(r_.index))
+    if conds:
+        st.caption(t("monitor.health_by_cond",
+                     detail=" · ".join(f"{c} {max(int(s_.get(c, 0)) - int(d_.get(c, 0)) - int(e_.get(c, 0)), 0)}"
+                                       f"/{int(s_.get(c, 0))}" for c in conds),
+                     re=" · ".join(f"{c} {int(r_.get(c, 0))}" for c in conds)))
+    # F 的采访:题数分布与退回固定题面的比例(上面的 fallback 卡只看 E)
+    if "condition" in trials and "guidance_json" in trials and (trials["condition"] == "F").any():
+        nq, n_fb, n_it = [], 0, 0
+        for g in trials.loc[trials["condition"] == "F", "guidance_json"]:
+            for rnd in _loads(g).get("rounds", []):
+                if isinstance(rnd, dict) and rnd.get("source") == "interview":
+                    items = [it for it in rnd.get("items", []) if isinstance(it, dict)]
+                    nq.append(len(items))
+                    n_it += len(items)
+                    n_fb += sum(bool(it.get("fallback")) for it in items)
+        if nq:
+            dist = pd.Series(nq).value_counts().sort_index()
+            st.caption(t("monitor.f_stats", dist=" / ".join(f"{k}:{v}" for k, v in dist.items()),
+                         fb=n_fb, n=n_it))
     if len(fps) > 1:
         # B7:服务端 build 在采数中途换了 —— 输出本身不可逐字复现,这是唯一能报告的漂移证据
         st.warning(t("monitor.fingerprint_drift", n=len(fps)))
 
 
-def _usage(dev_ids: set[int] = frozenset()) -> None:
+def _usage(dev_ids: set[int] = frozenset(), scope: set[int] | None = None) -> None:
     """API 用量。数据一直在记(llm_done 的 payload.usage 由 core/llm._stash_usage 塞进去),
     只是此前面板一个字都不显示 —— 采数期看不到用量,撞限额或跑超预算都只能事后从账单发现。
 
@@ -269,6 +317,8 @@ def _usage(dev_ids: set[int] = frozenset()) -> None:
         return
     if dev_ids and "participant_id" in ev:
         ev = ev[~ev["participant_id"].isin(dev_ids)]
+    if scope is not None and "participant_id" in ev:
+        ev = ev[ev["participant_id"].isin(scope)]
     pj = ev["payload_json"] if "payload_json" in ev else pd.Series(dtype=str)
     done_pay = pj[ev["type"] == "llm_done"].map(_loads)
     if done_pay.empty:
@@ -286,6 +336,8 @@ def _usage(dev_ids: set[int] = frozenset()) -> None:
     parts = db.load_table("participants")
     done_ids = (set(parts.loc[parts["status"] == "done", "id"].astype(int))
                 if "status" in parts and "id" in parts else set())
+    if scope is not None:
+        done_ids &= scope
     n_done = len(done_ids)
     if n_done and "participant_id" in ev:
         mine = ev["participant_id"].isin(done_ids)

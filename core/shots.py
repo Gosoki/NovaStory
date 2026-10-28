@@ -19,12 +19,12 @@ import re
 # anchors so their text never bleeds into the visual/audio fields.
 # Labels are matched case-insensitively so English 【Duration】/【duration】 both hit.
 _FIELD_RE = re.compile(
-    r"【\s*(景别|拍法|运镜|画面描写|台词/音效|台词|对白|音效|声音|时长|时间"
-    r"|サイズ|ショットサイズ|カメラ|映像|画面外の音|画面|ビジュアル|セリフ・音|セリフ|ナレーション|音声|効果音|BGM|SE|音|尺|秒数|秒|長さ|時間"
+    r"【\s*(景别|拍法|运镜|画面描写|台词/音效|台词|台詞|对白|音效|声音|时长|时间"
+    r"|サイズ|ショットサイズ|ショット|カメラワーク|カメラ|アングル|構図|映像|画面外の音|画面|ビジュアル|セリフ・音|セリフ|ナレーション|音声|効果音|BGM|SE|音|尺|秒数|秒|長さ|時間"
     r"|Duration|Seconds|Sec|Time|Length|Shot|Camera|Visual|Action|Audio|Dialogue|Narration|SFX|Sound)"
     # 标签后只允许「附注」式后缀(括号 / 冒号 / 斜杠 / 中点开头,如【时长(秒)】【秒数/長さ】),
     # 不再是任意 [^】]*:那会把【時間帯】吞成 duration、把「朝」当秒数 → dur_total NaN → spec_ok=0。
-    r"(?:\s*[（(::/・][^】]*)?\s*】\s*[::]?\s*",
+    r"(?:\s*[（(:：/／・･·][^】]*)?\s*】\s*[:：]?\s*",
     re.IGNORECASE,
 )
 _FIELD_MAP = {
@@ -34,6 +34,8 @@ _FIELD_MAP = {
     "时长": "duration", "时间": "duration",
     # ja(「画面外の音」= 画外音,必须排在「画面」之前且归 audio)
     "サイズ": "shot_type", "ショットサイズ": "shot_type", "カメラ": "shot_type",
+    # IME 手改稿里常见的别名(2026-10-29 审计):台詞 = セリフ;カメラワーク / アングル / 構図 / ショット = 拍法
+    "ショット": "shot_type", "カメラワーク": "shot_type", "アングル": "shot_type", "構図": "shot_type", "台詞": "audio",
     "映像": "visual", "画面": "visual", "ビジュアル": "visual", "画面外の音": "audio",
     "セリフ・音": "audio", "セリフ": "audio", "ナレーション": "audio", "音声": "audio",
     "効果音": "audio", "BGM": "audio", "SE": "audio", "音": "audio",
@@ -59,7 +61,7 @@ def _field_key(label: str) -> str | None:
 # 占有量词(*+ / ?+,Python ≥3.11):以前 `^\s*(?:[#*>\-\s]*)?\s*` 三段可互相吞让的空白在长空白串上
 # 灾难性回溯 —— 任何持链接的人粘贴 10 万个空格就能让整台服务冻结几分钟(ReDoS)。
 _SHOT_SPLIT_RE = re.compile(
-    r"(?m)^\s*+(?:[#*>\-]\s*+)*+(?:镜头|カット|ショット|Shot|Cut)?+\s*+(\d{1,2}|[①-⑩])\s*+[\.．、::|)）]",
+    r"(?m)^\s*+(?:[#*>\-]\s*+)*+(?:镜头|カット|ショット|Shot|Cut)?+\s*+(\d{1,2}|[①-⑩])\s*+[\.．、:：|)）]",
     re.IGNORECASE,
 )
 _CIRCLED = "①②③④⑤⑥⑦⑧⑨⑩"
@@ -72,7 +74,7 @@ def _shot_no(tok: str) -> int:
 # Since 2026-09-01 (§9) that is the visual field; scripts written in the older
 # duration-first order are still parsed by the second pattern, so a hand-edited
 # or resumed script from either era survives.
-_LABEL_TAIL = r"(?:\s*[（(::/・][^】]*)?\s*】"   # 与 _FIELD_RE 同一条后缀规则
+_LABEL_TAIL = r"(?:\s*[（(:：/／・･·][^】]*)?\s*】"   # 与 _FIELD_RE 同一条后缀规则
 _VISUAL_START_RE = re.compile(
     r"【\s*(?:画面描写|画面|映像|ビジュアル|Visual|Action)" + _LABEL_TAIL, re.IGNORECASE
 )
@@ -86,13 +88,13 @@ _DURATION_START_RE = re.compile(
 # and since the two-line layout made this fallback the ordinary path for
 # un-numbered scripts, that deletion would land in stored + embedded content.
 _TRAILING_NUM_RE = re.compile(
-    r"\n[\s\-*#>]*+(?:镜头|カット|ショット|Shot|Cut)?+\s*+(?:\d{1,2}|[①-⑩])\s*+[\.．、::|)）]\s*+$", re.IGNORECASE
+    r"\n[\s\-*#>]*+(?:镜头|カット|ショット|Shot|Cut)?+\s*+(?:\d{1,2}|[①-⑩])\s*+[\.．、:：|)）]\s*+$", re.IGNORECASE
 )
 # 模型偶尔在列表末尾补一行「合計:15秒」/「Total: 15 s」。提示词明令只输出编号列表,但它还是会来,
 # 而它会整段并进最后一镜的 audio(编号排版)或 duration(无编号排版)—— audio 经 strip_format
 # 进 embedding,等于给保真 Δ 掺了非内容文本。只剪块尾、只剪不含【】标签的那一行。
 _SUMMARY_LINE_RE = re.compile(
-    r"\n[\s\-*#>（(]*+(?:(?:\d{1,2}|[①-⑩])\s*+[\.．、::|)）]\s*+)?+(?:合計|合计|总计|総計|総尺|Total)[^\n【]*+$",
+    r"\n[\s\-*#>（(]*+(?:(?:\d{1,2}|[①-⑩])\s*+[\.．、:：|)）]\s*+)?+(?:合計|合计|总计|総計|総尺|トータル|計(?=\s*[:：]?\s*\d)|Total)[^\n【]*+$",
     re.IGNORECASE,
 )
 

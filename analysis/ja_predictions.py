@@ -141,6 +141,26 @@ def main(argv: list[str] | None = None) -> int:
         v, rule = vals[c["id"]]
         res = "数据不足" if not np.isfinite(v) else ("与中国方向一致" if rule(v) else "与中国不一致")
         print(f"  [{c['id']}] {c['what']}:{v:.2f}(预期 {c['expect']};中国 {c['china']})→ {res}")
+
+    # prereg.JA_SENSITIVITY 的变量读数(2026-10-29):「加 / 不加」的模型版本在日本数据进库后按这些变量跑,
+    # 这里先把它们算出来、按条件 / 轮次摆开(描述性,不是检验;不替换任何主估计)
+    allc = raw[raw["lang"] == args.lang]
+    print("\n[预先声明敏感性的变量读数](prereg.JA_SENSITIVITY;描述性)")
+    for item in prereg.JA_SENSITIVITY:
+        print(f"  · {item}")
+    if {"n_llm_reattach", "n_llm_unclosed"} & set(allc.columns):
+        hit = (allc.get("n_llm_reattach", 0).fillna(0) > 0) | (allc.get("n_llm_unclosed", 0).fillna(0) > 0)
+        print("  请求被打断过的 trial 比例(按条件):"
+              + " · ".join(f"{c} {hit[allc['condition'] == c].mean():.0%}" for c in sorted(allc["condition"].unique())))
+    if "straightline" in allc:
+        sl = allc.groupby("round_idx")["straightline"].mean()
+        print("  straightline 比例(按轮次):" + " · ".join(f"第{int(r)}轮 {v:.0%}" for r, v in sl.items()))
+    if "attention_ok" in allc:
+        att = allc.drop_duplicates("participant_id")["attention_ok"]
+        print(f"  注意力题失败:{int((att == 0).sum())}/{int(att.notna().sum())} 人")
+    e_pos = allc.loc[allc["condition"] == "E", "round_idx"].value_counts().sort_index()
+    if len(e_pos):
+        print("  E 所在轮次:" + " · ".join(f"第{int(r)}轮 {n} 人" for r, n in e_pos.items()))
     return 0
 
 

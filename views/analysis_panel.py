@@ -11,7 +11,7 @@ from pathlib import Path
 import streamlit as st
 
 from analysis.events import EVENT_COLS
-from core import db
+from core import config, db
 from i18n import t
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -70,12 +70,15 @@ def render() -> None:
     st.subheader(t("analysis.title"))
     st.caption(t("analysis.caption"))
 
-    # 惰性导入:只有打开这个面板才加载 pandas/statsmodels/matplotlib
-    from analysis import figures as A_fig
-    from analysis import pilot_check
-    from analysis import power_sim
-    from analysis import stats as A_stats
-    from analysis import v3
+    # 惰性导入**推迟到点按钮时**(2026-10-29 审计):研究员页每次渲染都会画这个面板,以前一打开就加载
+    # statsmodels / matplotlib(首次约 2 秒),占住服务进程 —— 采集期间打开后台,在线被试会卡一下。
+    def _mods():
+        from analysis import figures as A_fig
+        from analysis import pilot_check
+        from analysis import power_sim
+        from analysis import stats as A_stats
+        from analysis import v3
+        return A_fig, pilot_check, power_sim, A_stats, v3
 
     dbp = db.DB_PATH
     ANALYSIS_DIR.mkdir(parents=True, exist_ok=True)
@@ -91,10 +94,20 @@ def render() -> None:
     # z 在剩余样本内重算;写回的 v3_per_trial.csv 仍是全样本
     drop_attn = st.checkbox(t("analysis.drop_attn"), key="_an_drop_attn")
     population = "novice" if pop_novice else "all"
+    # 队列:默认只算中国(2026-10-29 审计)。以前中日都在库时,这里跑的是不含队列项、也不过门控的混合模型,
+    # 判定与 make stats 不同;而且采集期间研究员一点就看到日本的因变量(prereg.JA_STOP_RULE 不允许)。
+    # 勾上才纳入日本;两个队列都在时走与 make stats 同一个合并模型(门控 + 分国估计)。
+    include_ja = st.checkbox(t("analysis.include_ja"), key="_an_include_ja")
+
+    def _cohort(pt):
+        if include_ja or "lang" not in pt:
+            return pt
+        return pt[~pt["lang"].isin(config.FOUR_COND_LANGS)]
 
     def _drop_attn(pt):
         if not drop_attn:
             return pt
+        from analysis import stats as A_stats
         pt, k = A_stats.drop_attention_fail(pt)
         st.warning(t("analysis.drop_attn_line", k=k))
         return pt
@@ -118,23 +131,27 @@ def render() -> None:
 
     # ① 试测体检
     if c1.button(t("analysis.btn_pilot"), width="stretch"):
-        st.code(_capture_stdout(lambda: pilot_check.run(dbp)), language="text")
+        _, pilot_check, _, _, _ = _mods()
+        st.code(_capture_stdout(lambda: pilot_check.run(dbp, None if include_ja else "zh")), language="text")
 
     # ④ 功效(慢,几十秒)
     if c2.button(t("analysis.btn_power"), width="stretch"):
+        _, _, power_sim, _, _ = _mods()
         with st.spinner(t("analysis.power_spinner")):
             st.code(_capture_stdout(lambda: _run_power(power_sim)), language="text")
 
     # ② 分析结果:指标 + 统计
     if st.button(t("analysis.btn_results"), type="primary", width="stretch"):
         try:
+            _, _, _, A_stats, v3 = _mods()
             df = v3.load(dbp)
             csv_path = ANALYSIS_DIR / "v3_per_trial.csv"
             pt, kept = preserve_merged(v3.per_trial(df), csv_path)
             pt.to_csv(csv_path, index=False)
             if kept:
                 st.caption(t("analysis.kept_cols", cols=" · ".join(kept)))
-            pt = _drop_attn(pt)
+            pt = _drop_attn(_cohort(pt))
+            pooled = include_ja and "lang" in pt and pt["lang"].nunique() > 1
             df = df[df["participant_id"].isin(pt["participant_id"])]
             have = [x for x in v3._SUMMARY_COLS if x in pt.columns]
             st.markdown(t("analysis.means_title"))
@@ -158,7 +175,7 @@ def render() -> None:
                 if dv in comp and comp[dv].notna().sum() >= 6:
                     ed_box: dict = {}
                     def _run(dv=dv):
-                        _err, ed = A_stats.analyze_endpoint(comp, dv)
+                        _err, ed = A_stats.analyze_endpoint(comp, dv, pooled=pooled)
                         ed_box["ed"] = ed
                     st.code(_capture_stdout(_run), language="text")
                     if dv in prereg.PRIMARY_ENDPOINTS:
@@ -188,12 +205,13 @@ def render() -> None:
     # ③ 出图
     if st.button(t("analysis.btn_figures"), width="stretch"):
         try:
+            A_fig, _, _, A_stats, v3 = _mods()
             df = v3.load(dbp)
             csv_path = ANALYSIS_DIR / "v3_per_trial.csv"
             # 与「出分析结果」同一条路:接回 embed/events/judge 合入的列、收 warnings、按人群筛。
             # 以前出图分支三样都没做 —— 而进论文的正是图。
             pt, _ = preserve_merged(v3.per_trial(df), csv_path)
-            pt = _drop_attn(pt)
+            pt = _drop_attn(_cohort(pt))
             pt, _n_f = A_stats.drop_non_confirmatory(pt)   # F 不进 C/D/E 分析(与 make stats 同口径)
             comp, warns = _run_capturing_warnings(lambda: A_stats.build_composites(pt))
             for w in warns:
@@ -203,9 +221,9 @@ def render() -> None:
             FIGDIR.mkdir(parents=True, exist_ok=True)
             # 勾了任一非主分析选项:另存文件、图题标人群 —— 不能覆盖 make figures 写的主分析图
             # (进论文的正是图)。图题用英文:figures.py 没配 CJK 字体。
-            sfx = ("_novice" if pop_novice else "") + ("_attnV1" if drop_attn else "")
-            lab = (f"{'novice + ' if pop_novice else ''}{'V1 (not primary)' if drop_attn else 'novice'}"
-                   f", n={comp['participant_id'].nunique()}") if sfx else ""   # 要短:图题单行,过长会被裁掉
+            sfx = ("_novice" if pop_novice else "") + ("_attnV1" if drop_attn else "") + ("_with_ja" if include_ja else "")
+            tags = [x for x, on in (("novice", pop_novice), ("V1 (not primary)", drop_attn), ("zh+ja", include_ja)) if on]
+            lab = (" + ".join(tags) + f", n={comp['participant_id'].nunique()}") if tags else ""   # 要短:图题单行,过长会被裁掉
             tag = f" · {t('analysis.drop_attn_tag')}" if drop_attn else ""
             A_fig.fig_effort(pt, FIGDIR / f"fig_effort{sfx}.png", lab)
             st.image(str(FIGDIR / f"fig_effort{sfx}.png"), caption=t("analysis.cap_effort") + tag)

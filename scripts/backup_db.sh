@@ -5,8 +5,11 @@
 # 采数期务必进 cron:每日一次 + 建议每场被试后一次;并把 backup/ 异地同步一份。
 # 用法:  scripts/backup_db.sh [DB路径] [备份目录]
 #   env KEEP=30  保留最近 N 份(默认 30)
+#   里程碑快照(例如「中国队列结束」「日本开采前」)请放进**另一个目录**,别被每日轮转删掉:
+#     scripts/backup_db.sh data/novastory.db backup/milestone
 # cron 例(每日 03:00): 0 3 * * * cd /path/to/NovaStory && scripts/backup_db.sh >> backup/backup.log 2>&1
 set -euo pipefail
+umask 077   # 备份里有完成页自愿留下的邮箱:只给本人可读(以前按默认 umask 生成 644)
 
 DB="${1:-data/novastory.db}"
 DEST="${2:-backup}"
@@ -39,6 +42,8 @@ then
   echo "backup FAIL: $out 备份或完整性检查未通过" >&2
   exit 1
 fi
+# SHA-256 打在日志里(07 §3.6 第 7 步要记;拉回本机后用它核对)
+echo "backup sha256: $("$PYBIN" -c 'import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$out")  $out"
 
 # ---- 分镜插图(2026-09-01 拍板 1.5:必须一起备份) ----
 # 它们不在主库里,却是两样东西的唯一凭据:①02 §8.4 声明的图像模型漂移检测证据
@@ -59,6 +64,12 @@ extras=()
 for f in emb_cache.json judge.jsonl; do
   [ -e "$EXTRA/$f" ] && extras+=("$f")
 done
+# llm.log:被打断 / 失败调用的唯一记录(成本、重试、网关错误都只在这里),一起备份
+LLMLOG="$(dirname "$DB")/llm.log"
+if [ -s "$LLMLOG" ]; then
+  cp "$LLMLOG" "$DEST/llm-$ts.log"
+  echo "backup ok: $DEST/llm-$ts.log"
+fi
 if [ ${#extras[@]} -gt 0 ]; then
   tar -czf "$DEST/analysis-extras-$ts.tar.gz" -C "$EXTRA" "${extras[@]}"
   echo "backup ok: $DEST/analysis-extras-$ts.tar.gz (${extras[*]})"
@@ -70,6 +81,7 @@ fi
 (ls -1t "$DEST"/novastory-*.db 2>/dev/null || true) | tail -n +"$((KEEP + 1))" | xargs -r rm -f
 (ls -1t "$DEST"/storyboard_images-*.tar.gz 2>/dev/null || true) | tail -n +"$((KEEP + 1))" | xargs -r rm -f
 (ls -1t "$DEST"/analysis-extras-*.tar.gz 2>/dev/null || true) | tail -n +"$((KEEP + 1))" | xargs -r rm -f
+(ls -1t "$DEST"/llm-*.log 2>/dev/null || true) | tail -n +"$((KEEP + 1))" | xargs -r rm -f
 
 # ---- 剩余磁盘水位告警(12 §4④:DB 目录写不下时是诚实失败,但要提前知道) ----
 avail_kb="$(df -Pk "$DEST" | awk 'NR==2{print $4}')"

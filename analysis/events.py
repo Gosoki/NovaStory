@@ -44,7 +44,11 @@ PARTICIPANT_CSV_NAME = "v3_per_participant.csv"   # 与 --csv 同目录(两张�
 # 合入 v3_per_trial.csv 的事件层列。**公开契约**:views/analysis_panel 靠它在重算前把这些列
 # 接回来,手抄副本一旦漏一列,研究员每点一次按钮就静默抹掉一次。
 EVENT_COLS = ["t_questionnaire", "n_llm_calls", "n_llm_errors",
-              "llm_total_tokens", "llm_wait_max", "n_resumes", "n_fingerprints"]
+              "llm_total_tokens", "llm_wait_max", "n_resumes", "n_fingerprints",
+              # 请求被 rerun 打断的读数(prereg.JA_SENSITIVITY 第 1 条,2026-10-29):
+              #   n_llm_unclosed = 没有结束事件的 llm_start(中国队列:打断后整个重发,旧代码的口径)
+              #   n_llm_reattach = 打断后接着等原来那次调用的次数(2026-10-29 之后的代码,日本队列)
+              "n_llm_unclosed", "n_llm_reattach"]
 _COLS = EVENT_COLS
 
 
@@ -118,6 +122,9 @@ def round_metrics(g: pd.DataFrame) -> dict:
         "llm_wait_max": float(max(waits)) if waits else np.nan,
         "n_resumes": n_resumes,
         "n_fingerprints": len(fps),
+        "n_llm_unclosed": int(max((w["type"] == "llm_start").sum() - (w["type"] == "llm_done").sum()
+                                  - (w["type"] == "llm_error").sum(), 0)),
+        "n_llm_reattach": int((w["type"] == "llm_reattach").sum()),
     }
 
 

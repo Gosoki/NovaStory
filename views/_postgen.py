@@ -45,7 +45,7 @@ def render_editable(topic: dict, cond: str) -> None:
         # 而二次方爆炸本来就由那道退化分支兜底,不靠这个上限。
         max_chars=20000,
     )
-    st.caption(t("postgen.edit_hint"))
+    st.caption(t("postgen.edit_hint_f" if cond == "F" else "postgen.edit_hint"))   # F 没有 AI 修改通道
 
     if cond == "D":
         _render_revision_channel(topic)
@@ -155,11 +155,12 @@ def _history_user_turn(ai_idx: int, requests: list, guidance_rounds: list) -> No
                     t("guidance.ai_decide") if it.get("ai_decided")
                     else (it.get("chosen") or "—")
                 )
-                st.markdown(f"**{it['question']}**  \n→ {answer}")
+                st.markdown(f"**{it['question']}**")
+                st.markdown(_pre(f"→ {answer}"), unsafe_allow_html=True)   # 被试写的字逐字显示,不按 markdown 排
     elif requests and 1 <= ai_idx <= len(requests):
         with st.chat_message("user"):
             st.caption(t("history.req"))
-            st.markdown(requests[ai_idx - 1]["text"])
+            st.markdown(_pre(requests[ai_idx - 1]["text"]), unsafe_allow_html=True)
 
 
 def _render_revision_channel(topic: dict) -> None:

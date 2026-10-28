@@ -453,12 +453,18 @@ def diversity_by_group(df: pd.DataFrame) -> pd.DataFrame:
     out = []
     df = df.copy()
     df["topic"] = df["topic_json"].map(_topic_title)
-    for (cond, topic), g in df.groupby(["condition", "topic"]):
+    # 中日都在时按队列分开(2026-10-29 审计):题名统一取 ja 标题,不分队列的话两国稿子混成一组,
+    # 而压缩比 / distinct-2 是字节级 / 字符级的,跨语言不可比。只有一个队列时与原来逐位相同。
+    by_lang = "lang" in df and df["lang"].nunique() > 1
+    keys = ["lang", "condition", "topic"] if by_lang else ["condition", "topic"]
+    for key, g in df.groupby(keys):
+        lang, cond, topic = key if by_lang else (None, *key)
         finals = [strip_format(_text(x)) for x in g["final_output"].tolist()]
         finals = [x for x in finals if x]
         if len(finals) < 2:
             continue
         out.append({
+            **({"lang": lang} if by_lang else {}),
             "condition": cond, "topic": topic, "n": len(finals),
             "gzip_cr": textstats.gzip_cr(finals),
             "distinct2": textstats.distinct_n(finals, 2),
@@ -522,7 +528,7 @@ def main() -> None:
         note = "" if set(mix) <= {"ja", "zh"} else "   ⚠️ 出现 en 会话(研究员测试/脱离协议)——分析前确认是否剔除"
         print(f"=== 被试语言构成(人数)=== {mix}{note}\n")
     have = [c for c in _SUMMARY_COLS if c in pt.columns]
-    print("=== 按条件均值(核心对比 C/D/E)===")
+    print("=== 按条件均值(核心对比 C/D/E;日本另有 F,只在日本内部比)===")
     with pd.option_context("display.width", 200, "display.max_columns", 40,
                            "display.float_format", lambda x: f"{x:.2f}"):
         print(pt.groupby("condition")[have].mean(numeric_only=True).T)

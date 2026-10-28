@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
@@ -108,11 +109,25 @@ def _log(group: str, user_id: str, msg: str) -> None:
         pass  # logging must never break the experiment
 
 
+# --------- 调用状态(2026-10-29) ---------
+# 后台线程跑调用时(views/_streaming),配置与 usage / repro 记账走线程自己的一份 dict,不碰
+# st.session_state:Streamlit 在 rerun 时会停掉当前脚本,停掉之后任何一次 session_state 读写都会
+# 再抛 StopException —— 线程碰一下就被一起杀掉,请求白发、结果丢失(中国队列 E 出题被打断 108/144 次)。
+# 主线程里的调用(没有绑定)照旧读写 session_state,行为与改之前完全相同。
+_tls = threading.local()
+
+
+def _ss():
+    """本次调用读写的状态:后台线程绑了 `_tls.state` 就用它,否则用 st.session_state。"""
+    bound = getattr(_tls, "state", None)
+    return st.session_state if bound is None else bound
+
+
 # --------- client ---------
 
 def _client() -> OpenAI:
-    api_key = (st.session_state.get("api_key") or "").strip()
-    base_url = (st.session_state.get("base_url") or "").strip()
+    api_key = (_ss().get("api_key") or "").strip()
+    base_url = (_ss().get("base_url") or "").strip()
     if not api_key:
         raise LLMConfigError("missing_api_key")
     # max_retries=0:重试由 generate_stream / generate_json 自己的循环独占(留 llm.log 痕迹)。
@@ -129,7 +144,7 @@ def ensure_configured() -> None:
 
 
 def _model() -> str:
-    return (st.session_state.get("model") or "").strip() or "gpt-4o-mini"
+    return (_ss().get("model") or "").strip() or "gpt-4o-mini"
 
 
 def _seed() -> int:
@@ -145,8 +160,8 @@ def _seed() -> int:
     participants stay independent — one shared seed would nudge everyone toward
     the same sample and shrink the between-participant variance H6 measures.
     """
-    pid = st.session_state.get("participant_id") or 0
-    rnd = st.session_state.get("round_idx") or 0
+    pid = _ss().get("participant_id") or 0
+    rnd = _ss().get("round_idx") or 0
     return (int(pid) * 100 + int(rnd)) % (2**31)
 
 
@@ -155,7 +170,7 @@ def current_meta(temperature: float | None = None) -> dict:
     return {
         "model": _model(),
         "temperature": config.TEMPERATURE if temperature is None else temperature,
-        "base_url": (st.session_state.get("base_url") or "").strip(),
+        "base_url": (_ss().get("base_url") or "").strip(),
     }
 
 
@@ -165,7 +180,7 @@ def current_meta(temperature: float | None = None) -> dict:
 # into the llm_done event payload. None when the gateway doesn't report usage.
 
 def _stash_usage(usage) -> None:
-    st.session_state["_last_llm_usage"] = None if usage is None else {
+    _ss()["_last_llm_usage"] = None if usage is None else {
         "prompt": getattr(usage, "prompt_tokens", None),
         "completion": getattr(usage, "completion_tokens", None),
         "total_tokens": getattr(usage, "total_tokens", None),
@@ -185,14 +200,14 @@ def _stash_repro(seed: int | None, fingerprint=None) -> None:
     means the serving stack moved under us — that is what we need to be able to
     report, since the outputs themselves are not bit-reproducible."""
     if seed is None and fingerprint is None:
-        st.session_state["_last_llm_repro"] = None
+        _ss()["_last_llm_repro"] = None
         return
-    cur = st.session_state.get("_last_llm_repro") or {}
+    cur = _ss().get("_last_llm_repro") or {}
     if seed is not None:
         cur["seed"] = seed
     if fingerprint is not None:
         cur["system_fingerprint"] = fingerprint
-    st.session_state["_last_llm_repro"] = cur
+    _ss()["_last_llm_repro"] = cur
 
 
 # --------- streaming ---------
@@ -207,11 +222,15 @@ def ping(max_tokens: int = 5) -> tuple[bool, float, str]:
     t0 = time.time()
     try:
         client = _client()
+        # openai.com 的新模型(正式快照 gpt-5.4-mini)只认 max_completion_tokens,与正式调用同一写法;
+        # 以前固定传 max_tokens,连通测试可能误报「不通」(2026-10-29 审计)
+        cap = ({"max_completion_tokens": max_tokens} if "openai.com" in (_ss().get("base_url") or "")
+               else {"max_tokens": max_tokens})
         resp = client.chat.completions.create(
             model=_model(),
             messages=[{"role": "user", "content": "ping"}],
-            max_tokens=max_tokens,
             temperature=0,
+            **cap,
         )
         txt = (resp.choices[0].message.content or "").strip()
         return True, time.time() - t0, txt or "(空の応答)"
@@ -243,7 +262,7 @@ def generate_stream(
     if temperature is None:
         temperature = config.TEMPERATURE
     model = _model()
-    base_url = st.session_state.get("base_url", "")
+    base_url = _ss().get("base_url", "")
     seed = _seed()
     client = _client()
     messages = [
@@ -269,7 +288,7 @@ def generate_stream(
                 # 服务端回显的 model:正式快照(gpt-5.4-mini)不返回 system_fingerprint,这一项是
                 # 「服务的确是所请求的快照」的唯一证据
                 if getattr(chunk, "model", None):
-                    st.session_state.setdefault("_last_llm_repro", {}).setdefault("served_model", chunk.model)
+                    _ss().setdefault("_last_llm_repro", {}).setdefault("served_model", chunk.model)
                 # The usage chunk arrives last with choices=[] — read it before
                 # the empty-choices skip below.
                 if getattr(chunk, "usage", None):
@@ -288,7 +307,7 @@ def generate_stream(
                 yield content
             _log(group, user_id,
                  f"done elapsed={time.time()-t0:.2f}s len={total_len}"
-                 f" usage={st.session_state.get('_last_llm_usage')}")
+                 f" usage={_ss().get('_last_llm_usage')}")
             return
         except Exception as e:  # noqa: BLE001
             if first and attempt < retries:  # safe to retry: nothing streamed yet
@@ -322,6 +341,13 @@ def _guidance_client_and_model() -> tuple[OpenAI, str]:
     return client, (cfg.get("model") or "").strip() or "gpt-4o-mini"
 
 
+def _transient(e: Exception) -> bool:
+    """限流 / 超时 / 连接失败 / 5xx:值得等一下再试一次的错误。"""
+    from openai import APIConnectionError, APITimeoutError, InternalServerError, RateLimitError  # noqa: PLC0415
+    return (isinstance(e, (APIConnectionError, APITimeoutError, InternalServerError, RateLimitError))
+            or (getattr(e, "status_code", None) or 0) >= 500)
+
+
 def generate_json(
     system: str,
     user: str,
@@ -352,28 +378,37 @@ def generate_json(
         # 不一定认这个参数,只对 openai.com 开。三次都不是合法 JSON 才降级成开放题 = 换掉了条件,
         # 能少一次是一次。
         kwargs = {}
-        if "openai.com" in (st.session_state.get("base_url") or ""):
+        if "openai.com" in (_ss().get("base_url") or ""):
             kwargs["response_format"] = {"type": "json_object"}
             kwargs["max_completion_tokens"] = MAX_OUTPUT_TOKENS
-        try:
-            resp = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": msg_user},
-                ],
-                temperature=temperature,
-                seed=seed,
-                **kwargs,
-            )
-        except Exception as e:  # noqa: BLE001
-            _log(group, user_id, f"json_error elapsed={time.time()-t0:.2f}s err={e!r}")
-            raise LLMCallError(str(e)) from e
+        resp = None
+        for net_try in range(2):
+            try:
+                resp = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": msg_user},
+                    ],
+                    temperature=temperature,
+                    seed=seed,
+                    **kwargs,
+                )
+                break
+            except Exception as e:  # noqa: BLE001
+                # 暂时性错误(限流 / 超时 / 连接 / 5xx)自动退避重试 1 次(2026-10-29 审计):以前直接失败,
+                # F 连续两次失败就退回固定题面 —— 等于临时换了操纵内容;E 则多一次手动「重试」。
+                if net_try == 0 and _transient(e):
+                    _log(group, user_id, f"json_retry err={e!r}")
+                    time.sleep(1.5)
+                    continue
+                _log(group, user_id, f"json_error elapsed={time.time()-t0:.2f}s err={e!r}")
+                raise LLMCallError(str(e)) from e
         fp = getattr(resp, "system_fingerprint", None)
         if fp:   # None 时别调:两参皆 None 是「清空」的约定,会把刚存的 seed 抹掉
             _stash_repro(None, fp)
         if getattr(resp, "model", None):
-            st.session_state.setdefault("_last_llm_repro", {})["served_model"] = resp.model
+            _ss().setdefault("_last_llm_repro", {})["served_model"] = resp.model
         usage = getattr(resp, "usage", None)
         if usage:  # accumulate across JSON-retry attempts — cost is what we track
             for k, attr in (("prompt", "prompt_tokens"), ("completion", "completion_tokens"),
@@ -381,7 +416,7 @@ def generate_json(
                 v = getattr(usage, attr, None)
                 if v is not None:
                     spent[k] = spent.get(k, 0) + v
-            st.session_state["_last_llm_usage"] = dict(spent)
+            _ss()["_last_llm_usage"] = dict(spent)
         # A congested free gateway can return empty choices / null content. Treat
         # it as a failed attempt (retry → LLMJsonError → caller degrades to the
         # open fallback), not an IndexError that escapes the LLM-error taxonomy and

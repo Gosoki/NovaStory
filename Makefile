@@ -6,7 +6,8 @@ PY := .venv/bin/python
 # 机器基线的语言(baseline / norming):ja=日本队列(默认,落 data/baseline/)、zh=中国队列(落 data/baseline/zh/)。
 # ⚠️ 不能叫 LANG —— 那是 shell 的 locale 环境变量(C.UTF-8 / en_US.UTF-8…),make 会把它当默认值读进来。
 BASELINE_LANG ?= ja
-# embed 缺省每位被试各比自己语言的基线;设了 EMBED_LANG 就只算这一种语言(其余记 NaN)
+# embed 缺省每位被试各比自己语言的基线;设了 EMBED_LANG 就只算这一种语言(其余语言保留 CSV 里已有的值;
+# 若 v3 刚把它们清空,embed 会拒绝执行 —— 这时不带 EMBED_LANG 重跑,已缓存的不计费)
 EMBED_LANG ?=
 
 .PHONY: help dev baseline norming v3 events pilot embed judge stats stats-zh stats-ja stats-novice stats-f stats-ja-pred power figures analysis smoke robust smoke-e2e i18n freeze freeze-check precompress serve

@@ -388,6 +388,9 @@ def insert_trial(**f: Any) -> int:
     cols = _cols(f.keys())
     marks = ", ".join("?" for _ in f)
     with _conn() as conn:
+        # 读旧行 + 归档 + 替换放进同一个写事务(2026-10-29 审计):同一轮几乎同时提交两次时(双击 / 两个
+        # 运行并发),两边都可能先读到「没有旧行」,被顶掉的那一份就漏了存档。与 insert_participant 同一写法。
+        conn.execute("BEGIN IMMEDIATE")
         # 被顶掉的那次尝试先归档:以前 OR REPLACE 会连 final_output / script_versions / guidance_json
         # 一起物理删除,「重做前后是否一致」的敏感性分析就无从做起。events 只记 v 号,不记正文。
         conn.row_factory = sqlite3.Row

@@ -657,8 +657,11 @@ def primary_verdict(df: pd.DataFrame, dv: str, ed: dict | None, alpha: float = p
         return {"dv": dv, "verdict": "INCONCLUSIVE",
                 "note": "无 E−D 计划对比(LMM 失败/数据不足)"}
     if ed.get("heterogeneous"):
-        return {"dv": dv, "verdict": "HETEROGENEOUS", "p_int": ed.get("p_int"),
-                "note": f"两队列的 E−D 不同(p_int < {prereg.LANG_INTERACTION_ALPHA})→ 不报合并结论,见分国估计"}
+        p_int, p_w = ed.get("p_int"), ed.get("p_welch")
+        trig = " / ".join(f"{k} = {v:.4f}" for k, v in (("LMM p_int", p_int), ("Welch p", p_w))
+                          if v is not None and np.isfinite(v) and v < prereg.LANG_INTERACTION_ALPHA)
+        return {"dv": dv, "verdict": "HETEROGENEOUS", "p_int": p_int, "p_welch": p_w,
+                "note": f"两队列的 E−D 不同({trig} < {prereg.LANG_INTERACTION_ALPHA})→ 不报合并结论,见分国估计"}
     p_ed, est = float(ed["p_holm"]), float(ed.get("estimate", 0.0))
     if p_ed < alpha:
         better = est > 0
@@ -813,12 +816,21 @@ def main() -> None:
     fam = [(dv, (p_by_dv.get(dv) or {}).get("p_raw")) for dv, _ in prereg.MAIN_FAMILY]
     if all(p is not None for _, p in fam):
         adj = _holm([p for _, p in fam])
-        print(f"\n########## 主族 Holm(两个主终点的 E−D;prereg.MAIN_FAMILY)"
+        het = [dv for dv, _ in prereg.MAIN_FAMILY if (p_by_dv.get(dv) or {}).get("heterogeneous")]
+        tag = ("[描述性] " if descriptive_only else "[探索性] " if pooled and not confirmatory
+               else "[合并·精度估计] " if pooled else "")
+        print(f"\n########## {tag}主族 Holm(两个主终点的 E−D;prereg.MAIN_FAMILY)"
               f"{'(敏感性分析 V1,非主分析)' if n_attn is not None else ''}##########")
         for (dv, p), q in zip(fam, adj):
             print(f"  {dv}: p_raw={p:.4f} → p_holm(主族)={q:.4f}")
-        print("  → " + ("至少一个被拒绝:次要终点可作推断(仍按端点内 Holm)" if min(adj) < prereg.ALPHA
-                        else "都未拒绝:**次要终点只作描述**(05 §4 #6)"))
+        if het:
+            print(f"  → ⛔ {het} 门控判 HETEROGENEOUS:合并的主族 Holm 不适用(用分国结果)")
+        elif descriptive_only or pooled:
+            # 只作描述(日本单队列)/ 合并只作精度估计(06 ㉒-7):门控「次要能否作推断」只由中国单队列决定
+            print("  → 不据此开放次要终点的推断(次要终点的推断只看中国单队列 make stats-zh)")
+        else:
+            print("  → " + ("至少一个被拒绝:次要终点可作推断(仍按端点内 Holm)" if min(adj) < prereg.ALPHA
+                            else "都未拒绝:**次要终点只作描述**(05 §4 #6)"))
 
     # ---- 冻结的判定三分支,只对**主终点**执行(次要终点不做等价声明)----
     v1 = "(敏感性分析 V1,非主分析)" if n_attn is not None else ""

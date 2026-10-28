@@ -76,6 +76,9 @@ def check_model(sec: dict) -> None:
         add(G, "正式模型置顶", f"OpenAI 置顶且已是选定的正式模型快照 {model}。")
 
 
+COHORT: str | None = None   # --cohort ja:第二批(日本队列)的闸门口径,见 main
+
+
 def check_clean_db() -> None:
     db = ROOT / "data" / "novastory.db"
     if not db.exists():
@@ -86,7 +89,11 @@ def check_clean_db() -> None:
         con.close()
     except Exception as e:  # noqa: BLE001
         add(Y, "空库起跑", f"data/novastory.db 存在但读取异常({e})。"); return
-    if n > 0:
+    if n > 0 and COHORT == "ja":
+        # 第二批:中国队列的数据就在这个库里,不能清;两个序列空间分开计数(core/db.py),不污染日本的分配
+        add(G, "空库起跑", f"--cohort ja:库里已有 {n} 条 participants(中国队列,保留)—— 日本的 16 格单独计数,"
+                          "这条只看下面的「既存 ja 行」。")
+    elif n > 0:
         add(R, "空库起跑", f"data/novastory.db 已有 {n} 条 participants(开发脏数据)→ "
                           "先归档到 data/archive/ 再从空库起跑,否则污染拉丁方计数/分析。")
     else:
@@ -375,6 +382,11 @@ def check_freeze() -> None:
     freeze_prereg = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(freeze_prereg)
     if not freeze_prereg.OUT.exists():
+        if COHORT == "ja":
+            # 2026-09-23 起冻结文件降为可选;日本的「事先确定」证据是推送到远端的 git 提交(10 · 2026-10-28)
+            add(Y, "冻结产物", "--cohort ja:prereg_frozen.json 不存在(09-23 起为可选)—— 日本的事先规定以"
+                              "推送到远端的 git 提交为证,确认已 push 再发链接;要生成就 `make freeze`。")
+            return
         add(R, "冻结产物", "docs/paper/prereg_frozen.json 不存在 → 采数前**必须** `make freeze`(先清干净工作树)。"
                           "第一条真数据入库后就再也补不出「计划早于数据」的证据。")
         return
@@ -665,6 +677,12 @@ def check_backup() -> None:
 
 
 def main() -> None:
+    global COHORT
+    import argparse
+    ap = argparse.ArgumentParser(description="部署就绪闸门(公开采数前)")
+    ap.add_argument("--cohort", choices=("ja",), default=None,
+                    help="ja = 第二批(日本队列)开采前:库里保留中国数据,「空库起跑」不判红;冻结文件缺失降为黄灯")
+    COHORT = ap.parse_args().cohort
     try:
         sec = tomllib.loads((ROOT / ".streamlit" / "secrets.toml").read_text())
     except FileNotFoundError:

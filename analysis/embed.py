@@ -227,11 +227,26 @@ def compute(only_lang: str | None = None) -> None:
         if lg not in COHORT_LANGS and not any(baseline_dir(lg).glob("topic*.jsonl")):
             skip |= trials["lang"] == lg
     for lg, n in trials[skip].groupby("lang")["participant_id"].nunique().items():
-        why = f"不在 --lang {only_lang} 内" if only_lang and lg != only_lang else "无同语言基线(非正式队列)"
-        print(f"  ⚠️ {n} 位 {lg} 被试{why},embed_fidelity 记 NaN")
+        if only_lang and lg != only_lang:
+            print(f"  {n} 位 {lg} 被试不在 --lang {only_lang} 内:不重算,CSV 里已有的 embed_fidelity 原样保留")
+        else:
+            print(f"  ⚠️ {n} 位 {lg} 被试无同语言基线(非正式队列),embed_fidelity 记 NaN")
     trials = trials[~skip]
     if trials.empty:
         raise SystemExit("没有任何被试可算 Δ(语言被 --lang 排除,或都没有同语言基线)。")
+    if only_lang:
+        # --lang 只补算一种语言时,其他正式队列的 Δ 要靠 CSV 里已有的值。但 `make v3` 每次都重写 CSV、
+        # 丢掉 embedding 列 —— `make v3 events embed EMBED_LANG=ja` 会让 zh 的保真复合悄悄退回主观三腿,
+        # 中国的确证数字随之改变(2026-10-29 审计复现:保真 D−C 变「显著」)。发任何 API 请求之前就拦下。
+        pt0 = pd.read_csv(CSV)
+        for lg in COHORT_LANGS:
+            if lg == only_lang or "lang" not in pt0 or not (pt0["lang"] == lg).any():
+                continue
+            have = pt0.loc[pt0["lang"] == lg, "embed_fidelity"] if "embed_fidelity" in pt0 else pd.Series(dtype=float)
+            if have.notna().sum() == 0:
+                raise SystemExit(f"⛔ CSV 里 {lg} 的 embed_fidelity 全是空的(刚跑过 make v3?)—— 只算 --lang {only_lang} "
+                                 f"会让 {lg} 的保真复合退回主观三腿。请不带 --lang 重跑 `make embed`"
+                                 "(已缓存的向量不计费)。")
 
     # topic title → baseline index(按 topics.json 顺序,由 _baseline_texts 复核身份)。
     # 题名一律按 BASELINE_LANG 对:topic_json 三语齐全,题目身份与被试语言无关。

@@ -99,13 +99,15 @@ def check_c_ceiling(df: pd.DataFrame) -> None:
                   "主张改「E 在保真不劣于 C、但所有权/努力再分配更优」(与灵魂句一致)。")
 
 
-def check_novice(con: sqlite3.Connection, db_path: Path) -> None:
+def check_novice(con: sqlite3.Connection, db_path: Path, lang: str | None = None) -> None:
     # 口径必须与 ①②④ 一致:统一走 v3.included_participants(问卷 3 件基准)。
     # 此前这里单独用 `status == "done"`,于是同一份报告里 ③ 的分母与其余三项不同。
     # ③ 2026-09-07 起已不是决策闸门(见文件头),但分母仍须与其余三项同源,
     # 否则同一份报告里两个「N(纳入)」对不上,读的人会以为数据有问题。
-    p = pd.read_sql("SELECT id, screening_json FROM participants", con)
+    p = pd.read_sql("SELECT id, lang, screening_json FROM participants", con)
     p = p[p["id"].isin(v3.included_participants(db_path))]
+    if lang:
+        p = p[p["lang"] == lang]
     print(f"\n③ novice 占比  N(纳入)={len(p)}")
     if not len(p):
         print(f"   {Y} 无完成被试"); return
@@ -149,18 +151,22 @@ def check_reliability(df: pd.DataFrame) -> None:
         print("   ⚠️ soa1-2 相关过低:SoPA 两题在本样本上不一致,**不适合**作为后手 D 的替代主终点;own 维持主终点。")
 
 
-def run(db_path: Path = DEFAULT_DB) -> None:
-    """跑完 4 项检查并 print 报告(供 CLI 与网站研究员面板共用)。"""
+def run(db_path: Path = DEFAULT_DB, lang: str | None = None) -> None:
+    """跑完 4 项检查并 print 报告(供 CLI 与网站研究员面板共用)。
+    lang = 只看这一个队列(2026-10-29 审计:中日混在一起时,日本自己的 D 地板 / C 天花板被中国 35 人淹没;
+    研究员面板默认 zh —— 日本采集期间不看因变量,prereg.JA_STOP_RULE)。"""
     df = v3.load(db_path)
+    if lang:
+        df = df[df["lang"] == lang]
     con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     try:
         n = df.groupby("condition").size().to_dict() if len(df) else {}
         print("=" * 56)
-        print(f"试测健康检查 · 4 个生死问题   trials 各条件: {n}")
+        print(f"试测健康检查 · 4 个生死问题   队列 {lang or '全部'} · trials 各条件: {n}")
         print("=" * 56)
         check_d_floor(df)
         check_c_ceiling(df)
-        check_novice(con, db_path)
+        check_novice(con, db_path, lang)
         check_reliability(df)
         n_mis = int(df["q_trial_mismatch"].sum()) if "q_trial_mismatch" in df else 0
         if n_mis:
@@ -175,7 +181,9 @@ def run(db_path: Path = DEFAULT_DB) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser(description="A6 试测健康检查(4 生死问题)")
     ap.add_argument("--db", type=Path, default=DEFAULT_DB)
-    run(ap.parse_args().db)
+    ap.add_argument("--lang", default=None, choices=("zh", "ja", "en"), help="只看这一个队列(默认全部)")
+    a = ap.parse_args()
+    run(a.db, a.lang)
 
 
 if __name__ == "__main__":

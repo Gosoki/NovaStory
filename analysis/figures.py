@@ -182,10 +182,12 @@ def main(argv: list[str] | None = None) -> None:
         pt = pt[pt["novice"].astype(bool)]
     pop = f"{args.population}, {'+'.join(langs) or '?'}, n={pt['participant_id'].nunique()}"
     print(f"人群 = {pop}")
+    # 分队列 / 探索性子集的图另存文件名(2026-10-29 审计):以前 `--lang ja` 会覆盖合并图(fig_effort.png 等)
+    sfx = ("" if args.lang == "all" else f"_{args.lang}") + ("_novice" if args.population == "novice" else "")
 
-    fig_effort(pt, FIGDIR / "fig_effort.png", pop)
-    for dv, name in (("ownership_composite", "fig_ownership.png"),
-                     ("fidelity_composite", "fig_fidelity.png")):
+    fig_effort(pt, FIGDIR / f"fig_effort{sfx}.png", pop)
+    for dv, name in (("ownership_composite", f"fig_ownership{sfx}.png"),
+                     ("fidelity_composite", f"fig_fidelity{sfx}.png")):
         if dv in pt and pt[dv].notna().any():
             fig_dv(pt, dv, FIGDIR / name, pop)
         else:
@@ -201,12 +203,15 @@ def main(argv: list[str] | None = None) -> None:
         mixed = "lang" in df.columns and df["lang"].nunique() > 1
         div = v3.diversity_by_group(df) if not mixed else []
         if mixed:
-            print("(多个队列混在一起,跳过多样性图 —— 用 --lang zh / --lang ja 分开画)")
+            stale = FIGDIR / f"fig_diversity{sfx}.png"
+            print("(多个队列混在一起,跳过多样性图 —— 用 --lang zh / --lang ja 分开画"
+                  + (f";已删除上次单队列留下的 {stale.name},免得它和合并图摆在一起被当成合并结果)" if stale.exists() else ")"))
+            stale.unlink(missing_ok=True)
         elif len(div):
-            fig_diversity(div, FIGDIR / "fig_diversity.png")
+            fig_diversity(div, FIGDIR / f"fig_diversity{sfx}.png")
         else:
             print("(每组 <2 稿,跳过多样性图)")
-        dump_fig4_material(df, CSV.parent / "fig4_coding_material.csv")
+        dump_fig4_material(df, CSV.parent / f"fig4_coding_material{sfx}.csv")
     print("图已写入", FIGDIR, "→", ", ".join(p.name for p in sorted(FIGDIR.glob("*.png"))))
 
 

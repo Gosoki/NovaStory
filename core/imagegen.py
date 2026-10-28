@@ -11,12 +11,16 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import html
 import io
+import shutil
 import threading
 from pathlib import Path
 
 import streamlit as st
+
+from core.llm import _log
 
 _ROOT = Path(__file__).resolve().parent.parent
 _ARCHIVE = _ROOT / "data" / "storyboard_images"
@@ -110,6 +114,13 @@ def ensure_started(pid: int, ridx: int, shots: list[dict],
     d = _dir(pid, ridx)
     d.mkdir(parents=True, exist_ok=True)
     scenes = [_scene(s) for s in shots]
+    sig = hashlib.sha1("\x1f".join(scenes).encode("utf-8")).hexdigest()
+    try:
+        (d / "scenes.sha1").write_text(sig)
+    except OSError:
+        pass
+    if _reuse_sibling(d, sig, len(scenes)):
+        return
 
     def worker() -> None:
         try:
@@ -125,6 +136,7 @@ def ensure_started(pid: int, ridx: int, shots: list[dict],
                 done = d / f"shot{i + 1}.done"  # attempt-finished marker (see all_done)
                 if out.exists() or done.exists():
                     return
+                err = ""
                 try:
                     if scene:
                         # size/quality 已是**最省的档**,别再"优化":
@@ -146,13 +158,14 @@ def ensure_started(pid: int, ridx: int, shots: list[dict],
                         tmp = out.with_suffix(".tmp")
                         im.save(tmp, "JPEG", quality=82, optimize=True)
                         tmp.replace(out)  # atomic: reader never sees a half-written file
-                except Exception:  # noqa: BLE001 — one image failing must never break the study
-                    pass
+                except Exception as e:  # noqa: BLE001 — one image failing must never break the study
+                    err = type(e).__name__   # 原因写进标记与 llm.log(以前整个吞掉,中国 3/345 张失败查不到原因)
+                    _log("image", str(pid), f"image_fail round={ridx} shot={i + 1} err={err}")
                 # Mark the attempt finished (success wrote out; empty scene / failure
                 # writes only this marker) so all_done() can settle and the 2s poll
                 # stops instead of spinning forever on a failed shot.
                 try:
-                    done.write_bytes(b"")
+                    done.write_text(err)
                 except OSError:
                     pass
 
@@ -168,6 +181,28 @@ def ensure_started(pid: int, ridx: int, shots: list[dict],
                     pass
 
     threading.Thread(target=worker, daemon=True).start()
+
+
+def _reuse_sibling(d: Path, sig: str, n: int) -> bool:
+    """同一轮另一段 attempt 已经给**同一份稿子**生成过整套插图 → 复制过来,不再调接口(2026-10-29 审计)。
+    问卷页续接会铸新 r_attempt(LOG4),以前于是对同一份终稿再生成一套**不同的**图:被试回到问卷页看到
+    的插图换了(插图是主观 DV 的测量情境),配图费也付两次。稿子不同(重做了这一轮)时指纹对不上,照常生成。"""
+    for sib in d.parent.iterdir() if d.parent.exists() else []:
+        if sib == d or not sib.is_dir():
+            continue
+        try:
+            if (sib / "scenes.sha1").read_text() != sig:
+                continue
+        except OSError:
+            continue
+        if not all((sib / f"shot{i}.jpg").exists() or (sib / f"shot{i}.done").exists() for i in range(1, n + 1)):
+            continue   # 那一套还没生成完:照常生成(少见)
+        for i in range(1, n + 1):
+            for name in (f"shot{i}.jpg", f"shot{i}.done"):
+                if (sib / name).exists():
+                    shutil.copy2(sib / name, d / name)
+        return True
+    return False
 
 
 # 已编码的图片:键是 (路径, mtime_ns, 大小),文件一变键就变,不会发到旧图。
