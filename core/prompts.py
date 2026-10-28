@@ -594,8 +594,11 @@ def build_system_interview_more(lang: str = _DEFAULT_LANG) -> str:
             "可以接着用户提到的具体画面或感受往下问;**不要问镜头、景别、秒数等拍摄技术问题**。\n"
             "3. **不要写任何例子、选项、建议或你自己的看法**(不要用「比如」「例如」「……之类」);"
             "不要夸奖,不要表达共情,不要复述用户的话。\n"
-            "4. 问题为一句话,50 字以内,中文。\n"
-            '5. 只输出 JSON:{"more": true 或 false, "question": "要问的问题(不问时为空字符串)"}'
+            "4. **已经问过的事不要再问**:上面问答里问过的内容,换个说法也不要再问(已经问过「想让观众有什么感受」,"
+            "「最想让观众感受到什么」就算同一件事)。要问就针对回答里还没说清的那一点,或者用户提到的某个具体画面。\n"
+            "5. 回答完全看不出意思(无意义的字符、与作品无关的内容)→ 不再问。\n"
+            "6. 问题为一句话,50 字以内,中文。\n"
+            '7. 只输出 JSON:{"more": true 或 false, "question": "要问的问题(不问时为空字符串)"}'
         )
     if _norm(lang) == "en":
         return (
@@ -614,8 +617,12 @@ def build_system_interview_more(lang: str = _DEFAULT_LANG) -> str:
             "3. **Do not write any examples, options, suggestions or opinions of your own** (no 'for "
             "example', 'such as', 'e.g.'); no praise, no expressions of empathy, and do not restate "
             "the user's words.\n"
-            "4. The question is one sentence, at most 25 words, in English.\n"
-            '5. Output JSON only: {"more": true or false, "question": "the question (empty string if not asking)"}'
+            "4. **Do not ask again about anything already asked** in the Q&A above, even in different words "
+            "(if 'what should viewers feel' was asked, 'what do you most want viewers to feel' counts as the same). "
+            "If you ask, target the one point an answer left unclear, or a specific scene the user mentioned.\n"
+            "5. If the answers carry no discernible meaning (random characters, content unrelated to the work) → do not ask more.\n"
+            "6. The question is one sentence, at most 25 words, in English.\n"
+            '7. Output JSON only: {"more": true or false, "question": "the question (empty string if not asking)"}'
         )
     return (
         "あなたはショート動画の絵コンテ制作を手伝うインタビュアーです。"
@@ -630,8 +637,12 @@ def build_system_interview_more(lang: str = _DEFAULT_LANG) -> str:
         "**カメラ・画面サイズ・秒数などの撮影技術については聞かないこと。**\n"
         "3. **答えの例・選択肢・提案・あなた自身の意見は一切書かないこと**(「例えば」「〜など」も使わない)。"
         "ほめ言葉や共感の言葉も入れず、ユーザーの言葉の言い直しもしないこと。\n"
-        "4. 質問は敬体(です・ます)の一文、60字以内、日本語で。\n"
-        '5. JSONのみを出力: {"more": true または false, "question": "聞く質問(聞かない場合は空文字)"}'
+        "4. **すでに聞いたことは聞き直さないこと**:上の質問と答えで聞いた内容は、言い方を変えても聞かない"
+        "(「観る人にどんな気持ちになってほしいか」をすでに聞いたなら、「観る人にいちばん感じてほしいこと」も同じ内容とみなす)。"
+        "聞くなら、答えの中でまだはっきりしていない一点か、ユーザーが触れた具体的な場面について聞くこと。\n"
+        "5. 答えから意味がまったく読み取れない(意味のない文字の並び、作品と関係のない内容)場合は、もう聞かない。\n"
+        "6. 質問は敬体(です・ます)の一文、60字以内、日本語で。\n"
+        '7. JSONのみを出力: {"more": true または false, "question": "聞く質問(聞かない場合は空文字)"}'
     )
 
 
