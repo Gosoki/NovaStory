@@ -8,7 +8,7 @@ import streamlit as st
 from core import config, prompts, state
 from i18n import get_lang, t
 from views import _postgen
-from views._streaming import RETRY, call_llm_json, stream_llm
+from views._streaming import RETRY, call_llm_json, stream_llm, verbatim
 
 # Condition F —「想いを聞く」インタビュー(2026-10-27,docs/paper/06 ㉖)。
 #
@@ -201,7 +201,7 @@ def _render_chat(turns: list[dict]) -> None:
                         f'<div class="ns-q">{html.escape(x["question"])}</div>', unsafe_allow_html=True)
         if x["answer"] is not None:
             with st.chat_message("user", avatar=_postgen.AVATAR_USER):
-                st.markdown(_postgen._pre(x["answer"]), unsafe_allow_html=True)
+                st.markdown(verbatim(x["answer"]), unsafe_allow_html=True)
 
 
 def _finish(topic: dict) -> None:

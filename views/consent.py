@@ -33,7 +33,7 @@ def render() -> None:
     # All three languages are fully wired end-to-end (UI + LLM prompts + topics +
     # shot parser), so a subject gets a single-language session in whichever they
     # pick; ja is the default (langs[0]) for the formal Japanese cohort.
-    language_radio("_consent_lang")
+    language_radio("_consent_lang", collapsed=True)   # 三颗胶囊各用本语言写名字,不需要标签
     st.header(t("consent.title"))
     # 同意书正文放进一张白卡(只是外框;文字与指纹都不变 —— proof_now 盖的是 i18n 原文)
     with st.container(key="ns_card_consent"):

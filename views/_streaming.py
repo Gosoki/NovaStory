@@ -35,10 +35,14 @@ _FORGET_AFTER_S = 600   # 已结束、没人来取的调用(会话放弃 / 换�
 _BUSY = '<span class="ns-busy"></span>'
 
 
-def _verbatim(text: str) -> str:
-    """流式输出逐字显示(与生成后的稿子同一个样子):按 markdown 渲染时「1.」变成列表、
-    【画面】与【秒数】两行被并成一段,被试看到的稿子在生成完的那一刻突然换了排版。"""
-    return f"<div style='white-space:pre-wrap;line-height:1.7;margin-bottom:1rem'>{html.escape(text)}</div>"
+def verbatim(text: str | None) -> str:
+    """被试写的字与 AI 稿都逐字显示(pre-wrap + 转义),全站唯一一份。按 markdown 渲染时
+    「1. 起きる」会变成有序列表、「*」变斜体、【画面】与【秒数】两行被并成一段 —— 被试看到的
+    必须与编辑框 / 库里存的是同一份文字,流式输出也不能在生成完的那一刻突然换排版。
+    margin-bottom:1rem 抵消 Streamlit 给 markdown 块垫的 -1rem(同一个 <p> 的行为),
+    否则卡片 / 对话气泡的底边距被吃掉、末行压在边框上。"""
+    return (f"<div style='white-space:pre-wrap;line-height:1.7;margin-bottom:1rem'>"
+            f"{html.escape(text or '')}</div>")
 
 
 def _job_key(group: str, system: str, user: str) -> str:
@@ -117,10 +121,10 @@ def stream_llm(system: str, user: str, *, group: str) -> Optional[str]:
     status = st.status(t("common.loading"), expanded=False)
     out = st.empty()
     while not job["done"]:
-        out.markdown(_verbatim("".join(job["chunks"])), unsafe_allow_html=True)
+        out.markdown(verbatim("".join(job["chunks"])), unsafe_allow_html=True)
         time.sleep(0.15)
     raw = "".join(job["chunks"])
-    out.markdown(_verbatim(raw), unsafe_allow_html=True)
+    out.markdown(verbatim(raw), unsafe_allow_html=True)
 
     if job["settled"] is None:   # 记账只做一次:被打断在记账之后、取走之前,下一次运行不重复记
         elapsed = round(time.time() - job["t0"], 2)

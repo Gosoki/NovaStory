@@ -6,6 +6,7 @@ import streamlit as st
 
 from core import shots
 from i18n import t
+from views._streaming import verbatim
 
 # ⚠️ 这张纸有**自己的一套配色**(奶白纸 #fbfaf3 / 墨线 #3f3f3f / 格线 #9a958c),
 # 刻意不走 app.py 的 --ns-* 令牌:它模拟的是一张真实的絵コンテ用纸,底色固定、不随
@@ -13,8 +14,8 @@ from i18n import t
 # 先确认你要改的是「纸」而不是「界面」。
 #
 # Storyboard preview sheet, styled like a real 絵コンテ / 分镜纸: circled cut
-# numbers, a 16:9 empty picture frame per shot (the 画面 column — a generated
-# sketch there is future work, "coming soon"), then action / dialogue columns on
+# numbers, a 16:9 picture frame per shot (the 画面 column — filled with the
+# generated sketch when images are on, else a placeholder), then action / dialogue columns on
 # a paper-like sheet. Shared by the questionnaire (participant's finished script)
 # and the intro page (a static sample). Falls back to plain text when the script
 # doesn't parse into shots.
@@ -207,7 +208,7 @@ def render(script: str, subtitle: str, sketches: list[str] | None = None,
     if not parsed:
         st.caption(t("q.script_review"))
         with st.container(border=True):
-            st.markdown(script or "—")
+            st.markdown(verbatim(script or "—"), unsafe_allow_html=True)   # 解析失败的稿子也按原样排版
         return
 
     todo = t("storyboard.frame_todo")

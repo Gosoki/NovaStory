@@ -101,7 +101,7 @@ _HTML_LANG = {"ja": "ja", "zh": "zh-CN", "en": "en"}
 # 页头底边那条细线 = 整个流程走到哪了(06 ⑮ (b) 的轻量版:不加任何字)。v1 只有轮内一根进度条,
 # 同意 / 背景问卷 / 说明 / 总问卷全程没有进度,第 1 轮开局还显示 0%。权重大致按时长:入组约 12%、
 # 各轮共 80%(轮内按步骤条细分)、总问卷之后到 100%。
-_STAGE_PROGRESS = {"consent": .02, "screening": .05, "intro": .10, "final_survey": .94, "done": 1.0}
+_STAGE_PROGRESS = {"screening": .05, "intro": .10, "final_survey": .94, "done": 1.0}   # 同意页是标题区,不画线
 
 
 def _flow_progress(stage: str) -> float | None:
@@ -137,18 +137,20 @@ def _masthead(*, hero: bool, progress: float | None = None) -> None:
 
 
 # ─────────────────────── 设计语言(单一真源) ───────────────────────
-# v2设计(2026-10-31):和纸 / 墨 / 青。全站唯一的设计令牌来源 —— 颜色、圆角、阴影、字阶都从这里出;
+# v2设计(2026-10-31):和纸 / 墨 / 青(+ 决定按钮的绿)。全站唯一的设计令牌来源 —— 颜色、圆角、阴影、字阶都从这里出;
 # .streamlit/config.toml 把同一组颜色交给 Streamlit 自己的组件(两边改色要一起改)。
 # v1(tag `v1设计`)之前它们散在 5 个文件里,光颜色字面量就有 24 个互不相干的值。
 #
 # 颜色语义(改之前先想清楚它属于哪一档):
-#   --ns-ink    墨   = 决定 / 推进 / 定稿   → 所有 type="primary" 按钮
+#   --ns-go     绿   = 决定 / 推进 / 定稿   → 所有 type="primary" 按钮
 #   --ns-ai     青   = 继续和 AI 折腾       → btn_more_ai(一个明确的非终局动作)
 #   --ns-accent 青   = 强调 / 当前所在       → 步骤条当前格、选中的量表格、眉标
 #   --ns-dim    弱化 = 注解 / 锚点 / 提示    → 所有 caption 级文字
-# 墨 / 青必须泾渭分明,而且**一样醒目**:D/E 里「再让 AI 改」与「就这版提交」是被试的真实选择
-# (n_ai_rounds 是因变量),哪个按钮更显眼本身就会推行为 —— v1 的绿 / 蓝也是同重的两块实色。
-# Streamlit 默认的 primary 是珊瑚红,新手会读成「危险操作」,所以 primary 一律改走 --ns-ink。
+# 绿 / 青必须泾渭分明,而且**一样醒目**:D/E 里「再让 AI 改」与「就这版提交」是被试的真实选择
+# (n_ai_rounds 是因变量),哪个按钮更显眼本身就会推行为。所以两者取**相同的相对亮度**(都是 0.133,
+# 白字 5.75:1,与任何底色的对比度都相同),两种主题用同一对 —— v1 的绿 / 蓝是 0.159 / 0.153。
+# v2 初版用过墨色决定按钮(对比度 13.9:1 对 AI 的 5.75:1,深色下 15:1 对 3.4:1),审查指出后改回。
+# Streamlit 默认的 primary 是珊瑚红,新手会读成「危险操作」,所以 primary 一律改走 --ns-go。
 #
 # 每个颜色分浅色 / 深色两档:主题跟被试的**操作系统**走(toolbarMode="minimal" 把切换菜单藏了),
 # 浅色是「手机没开深色模式的人」的默认,不是边角情况。对比度见 config.toml 顶部(全部过 AA)。
@@ -159,32 +161,31 @@ _DESIGN_CSS = """
 <span class="ns-css"></span>
 <style>
 :root{
-  --ns-bg:#f6f5f1; --ns-surface:#ffffff; --ns-surface-2:#fbfaf7; --ns-sunken:#f1efe9;
+  --ns-surface:#ffffff; --ns-surface-2:#fbfaf7; --ns-sunken:#f1efe9;   /* 页面底色在 config.toml */
   --ns-text:#1f2328; --ns-text-2:#4b5059; --ns-dim:#676c75;
   --ns-line:#e5e1d8; --ns-line-strong:#d4cfc4;
   --ns-accent:#1565c0; --ns-on-accent:#ffffff;
   --ns-accent-soft:rgba(21,101,192,.08); --ns-accent-line:rgba(21,101,192,.32);
-  --ns-ink:#22262d; --ns-ink-hover:#0b0c0e; --ns-on-ink:#ffffff;
+  --ns-go:#18753f; --ns-go-hover:#125c31;     /* 与 --ns-ai 同亮度(见上);两种主题同值 */
   --ns-ai:#1565c0; --ns-ai-hover:#0f4f99;
   --ns-ok:#2b6e47; --ns-ok-soft:rgba(43,110,71,.10);
   --ns-shadow:0 1px 2px rgba(31,35,40,.05),0 4px 14px -6px rgba(31,35,40,.10);
+  --ns-raised:#ffffff;                 /* 浮在遮罩上的气泡(新手引导) */
   --ns-radius:14px; --ns-radius-sm:10px;
   --ns-fs-note:.82rem;
-  --ns-soft:var(--ns-sunken);          /* 旧名:说明页的例子框底色 */
   --ns-chrome:rgba(255,255,255,.86);   /* 浮在正文上的控件底(展开侧栏箭头) */
   --ns-star:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 1.5l2.6 7.9L22.5 12l-7.9 2.6L12 22.5l-2.6-7.9L1.5 12l7.9-2.6z'/%3E%3C/svg%3E");
 }
 @media (prefers-color-scheme: dark){
   :root{
-    --ns-bg:#131417; --ns-surface:#1b1d22; --ns-surface-2:#1f2127; --ns-sunken:#22252b;
+    --ns-surface:#1b1d22; --ns-surface-2:#1f2127; --ns-sunken:#22252b;
     --ns-text:#e7e5df; --ns-text-2:#c4c2bc; --ns-dim:#9b9ea6;
     --ns-line:#2c2f36; --ns-line-strong:#3c4049;
     --ns-accent:#64b5f6; --ns-on-accent:#14161a;
     --ns-accent-soft:rgba(100,181,246,.12); --ns-accent-line:rgba(100,181,246,.42);
-    --ns-ink:#ece8df; --ns-ink-hover:#ffffff; --ns-on-ink:#17181b;
-    --ns-ai:#1f6fcf; --ns-ai-hover:#1860b8;   /* 悬停变深:白字对比度保持 ≥4.5 */
     --ns-ok:#7cc99a; --ns-ok-soft:rgba(124,201,154,.13);
     --ns-shadow:0 1px 2px rgba(0,0,0,.35),0 6px 18px -8px rgba(0,0,0,.5);
+    --ns-raised:#2a2e36;               /* 深色下气泡要比卡片亮一档,否则和变暗的页面混在一起 */
     --ns-chrome:rgba(20,24,33,.82);
   }
 }
@@ -212,7 +213,8 @@ html, body, [data-testid="stMain"], [data-testid="stAppViewContainer"]{
 @media (hover: none) and (pointer: coarse){
   [data-testid="stTextArea"] textarea,
   [data-testid="stTextInput"] input,
-  [data-testid="stNumberInput"] input{ font-size:16px !important; }
+  [data-testid="stNumberInput"] input,
+  [data-testid="stSelectbox"] input{ font-size:16px !important; }
 }
 
 /* ── 版面 ──────────────────────────────────────────────────────────
@@ -234,7 +236,8 @@ html, body, [data-testid="stMain"], [data-testid="stAppViewContainer"]{
    于是 :lang(ja) 下的禁则与按词组断行(word-break:auto-phrase,Chrome 119+;别的浏览器忽略)才生效 ——
    v1 手机上标题断成「絵コ / ンテ制作」就是没有这个。 */
 .stMarkdown p, .stMarkdown li{ line-height:1.75; }
-[data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] p{ color:var(--ns-dim)!important; line-height:1.6; }
+/* Streamlit 给 caption 再叠一层 opacity:.6 —— 叠在 --ns-dim 上只剩 2.3:1(深色 3.2:1),低于 AA。归 1,令牌自己管对比度 */
+[data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] p{ color:var(--ns-dim)!important; opacity:1!important; line-height:1.6; }
 [data-testid="stHeading"] :is(h1,h2,h3){ letter-spacing:.01em; text-wrap:balance; }
 :lang(ja) :is([data-testid="stHeading"] h1,[data-testid="stHeading"] h2,[data-testid="stHeading"] h3,
   .ns-hero-title,.ns-topic-title,.ns-done-title){ word-break:auto-phrase; }
@@ -337,15 +340,15 @@ hr{ border-color:var(--ns-line)!important; }
 .stButton > button p, .stFormSubmitButton > button p, .stDownloadButton > button p{ font-weight:600; }
 .stButton > button:active, .stFormSubmitButton > button:active{ transform:translateY(1px); }
 .stButton > button:focus-visible, .stFormSubmitButton > button:focus-visible,
-[data-testid="stButtonGroup"] button:focus-visible{ outline:3px solid var(--ns-accent-line)!important; outline-offset:2px; }
+[data-testid="stButtonGroup"] button:focus-visible{ outline:2px solid var(--ns-accent)!important; outline-offset:2px; }
 button[data-testid="stBaseButton-primary"],
 button[data-testid="stBaseButton-primaryFormSubmit"]{
-  background:var(--ns-ink)!important; border-color:var(--ns-ink)!important; color:var(--ns-on-ink)!important;
+  background:var(--ns-go)!important; border-color:var(--ns-go)!important; color:#ffffff!important;
   box-shadow:0 1px 2px rgba(0,0,0,.10), 0 8px 18px -12px rgba(0,0,0,.6);
 }
 button[data-testid="stBaseButton-primary"]:hover,
 button[data-testid="stBaseButton-primaryFormSubmit"]:hover{
-  background:var(--ns-ink-hover)!important; border-color:var(--ns-ink-hover)!important;
+  background:var(--ns-go-hover)!important; border-color:var(--ns-go-hover)!important;
 }
 /* v1 的 !important 实色把「未勾同意时禁用的开始按钮」也涂成了可点的绿 —— 禁用必须看得出是禁用 */
 button[data-testid="stBaseButton-primary"]:disabled,
@@ -392,6 +395,12 @@ div.st-key-btn_more_ai button p{ color:#ffffff!important; }
   padding:.45rem 1rem!important; }
 :is([class*="st-key-_g_opt_"],[class*="st-key-_q_shot"],[class*="st-key-_q_whole_"]) button[role="radio"][aria-checked="true"]{
   border-color:var(--ns-accent)!important; }
+:is([class*="st-key-_g_opt_"],[class*="st-key-_q_shot"],[class*="st-key-_q_whole_"]) button[role="radio"] *{
+  white-space:normal!important; overflow:visible!important; text-overflow:clip!important; text-align:left; }
+:is([class*="st-key-_g_opt_"],[class*="st-key-_q_shot"],[class*="st-key-_q_whole_"]) button[role="radio"]{ height:auto!important; }
+/* 1–7 的刻度在 ~350px 以下会折成「1–6」+ 一整行「7」,锚点也对不上:不许折行,格子按比例缩 */
+[class*="st-key-ns_lk_"] [role="radiogroup"]{ flex-wrap:nowrap!important; }
+[class*="st-key-ns_lk_"] button[role="radio"]{ flex:1 1 0!important; min-width:0!important; padding-left:.2rem!important; padding-right:.2rem!important; }
 /* 单选:竖排的多选项 → 整行可点的选项卡(手机上 v1 每行只有 ~24px 高的点按区域);横排(是 / 否、语言)→ 胶囊 */
 /* 1.60 的 st.radio 默认按内容定宽:每组选项卡宽窄不一(随该组最长的那句)。只让竖排的撑满 */
 .stElementContainer:has(> [data-testid="stRadio"] [aria-orientation="vertical"]){ width:100%!important; }
@@ -408,17 +417,60 @@ div.st-key-btn_more_ai button p{ color:#ffffff!important; }
   border-color:var(--ns-accent); background:var(--ns-accent-soft);
 }
 /* 同意的那一下:勾选框单独成框,与上面的长文分开 */
-.st-key-_consent_agree{ background:var(--ns-surface); border:1px solid var(--ns-line-strong); border-radius:var(--ns-radius-sm);
-  padding:.8rem 1rem; }
+.st-key-_consent_agree{ background:var(--ns-surface); border:1px solid var(--ns-line-strong); border-radius:var(--ns-radius-sm); }
+.st-key-_consent_agree label{ display:flex; width:100%; box-sizing:border-box; padding:.8rem 1rem; cursor:pointer; }   /* 整张卡都能点 */
 .st-key-_consent_agree:has(input:checked){ border-color:var(--ns-accent); background:var(--ns-accent-soft); }
 
-/* ── 下一步提示(用户 2026-10-31:先提示题目,再引导到输入框)────────
-   .ns-cue = 创意页的两行提示(views/round_common._cue);当前唯一要填的框(创意 / F 的回答)加一圈光晕。
-   D 的「请 AI 改」框刻意不加:那是被试在「再改 / 提交」之间的自由选择,高亮它就是在推一边。 */
-.ns-cue{ display:inline-flex; align-items:center; gap:.4rem; margin:.15rem 0 .9rem; padding:.3rem .8rem;
-  border-radius:999px; background:var(--ns-accent-soft); color:var(--ns-accent); font-size:.86rem; font-weight:700; }
+/* ── 下一步引导(用户 2026-10-31:「不是加文字引导,是要动效,像新手引导一样」)────────
+   聚光圈与气泡由 views/_tour.py 的脚本挂到 <body> 上(position:fixed,每帧跟着目标走)。
+   遮罩就是聚光圈的 box-shadow,pointer-events:none —— 引导期间页面照样能点能输入,不会把人卡住。
+   当前唯一要填的框(创意 / F 的回答)常亮一圈光晕;D 的「请 AI 改」框刻意不加:那是被试在
+   「再改 / 提交」之间的自由选择,高亮它就是在推一边。 */
+.ns-tour-spot{ position:fixed; z-index:1000001; top:0; left:0; width:0; height:0; border-radius:14px; pointer-events:none;
+  box-shadow:0 0 0 200vmax rgba(12,14,18,0); transition:box-shadow .4s ease; }
+/* 只有换步(.is-moving)时位置才带过渡:平时每帧跟着目标走,带过渡会在滚动时拖影 */
+.ns-tour-spot.is-moving{ transition:top .55s cubic-bezier(.22,.7,.2,1), left .55s cubic-bezier(.22,.7,.2,1),
+    width .55s cubic-bezier(.22,.7,.2,1), height .55s cubic-bezier(.22,.7,.2,1), box-shadow .4s ease; }
+.ns-tour-spot.is-on{ box-shadow:0 0 0 200vmax rgba(12,14,18,.52); }
+.ns-tour-spot::after{ content:""; position:absolute; inset:-2px; border-radius:inherit; border:2px solid var(--ns-accent);
+  animation:ns-ring 1.8s ease-out infinite; }
+.ns-tour-tip{ position:fixed; z-index:1000002; top:0; left:0; width:min(340px, calc(100vw - 24px)); box-sizing:border-box;
+  padding:14px 16px 12px; border-radius:14px; background:var(--ns-raised); color:var(--ns-text);
+  border:1px solid var(--ns-line); box-shadow:0 14px 36px -10px rgba(0,0,0,.45); }
+.ns-tour-tip.is-moving{ transition:top .55s cubic-bezier(.22,.7,.2,1), left .55s cubic-bezier(.22,.7,.2,1); }
+.ns-tour-tip.is-in{ animation:ns-tip-in .38s cubic-bezier(.22,.7,.2,1); }
+.ns-tour-tip::before{ content:""; position:absolute; left:calc(var(--ax, 24px) - 7px); width:14px; height:14px;
+  background:inherit; transform:rotate(45deg); border-radius:3px; }
+.ns-tour-tip[data-side="below"]::before{ top:-6px; }
+.ns-tour-tip[data-side="above"]::before{ bottom:-6px; }
+.ns-tour-tip[data-side="inside"]::before{ display:none; }
+.ns-tour-count{ font-size:.72rem; font-weight:700; letter-spacing:.08em; color:var(--ns-accent); margin:0 0 4px; }
+.ns-tour-text{ font-size:1rem; font-weight:700; line-height:1.55; margin:0 0 12px; text-wrap:pretty; }
+:lang(ja) .ns-tour-text{ word-break:auto-phrase; }
+.ns-tour-row{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.ns-tour-skip{ background:none; border:0; padding:8px 4px; font:inherit; font-size:.85rem; color:var(--ns-dim); cursor:pointer; }
+.ns-tour-next{ border:0; border-radius:10px; padding:9px 18px; font:inherit; font-size:.92rem; font-weight:700;
+  background:var(--ns-go); color:#ffffff; cursor:pointer; }
+.ns-tour-next:focus-visible, .ns-tour-skip:focus-visible{ outline:2px solid var(--ns-accent); outline-offset:2px; }
+/* 第 2 轮起:题目卡、输入框依次闪一下(浮层,见 _tour.py 的 flash) */
+.ns-tour-flash{ position:fixed; z-index:1000001; pointer-events:none; border-radius:16px; border:2px solid var(--ns-accent);
+  opacity:0; animation:ns-flash 1.5s ease-out forwards; }
+@keyframes ns-ring{ 0%{ box-shadow:0 0 0 0 var(--ns-accent-line); } 100%{ box-shadow:0 0 0 14px rgba(0,0,0,0); } }
+@keyframes ns-flash{ 0%{ opacity:0; box-shadow:0 0 0 0 var(--ns-accent-line); } 15%{ opacity:1; }
+  70%{ opacity:1; box-shadow:0 0 0 12px rgba(0,0,0,0); } 100%{ opacity:0; box-shadow:0 0 0 12px rgba(0,0,0,0); } }
+@keyframes ns-tip-in{ from{ opacity:0; transform:translateY(8px) scale(.98); } to{ opacity:1; transform:none; } }
 :is(.st-key-_intent_input,[class*="st-key-_iv_answer_"]) [data-testid="stTextAreaRootElement"]{
   border-color:var(--ns-accent)!important; box-shadow:0 0 0 4px var(--ns-accent-soft); }
+/* F 的回答框:每出一道新题(新 key = 新节点)呼吸两下 */
+[class*="st-key-_iv_answer_"] [data-testid="stTextAreaRootElement"]{ animation:ns-ring 1.6s ease-out .3s 2; }
+/* 同意页:勾上同意、开始按钮亮起的那一下 */
+.stElementContainer.st-key-_consent_agree:has(input:checked) + .stElementContainer button{ animation:ns-ring 1.6s ease-out 2; }
+@media (prefers-reduced-motion: reduce){
+  .ns-tour-spot, .ns-tour-tip, .ns-tour-spot.is-moving, .ns-tour-tip.is-moving{ transition:none; }
+  .ns-tour-spot::after, .ns-tour-tip.is-in, .ns-tour-flash,
+  [class*="st-key-_iv_answer_"] [data-testid="stTextAreaRootElement"],
+  .stElementContainer.st-key-_consent_agree:has(input:checked) + .stElementContainer button{ animation:none!important; }
+}
 
 /* ── 7 点量表 ──────────────────────────────────────────────────────
    一题一块:题干 → 按钮行 → 锚点,块与块之间一条细线。v1 的锚点行紧贴着下一题的题干,
@@ -441,11 +493,12 @@ div.st-key-btn_more_ai button p{ color:#ffffff!important; }
 
 /* 逐镜头归属:一镜一张卡(views/questionnaire._shot_preview);镜号圆圈与絵コンテ纸上的同形 */
 [class*="st-key-ns_card_shot"]{ gap:.75rem!important; }
+/* 镜号圆圈浮在行首:文字绕着它排,第二行起与下方的选项控件左对齐 */
 .ns-shot{ margin-bottom:1rem; }
-.ns-shot-head{ display:flex; align-items:center; gap:.55rem; margin-bottom:.4rem; }
-.ns-shot .cut{ flex:none; display:inline-flex; align-items:center; justify-content:center; width:1.6rem; height:1.6rem;
-  border:1.5px solid var(--ns-text); border-radius:50%; font:700 .88rem/1 Georgia, serif; color:var(--ns-text); }
-.ns-shot-no{ font-size:.78rem; font-weight:700; letter-spacing:.06em; color:var(--ns-dim); }
+.ns-shot::after{ content:""; display:block; clear:both; }
+.ns-shot .cut{ float:left; display:inline-flex; align-items:center; justify-content:center; width:1.6rem; height:1.6rem;
+  margin:.05rem .6rem .2rem 0; border:1.5px solid var(--ns-text); border-radius:50%;
+  font:700 .88rem/1 Georgia, serif; color:var(--ns-text); }
 .ns-shot-txt{ line-height:1.7; color:var(--ns-text); }
 
 /* E 的引导题卡(views/guidance)与 F 的采访题:题面比正文大一档 */
@@ -461,8 +514,9 @@ div.st-key-btn_more_ai button p{ color:#ffffff!important; }
 /* 生成后的稿子:C 的只读稿与「你写的创意」回显 */
 .st-key-ns_card_script{ background:var(--ns-surface-2)!important; }
 .st-key-ns_card_intent{ gap:.35rem!important; box-shadow:none!important; background:var(--ns-sunken)!important; }
-/* 历史面板:内容多高就多高,最高 480px(st.container(height=) 是写死的高度,只有一版时下面一大块空白) */
-.st-key-ns_history{ height:auto!important; max-height:480px; }
+/* 模型写的题面(历史面板)与「为什么问」(E 的引导卡):逐字转义后的样式。1rem 下边距抵消 markdown 块的 -1rem */
+.ns-hq{ font-weight:700; line-height:1.6; margin-bottom:1rem; }
+.ns-why{ font-size:.9rem; line-height:1.6; color:var(--ns-dim); margin-bottom:1rem; }
 
 /* ── 对话(历史 / F 的采访)──────────────────────────────────────── */
 /* 自定义图标头像在 1.60 里统一是 stChatMessageAvatarCustom,谁说的话只能从内容区的 aria-label 分
@@ -480,6 +534,7 @@ div.st-key-btn_more_ai button p{ color:#ffffff!important; }
   color:var(--ns-surface)!important; }
 
 /* ── 页脚 ──────────────────────────────────────────────────────── */
+.ns-has-resume [data-testid="stMainBlockContainer"]{ padding-bottom:8rem!important; }   /* 续接提示条(core/state)的位置 */
 .st-key-ns_footer{ margin-top:2rem; padding-top:1.1rem; border-top:1px solid var(--ns-line); }
 .st-key-ns_footer [data-testid="stCaptionContainer"]{ text-align:center; font-size:.8rem; }
 
@@ -576,7 +631,8 @@ body:has(.stElementContainer:not([data-stale="true"]) .ns-busy) .stElementContai
   /* 步骤条:只留当前一步的名字,其余是编号圆点(五个名字一行放不下) */
   .ns-steps li{ flex:0 0 auto; }
   .ns-steps li.cur{ flex:1 1 auto; }
-  .ns-steps li:not(.cur) .lbl{ display:none; }
+  .ns-steps li:not(.cur) .lbl{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0);
+    white-space:nowrap; }   /* 只是视觉上藏:读屏照样读得到每一步的名字 */
   .ns-steps li::after{ flex:0 0 .7rem; min-width:.7rem; margin:0 .3rem; }
   .ns-steps li.cur::after{ flex:1 1 .7rem; }
   .ns-anchor{font-size:.7rem;gap:.3rem}

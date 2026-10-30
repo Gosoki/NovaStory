@@ -33,7 +33,7 @@ def _render_anchors(kind: str | None) -> None:
     """Anchor labels under the scale: left / (center) / right, in ONE row whose
     width matches the button row so they line up with 1 / mid / 7.
 
-    Deliberately a single flex row (styled by `.ns-anchor` in app.py), not
+    Deliberately a single three-column grid row (styled by `.ns-anchor` in app.py), not
     `st.columns(3)`: Streamlit stacks columns vertically below ~640px, which on a
     phone turned every scale's three anchors into a diagonal staircase of three
     separate lines — and once 「非常にそう思う」 sits on its own line far under the
@@ -53,6 +53,11 @@ def _render_anchors(kind: str | None) -> None:
     )
 
 
+def container_key(key: str) -> str:
+    """likert() 外层容器的 key(问卷的「下一题」框按它找题,别在别处手拼)。"""
+    return f"ns_lk_{key}"
+
+
 def likert(label: str, key: str, *, anchors: str | None = "agree"):
     """One labelled 7-point item; returns the selection, None if unanswered.
 
@@ -61,7 +66,7 @@ def likert(label: str, key: str, *, anchors: str | None = "agree"):
 
     一题一个容器(.st-key-ns_lk_*,样式在 app.py):题干、按钮行、锚点收在同一块里,块与块之间
     有间距和细线 —— v1 的锚点行紧贴着下一题的题干,读起来像是下一题的锚点。"""
-    with st.container(key=f"ns_lk_{key}"):
+    with st.container(key=container_key(key)):
         st.markdown(label)
         val = st.segmented_control(
             label, SCALE, selection_mode="single", key=key,

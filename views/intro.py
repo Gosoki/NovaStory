@@ -80,7 +80,7 @@ _SKETCH = [_img(_ASSET_DIR / f"shot{i}.jpg") for i in (1, 2, 3)]
 
 # `.nsx-lead` is the page's one emphasis style (accent colour + underline) and is
 # shared by both lead-ins so they read as the same kind of sentence (§2, §5).
-# The colours come from --ns-accent / --ns-dim (app.py), which are split by
+# The colours come from the --ns-* tokens (app.py), which are split by
 # prefers-color-scheme: a single pair of values fails WCAG AA on one of the two
 # themes, and the participant's OS picks the theme, not us.
 # `.nsx-label` carries its dimming in the colour, not in `opacity` — opacity
@@ -88,14 +88,13 @@ _SKETCH = [_img(_ASSET_DIR / f"shot{i}.jpg") for i in (1, 2, 3)]
 # strength inside a faded parent.
 _EX_CSS = """
 <style>
-.nsx-lead{margin:.9rem 0 .75rem;font-weight:700;font-size:1.02rem;color:var(--ns-accent,#2563eb);
+.nsx-lead{margin:.9rem 0 .75rem;font-weight:700;font-size:1.02rem;color:var(--ns-accent);
   display:inline-block;border-bottom:2px solid currentColor;padding-bottom:2px}
 .nsx-wrap{margin:0 0 1.05rem}
-.nsx-label{font-size:var(--ns-fs-note,.82rem);color:var(--ns-dim,#6e6e6e);margin:0 0 5px 2px}
-.nsx-no{font-weight:700;color:var(--ns-accent,#2563eb);margin-right:.5em}
-.nsx-field{border:1px solid var(--ns-line,rgba(128,128,128,.45));
-  border-radius:var(--ns-radius,8px);
-  background:var(--ns-soft,rgba(128,128,128,.12));padding:9px 12px;
+.nsx-label{font-size:var(--ns-fs-note);color:var(--ns-dim);margin:0 0 5px 2px}
+.nsx-no{font-weight:700;color:var(--ns-accent);margin-right:.5em}
+.nsx-field{border:1px solid var(--ns-line);border-radius:var(--ns-radius-sm);
+  background:var(--ns-sunken);padding:9px 12px;
   font-size:.9rem;line-height:1.55;white-space:pre-wrap}
 </style>
 """

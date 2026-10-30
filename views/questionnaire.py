@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import html
 import json
+import re
 
 import streamlit as st
 
@@ -19,7 +20,7 @@ _SHOT_TAGS = prereg.SHOT_TAGS   # 与 analysis/v3.shot_fidelity 同源
 
 
 def _ai_q_best_pick(ridx: int):
-    """E-only, optional: let the subject flag the guiding questions that helped —
+    """E / F, optional: let the subject flag the guiding questions that helped —
     multi-select over every question asked this trial, each shown as
     'question → the answer you gave' so it is recognizable. Returns a list of
     {idx, dimension, question, chosen} (empty if none flagged), or None when <2
@@ -43,7 +44,8 @@ def _ai_q_best_pick(ridx: int):
     for i, it in enumerate(asked):
         ans = _answer(it)
         label = f"{it['question']} → {ans}" if ans else it["question"]
-        if st.checkbox(label, key=f"_q_aqbest_{ridx}_{i}"):
+        # 勾选框的标签按 markdown 渲染,而这里是模型写的题面 + 被试原话(F):控制符先转义,逐字显示
+        if st.checkbox(_MD_SPECIAL.sub(r"\\\1", label), key=f"_q_aqbest_{ridx}_{i}"):
             chosen.append({"idx": i, "dimension": it.get("dimension", "other"),
                            "question": it.get("question", ""), "chosen": ans})
     st.divider()
@@ -394,7 +396,7 @@ def render() -> None:
         val = _scale.likert(label, f"_q_{key}_{ridx}", anchors=anchors)   # 题与题之间的分隔线在 _scale 的块样式里
         if val is None:
             missing.append(_scale.truncate_label(label))
-            pending.append(f"ns_lk__q_{key}_{ridx}")
+            pending.append(_scale.container_key(f"_q_{key}_{ridx}"))
         answers[key] = val
 
     for i in range(1, _OWN_ITEMS + 1):
@@ -408,10 +410,9 @@ def render() -> None:
     likert("violation", t("q.violation"), anchors="violation")
     likert("imagine", t("q.imagine"), anchors="imagine")
     likert("sat", t("q.satisfaction"))
-    # E-only: rate the quality of the AI's guiding questions (E is the only
-    # condition where the AI asks structured questions). ai_q_amount = did it ask
-    # too few / just right / too many; ai_q_best = which single question landed
-    # (optional). Both exploratory, stored E-only (NULL for C/D).
+    # E / F: rate the quality of the AI's questions (the two conditions where the AI asks).
+    # ai_q_amount = did it ask too few / just right / too many; ai_q_best = which questions
+    # helped (optional multi-select). Exploratory, stored for E / F only (NULL for C/D).
     # 2026-10-27 起 F(AI 的采访式提问)也问这三题,用来比较两边对「AI 提问」的感受
     # (检查「AI 亲切所以分高」的可能,docs/paper/06 ㉖)。
     if state.current_round()["condition"] in ("E", "F"):
@@ -454,17 +455,20 @@ def render() -> None:
             pending.append(f"_q_whole_{ridx}")
         shot_annotations.append({"shot": 0, "tag": lbl2tag.get(sel)})
 
-    # E 专属、可选:哪些引导问题真的帮到了。放在逐镜头标注**之后**(见上方注释)。
+    # E / F、可选:哪些问题真的帮到了。放在逐镜头标注**之后**(见上方注释)。
     if state.current_round()["condition"] in ("E", "F"):
         answers["ai_q_best"] = _ai_q_best_pick(ridx)
 
-    # 下一步在哪:第一道还没答的题套一圈细框,全答完就把提交按钮圈出来(用户 2026-10-31:要提示下一步)。
-    # 用 outline —— 不占版面,点一下量表、页面重跑时框挪到下一题,下面的内容不会跳。只标位置,不涉及答什么。
-    nxt = f".st-key-{pending[0]}" if pending else f".st-key-ns_q_submit_{ridx} button"
-    st.markdown(f'<span class="ns-css"></span><style>{nxt}{{outline:2px solid var(--ns-accent-line);'
-                f'outline-offset:{"6px" if pending else "3px"};border-radius:12px}}</style>', unsafe_allow_html=True)
+    # 下一步在哪:第一道还没答的必答题套一圈细框(用户 2026-10-31:要提示下一步)。用 outline —— 不占版面,
+    # 点一下量表、页面重跑时框挪到下一题,下面的内容不会跳。只标位置,不涉及答什么。全答完就不再圈任何东西:
+    # 圈提交按钮会把人从 E / F 的可选题(ai_q_best)上直接引开,而「一题都没勾」在分析里是有信息的回答。
+    if pending:
+        nxt = f".st-key-{pending[0]}"
+        st.markdown(f'<span class="ns-css"></span><style>{nxt}{{outline:2px solid var(--ns-accent-line);'
+                    f'outline-offset:6px;border-radius:12px;animation:ns-ring 1.6s ease-out 2}}'
+                    f'@media (prefers-reduced-motion: reduce){{{nxt}{{animation:none}}}}</style>', unsafe_allow_html=True)
 
-    if st.button(t("q.submit"), type="primary", width="stretch", key=f"ns_q_submit_{ridx}"):
+    if st.button(t("q.submit"), type="primary", width="stretch"):
         if missing:
             st.error(t("errors.unanswered", items=" / ".join(missing)))
             return
@@ -473,13 +477,17 @@ def render() -> None:
         st.rerun()
 
 
+# markdown 控制符(st.checkbox 的标签按 markdown 渲染)
+_MD_SPECIAL = re.compile(r"([\\`*_{}\[\]()#+\-.!|~<>:$])")
+
+
 def _shot_preview(s: dict) -> str:
     """镜号 + 画面文字(截 120 字,同 v1)。逐字转义:AI 稿里的「*」「1.」经 markdown 会变成斜体 / 列表。"""
     body = s.get("visual") or s.get("raw", "")
     if len(body) > 120:
         body = body[:120] + "…"
-    return (f'<div class="ns-shot"><div class="ns-shot-head"><span class="cut" aria-hidden="true">{s["idx"]}</span>'
-            f'<span class="ns-shot-no">{html.escape(t("q.shot_label", i=s["idx"]).rstrip("：: "))}</span></div>'
+    name = html.escape(t("q.shot_label", i=s["idx"]).rstrip("：: "))   # 镜号圆圈本身就是标号;名字留给读屏
+    return (f'<div class="ns-shot"><span class="cut" role="img" aria-label="{name}">{s["idx"]}</span>'
             f'<div class="ns-shot-txt">{html.escape(body)}</div></div>')
 
 
@@ -500,8 +508,8 @@ def _submit(ridx: int, answers: dict, shot_annotations: list[dict]) -> None:
         intent_violation=answers["violation"],
         imagine_match=answers["imagine"],
         satisfaction=answers["sat"],
-        ai_q_quality=answers.get("ai_q_quality"),  # E only; NULL for C/D
-        ai_q_amount=answers.get("ai_q_amount"),    # E only; NULL for C/D
+        ai_q_quality=answers.get("ai_q_quality"),  # E / F only; NULL for C/D
+        ai_q_amount=answers.get("ai_q_amount"),    # E / F only; NULL for C/D
         # None = 没问(不足 2 题);[] = 问了但一道都没勾 —— 后者是有信息的回答,不能抹成缺失
         ai_q_best_json=(json.dumps(answers["ai_q_best"], ensure_ascii=False)
                         if answers.get("ai_q_best") is not None else None),

@@ -131,13 +131,11 @@ def _api_section() -> None:
     st.session_state["api_key"] = chosen["api_key"]
     st.session_state["api_preset_name"] = chosen.get("name", "")
 
-    st.caption(t("sidebar.api_active", name=chosen.get("name", "—")))
     if not chosen["api_key"]:
         st.warning(t("sidebar.api_key_missing"))
 
 
 def _topics_preview() -> None:
-    st.subheader(t("sidebar.topic_section"))
-    st.caption(t("sidebar.topics_hint"))
+    st.subheader(t("sidebar.topic_section"), help=t("sidebar.topics_hint"))
     topics = state.load_topics()
     st.json(topics, expanded=False)

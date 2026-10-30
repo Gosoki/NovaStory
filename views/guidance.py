@@ -4,7 +4,7 @@ import html
 
 import streamlit as st
 
-from core import config, prompts, state
+from core import prompts, state
 from i18n import get_lang, t
 from views import _postgen
 from views._streaming import RETRY, call_llm_json, stream_llm
@@ -71,8 +71,8 @@ def render(topic: dict) -> None:
         f'<div class="ns-q">{html.escape(q["question"])}</div>',
         unsafe_allow_html=True,
     )
-    if q.get("why"):
-        card.caption(q["why"])
+    if q.get("why"):   # 也是模型写的:逐字
+        card.markdown(f'<div class="ns-why">{html.escape(q["why"])}</div>', unsafe_allow_html=True)
 
     saved = st.session_state["r_g_answers"].get(idx, {})
     options = list(q.get("options") or [])

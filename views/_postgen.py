@@ -7,7 +7,7 @@ import streamlit as st
 from core import prompts, state
 from i18n import get_lang, t
 from views import _trial
-from views._streaming import stream_llm
+from views._streaming import stream_llm, verbatim
 
 # The post-generation loop (paper/7 §2, D24 revision): the script lives in an
 # always-editable textarea; the condition's AI channel sits alongside; hand
@@ -25,7 +25,7 @@ AVATAR_AI = ":material/auto_awesome:"
 
 
 def render_editable(topic: dict, cond: str) -> None:
-    """D / E:可编辑的看稿循环(render_readonly 是 C 的只读兄弟)。"""
+    """D / E / F:可编辑的看稿循环(render_readonly 是 C 的只读兄弟)。"""
     _refresh_editor_if_flagged()
     if "_script_edit" not in st.session_state:
         st.session_state["_script_edit"] = state.current_script()
@@ -39,7 +39,8 @@ def render_editable(topic: dict, cond: str) -> None:
         key="_script_edit",
         height=320,
         label_visibility="collapsed",
-        # 上限必须高到 AI 稿绝无可能触到。第 27-28 行把 current_script() 灌进这个 key,
+        # 上限必须高到 AI 稿绝无可能触到。本函数开头那句 `if "_script_edit" not in st.session_state`
+        # 把 current_script() 灌进这个 key,
         # 而 text_area 会按 max_chars **截断**灌进来的值并写回 session_state ——
         # 于是 persist_pending_edit 看到「内容变了」,把模型话痨造成的截断记成一次
         # user_edit,hand_edit_chars 凭空多出几千字。那是「努力再分配」主图的指标,
@@ -68,14 +69,6 @@ def render_editable(topic: dict, cond: str) -> None:
         st.rerun()
 
 
-def _pre(text: str) -> str:
-    """逐字回显(pre-wrap + 转义):被试写的「1. 起きる」经 markdown 会变成有序列表,AI 稿里的
-    「*」会变斜体 —— 被试看到的必须与编辑框 / 库里存的是同一份文字。
-    margin-bottom:1rem 与 Streamlit 给 markdown 块垫的 -1rem 抵消(同一个 <p> 的行为),否则卡片 / 对话气泡
-    的底边距被吃掉、末行压在边框上。"""
-    return f"<div style='white-space:pre-wrap;line-height:1.7;margin-bottom:1rem'>{html.escape(text or '')}</div>"
-
-
 def render_readonly(topic: dict) -> None:
     """Condition C: zero-loop — own idea, generated script, submit.
 
@@ -91,10 +84,10 @@ def render_readonly(topic: dict) -> None:
             st.caption(t("postgen.readonly_intent"))
             # 逐字回显:被试写的「1. 起きる 2. 走る」经 markdown 会变成有序列表,
             # 排版上与紧邻其下的 AI 稿难以区分 —— 而这段回显存在的意义就是分开两者。
-            st.markdown(_pre(intent), unsafe_allow_html=True)
+            st.markdown(verbatim(intent), unsafe_allow_html=True)
     st.subheader(t("postgen.readonly_title"))
     with st.container(key="ns_card_script"):
-        st.markdown(_pre(state.current_script()), unsafe_allow_html=True)
+        st.markdown(verbatim(state.current_script()), unsafe_allow_html=True)
     if st.button(t("postgen.submit_c"), type="primary", width="stretch"):
         _trial.submit_trial(state.current_script())
         st.rerun()
@@ -129,26 +122,28 @@ def render_history() -> None:
         return
     requests = st.session_state["r_revision_requests"]   # condition D
     guidance_rounds = st.session_state["r_guidance_rounds"]   # condition E(别叫 guidance:与下面局部 import 的模块同名)
+    # 「内容多高就多高、最高 _HISTORY_HEIGHT」:st.container(height=) 是写死的高度,只有一版时下面一大块空白
+    st.markdown(f'<span class="ns-css"></span><style>.st-key-ns_history{{height:auto!important;'
+                f'max-height:{_HISTORY_HEIGHT}px}}</style>', unsafe_allow_html=True)
     with st.expander(t("history.title"), expanded=True):
-        # key → app.py 把它改成「内容多高就多高、最高 _HISTORY_HEIGHT」:只有一版时 v1 下面是一大块空白
         with st.container(height=_HISTORY_HEIGHT, key="ns_history"):
             intent = (st.session_state.get("r_intent") or "").strip()
             if intent:
                 with st.chat_message("user", avatar=AVATAR_USER):
                     st.caption(t("history.intent"))
-                    st.markdown(_pre(intent), unsafe_allow_html=True)
+                    st.markdown(verbatim(intent), unsafe_allow_html=True)
             ai_seen = 0
             for v in versions:
                 if v["author"] == "ai":
                     _history_user_turn(ai_seen, requests, guidance_rounds)
                     with st.chat_message("assistant", avatar=AVATAR_AI):
                         st.caption(t("history.ai", v=v["v"]))
-                        st.markdown(_pre(v["text"]), unsafe_allow_html=True)
+                        st.markdown(verbatim(v["text"]), unsafe_allow_html=True)
                     ai_seen += 1
                 else:  # user_edit
                     with st.chat_message("user", avatar=AVATAR_USER):
                         st.caption(t("history.edit"))
-                        st.markdown(_pre(v["text"]), unsafe_allow_html=True)
+                        st.markdown(verbatim(v["text"]), unsafe_allow_html=True)
 
 
 def _history_user_turn(ai_idx: int, requests: list, guidance_rounds: list) -> None:
@@ -162,29 +157,29 @@ def _history_user_turn(ai_idx: int, requests: list, guidance_rounds: list) -> No
                     t("guidance.ai_decide") if it.get("ai_decided")
                     else (it.get("chosen") or "—")
                 )
-                st.markdown(f"**{it['question']}**")
-                st.markdown(_pre(f"→ {answer}"), unsafe_allow_html=True)   # 被试写的字逐字显示,不按 markdown 排
+                st.markdown(f'<div class="ns-hq">{html.escape(it["question"])}</div>',   # 模型写的题面:逐字
+                            unsafe_allow_html=True)
+                st.markdown(verbatim(f"→ {answer}"), unsafe_allow_html=True)   # 被试写的字逐字显示,不按 markdown 排
     elif requests and 1 <= ai_idx <= len(requests):
         with st.chat_message("user", avatar=AVATAR_USER):
             st.caption(t("history.req"))
-            st.markdown(_pre(requests[ai_idx - 1]["text"]), unsafe_allow_html=True)
+            st.markdown(verbatim(requests[ai_idx - 1]["text"]), unsafe_allow_html=True)
 
 
 def _render_revision_channel(topic: dict) -> None:
     if st.session_state.pop("_revision_clear", False):
         st.session_state["_revision_input"] = ""
-    # 「请 AI 改」的输入、说明与按钮收进一张卡,与下面的「就这版提交」分开:两者是被试的两条路
-    with st.container(key="ns_card_ai"):
-        st.text_area(
-            t("d.revision_label"),
-            key="_revision_input",
-            placeholder=t("d.revision_placeholder"),
-            height=80,
-            max_chars=600,
-        )
-        st.caption(t("d.revision_hint"))
-        clicked = st.button(t("d.revision_send"), type="secondary", width="stretch", key="btn_more_ai")
-    if clicked:
+    # 与 v1 一样平铺,不单独套卡片:「请 AI 改」与「就这版提交」是被试的两条路,哪一条有额外的框
+    # 都是在推它(n_ai_rounds 是因变量;审查实测卡片还让两颗按钮宽度不一)
+    st.text_area(
+        t("d.revision_label"),
+        key="_revision_input",
+        placeholder=t("d.revision_placeholder"),
+        height=80,
+        max_chars=600,
+    )
+    st.caption(t("d.revision_hint"))
+    if st.button(t("d.revision_send"), type="secondary", width="stretch", key="btn_more_ai"):
         request = (st.session_state.get("_revision_input") or "").strip()
         if not request:
             st.error(t("errors.revision_empty"))

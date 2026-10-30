@@ -105,9 +105,9 @@ def render() -> None:
 
     st.divider()
     st.subheader(t("tendency.title"))
-    st.caption(t("tendency.caption"))
+    st.caption(t("tendency.caption"))   # 只留「采集期间别看 ja」这一条;口径说明在开关的 ⓘ 里
     # 研究员每天都要进这个页面做监控:默认不展开、不取数,免得日本采集期间顺手看到结果
-    if not st.toggle(t("tendency.open"), key="_td_open"):
+    if not st.toggle(t("tendency.open"), key="_td_open", help=t("tendency.open_help")):
         return
 
     long, pp = _load()
@@ -232,7 +232,6 @@ def _composition(pp) -> None:
     rows += [(t(f"tendency.comp_{k}"), pp[c].astype(bool)) for k, c in (
         ("background", "bg_yes"), ("written", "written_yes"), ("self_low", "self_low"),
         ("quiz1", "quiz1_ok"), ("quiz2", "quiz2_ok"), ("quiz_both", "quiz_both"))]
-    rows.append((t("tendency.comp_written_quiz"), pp["written_yes"].astype(bool) & pp["quiz_both"].astype(bool)))
     n = len(pp)
     st.dataframe(pd.DataFrame([{t("tendency.comp_item"): lab, t("tendency.comp_n"): int(m.sum()),
                                 t("tendency.comp_share"): f"{m.sum() / n:.0%}" if n else ""} for lab, m in rows]),

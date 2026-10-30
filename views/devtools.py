@@ -58,7 +58,7 @@ def _session_text(d: dict) -> str:
 
 
 def render() -> None:
-    st.subheader(t("admin.tools_title"))
+    st.subheader(t("admin.tools_title"), help=t("admin.test_refs"))
     _model_check()
     stage = st.session_state.get("stage")
     if stage in ("consent", "screening"):
@@ -87,9 +87,8 @@ def render() -> None:
                 disabled=cond == rd["condition"],
                 on_click=_switch_condition,
                 args=(cond,),
+                help=t("admin.switch_hint"),
             )
-        st.caption(t("admin.switch_hint"))
-    st.caption(t("admin.test_refs"))
 
 
 def _model_check() -> None:

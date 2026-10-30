@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import contextlib
 import io
-import sys
 import warnings
 from pathlib import Path
 
@@ -67,9 +66,12 @@ def preserve_merged(pt, csv_path: Path):
 
 def render() -> None:
     st.divider()
-    st.subheader(t("analysis.title"))
-    st.caption(t("analysis.caption"))
+    # 默认收起:研究员每天进后台是为了看监控;要出结果 / 出图时再展开(展开后按钮的 rerun 不会把它收回去)
+    with st.expander(t("analysis.title")):
+        _body()
 
+
+def _body() -> None:
     # 惰性导入**推迟到点按钮时**(2026-10-29 审计):研究员页每次渲染都会画这个面板,以前一打开就加载
     # statsmodels / matplotlib(首次约 2 秒),占住服务进程 —— 采集期间打开后台,在线被试会卡一下。
     def _mods():
@@ -89,15 +91,15 @@ def render() -> None:
     # 2026-09-07 拍板:主分析人群 = 全样本 → 默认**不勾**就是主分析。勾上才切到
     # novice 子集(事后探索性)。session key 一并换名,避免旧会话残留的 True 把
     # 研究员静默留在旧默认上。
-    pop_novice = st.checkbox(t("analysis.pop_novice"), key="_an_pop_novice")
+    pop_novice = st.checkbox(t("analysis.pop_novice"), key="_an_pop_novice", help=t("analysis.pop_novice_help"))
     # 敏感性分析 V1(与 `stats.py --drop-attention-fail` 同一函数):剔除要在 build_composites 之前,
     # z 在剩余样本内重算;写回的 v3_per_trial.csv 仍是全样本
-    drop_attn = st.checkbox(t("analysis.drop_attn"), key="_an_drop_attn")
+    drop_attn = st.checkbox(t("analysis.drop_attn"), key="_an_drop_attn", help=t("analysis.drop_attn_help"))
     population = "novice" if pop_novice else "all"
     # 队列:默认只算中国(2026-10-29 审计)。以前中日都在库时,这里跑的是不含队列项、也不过门控的混合模型,
     # 判定与 make stats 不同;而且采集期间研究员一点就看到日本的因变量(prereg.JA_STOP_RULE 不允许)。
     # 勾上才纳入日本;两个队列都在时走与 make stats 同一个合并模型(门控 + 分国估计)。
-    include_ja = st.checkbox(t("analysis.include_ja"), key="_an_include_ja")
+    include_ja = st.checkbox(t("analysis.include_ja"), key="_an_include_ja", help=t("analysis.include_ja_help"))
 
     def _cohort(pt):
         if include_ja or "lang" not in pt:
@@ -232,8 +234,6 @@ def render() -> None:
                 st.image(str(FIGDIR / f"fig_ownership{sfx}.png"), caption=t("analysis.cap_ownership") + tag)
         except Exception as e:  # noqa: BLE001
             st.warning(t("analysis.err_figures", err=f"{type(e).__name__}: {e}"))
-
-    st.caption(t("analysis.note"))
 
 
 def _run_power(power_sim) -> None:

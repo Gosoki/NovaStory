@@ -72,9 +72,7 @@ def render() -> None:
 
     _overview(parts)
     _sessions(parts, trials)
-    if scope is not None:
-        st.caption(t("monitor.cohort_scope"))
-    _data_health(trials, dev_ids, scope)
+    _data_health(trials, dev_ids, scope)   # 只统计日本队列时,口径说明在「データ健全性」标题的 ⓘ 里
     _usage(dev_ids, scope)
     _balance(trials if scope is None or "participant_id" not in trials
              else trials[trials["participant_id"].isin(scope)])
@@ -87,16 +85,19 @@ def render() -> None:
 
 def _overview(parts: pd.DataFrame) -> None:
     status = parts["status"].value_counts() if "status" in parts else pd.Series(dtype=int)
-    done, inprog, out = (int(status.get(k, 0)) for k in ("done", "in_progress", "screened_out"))
+    # 「筛除」卡已去掉:2026-09-07 起没有人被筛掉(insert_participant 一律 passed=True),那张卡恒为 0
+    done, inprog = (int(status.get(k, 0)) for k in ("done", "in_progress"))
     done_rows = parts[parts["status"] == "done"] if "status" in parts else parts.iloc[0:0]
     nov_flags = _novice_flags(done_rows).astype(bool)   # 空表时 map 得到 object 空列,.sum() 会给 ''
     nov = float(nov_flags.mean()) if len(done_rows) else float("nan")
     with st.container(border=True):
-        c = st.columns(4)
+        c = st.columns(3)
         c[0].metric(t("monitor.done"), done)
         c[1].metric(t("monitor.inprog"), inprog)
-        c[2].metric(t("monitor.out"), out)
-        c[3].metric(t("monitor.novice_share"), "—" if pd.isna(nov) else f"{nov:.0%}")
+        # 2026-09-07 拍板:主分析人群 = 全样本 → 招募够不够看下面那条进度条;novice 人数只是
+        # 经验构成的参考(决定事后探索性切分有没有解释力),放进这张卡的 ⓘ
+        c[2].metric(t("monitor.novice_share"), "—" if pd.isna(nov) else f"{nov:.0%}",
+                    help=t("monitor.novice_done", n=int(nov_flags.sum())))
     # 库里一有 ja 行,进度条就只数日本队列(中国 36 人早已满,混在一起这条线永远是 100%)
     is_ja = parts["lang"].isin(config.FOUR_COND_LANGS) if "lang" in parts else None
     if is_ja is not None and is_ja.any():
@@ -106,17 +107,16 @@ def _overview(parts: pd.DataFrame) -> None:
     st.progress(min(n_done / target, 1.0),
                 text=t("monitor.progress", n=target, done=n_done,
                        remain=max(target - n_done, 0)))
-    # 2026-09-07 拍板:主分析人群 = 全样本 → **招募够不够看上面那条进度条**。
-    # 下面这个 novice 人数只是样本经验构成的参考,决定的是事后探索性切分还有没有解释力。
-    st.caption(t("monitor.novice_done", n=int(nov_flags.sum())))
     # 语言构成:ja=日本队列、zh=中国队列,两者都是正式数据(2026-09-06 拍板,分析时按
     # lang 分开即可);只有 en 才是研究员测试或脱离协议的会话 —— 采数期就要看见,
     # 不能等到分析时才发现(那时已无法补救)。
     if "lang" in parts and len(parts):
         mix = parts["lang"].fillna("ja").value_counts().to_dict()
         line = " / ".join(f"{k}: {v}" for k, v in mix.items())
-        (st.caption if set(mix) <= {"ja", "zh"} else st.warning)(
-            t("monitor.lang_mix", mix=line))
+        if set(mix) <= {"ja", "zh"}:
+            st.caption(t("monitor.lang_mix_ok", mix=line))
+        else:   # 告警保留完整说明:它正是要在采数期就被看懂的那一条
+            st.warning(t("monitor.lang_mix", mix=line))
     _dup_contacts(parts)
 
 
@@ -217,7 +217,8 @@ def _data_health(trials: pd.DataFrame, dev_ids: set[int] = frozenset(), scope: s
     if scope is not None:
         ev = ev[ev["participant_id"].isin(scope)] if "participant_id" in ev else ev
         trials = trials[trials["participant_id"].isin(scope)] if "participant_id" in trials else trials
-    st.markdown(f"**{t('monitor.health_title')}**")
+    st.markdown(f"**{t('monitor.health_title')}**",
+                help=t("monitor.cohort_scope") if scope is not None else None)
     if ev.empty and trials.empty:
         st.caption(t("monitor.health_none"))
         return
@@ -324,7 +325,7 @@ def _usage(dev_ids: set[int] = frozenset(), scope: set[int] | None = None) -> No
     if done_pay.empty:
         return
 
-    st.markdown(f"**{t('monitor.usage_title')}**")
+    st.markdown(f"**{t('monitor.usage_title')}**", help=t("monitor.usage_note"))
     p_tok = sum(int((d.get("usage") or {}).get("prompt") or 0) for d in done_pay)
     c_tok = sum(int((d.get("usage") or {}).get("completion") or 0) for d in done_pay)
     n_call = len(done_pay)
@@ -365,7 +366,6 @@ def _usage(dev_ids: set[int] = frozenset(), scope: set[int] | None = None) -> No
     if len(by_group):
         st.caption(t("monitor.usage_by_group",
                      detail=" · ".join(f"{k} {v}" for k, v in by_group.items())))
-    st.caption(t("monitor.usage_note"))
 
 
 def _balance(trials: pd.DataFrame) -> None:
@@ -377,7 +377,7 @@ def _balance(trials: pd.DataFrame) -> None:
     df[col_cond] = df["condition"].map(_cond_label)
     piv = df.pivot_table(index=col_cond, columns=col_topic, values="participant_id",
                          aggfunc="count", fill_value=0)
-    st.markdown(t("monitor.balance_title"))
+    st.markdown(t("monitor.balance_title"), help=t("monitor.balance_help"))
     try:
         st.dataframe(piv.style.background_gradient(cmap="Greens", axis=None), width="stretch")
     except Exception:  # noqa: BLE001
@@ -406,8 +406,7 @@ def _progress(parts: pd.DataFrame) -> None:
             seqc = seqc.reindex(range(n_cells), fill_value=0)
             seqc.index = seqc.index.map(lambda i: f"seq{i}")
             st.bar_chart(seqc, height=220)
-            st.caption(t("monitor.seq_cohort", cohort=cohort, n=n_cells))
-            st.caption(t("monitor.seq_target", n=per))
+            st.caption(t("monitor.seq_cohort", cohort=cohort, n=n_cells, per=per))
         else:
             st.caption(t("monitor.no_seq"))
     with c2:

@@ -7,7 +7,7 @@ import streamlit as st
 
 from core import config, prompts, state
 from i18n import get_lang, t
-from views import _postgen, _scroll, group_c, group_d, group_e, group_f, guidance, interview, questionnaire
+from views import _postgen, _scroll, _tour, group_c, group_d, group_e, group_f, guidance, interview, questionnaire
 
 
 def render() -> None:
@@ -15,11 +15,9 @@ def render() -> None:
     cond, topic = rd["condition"], rd["topic"]
 
     _round_header(cond)
-    phase = st.session_state["r_phase"]
-    if phase == "intent":
-        _cue("round.cue_read")   # 写创意这一步:先把视线引到题目,再引到输入框(见 _render_intent)
     _topic_card(topic)
 
+    phase = st.session_state["r_phase"]
     # The chat-style history sits at the very top of the loop phases so it stays
     # visible while answering guidance questions and while editing/revising.
     if phase == "guidance" or (phase == "postgen" and cond != "C"):
@@ -29,7 +27,7 @@ def render() -> None:
     elif phase == "pipeline":
         st.info(t(f"round.instr_{cond}", shot_count=topic["shot_count"]))
         st.text_input(
-            t("round.intent_label"),
+            t("history.intent"),   # 已提交的创意回显:「长短形式随你」此时已无意义
             value=st.session_state["r_intent"],
             disabled=True,
         )
@@ -73,17 +71,18 @@ def _round_header(cond: str) -> None:
     steps = _steps(cond)
     cur = _current_step(cond, len(steps))
 
-    pips = "".join(f'<i class="{"done" if k < i else "cur" if k == i else ""}"></i>' for k in range(1, n + 1))
+    pips = "".join(f'<i class="{"done" if k < i else "cur" if k == i else ""}"></i>' for k in range(1, n + 1))   # 装饰:轮次文字就在旁边
     items = []
     for k, label in enumerate(steps):
         cls, dot = ("done", _CHECK_SVG) if k < cur else ("cur", str(k + 1)) if k == cur else ("", str(k + 1))
         aria = ' aria-current="step"' if k == cur else ""
         items.append(f'<li class="{cls}"{aria}><span class="dot">{dot}</span>'
                      f'<span class="lbl">{html.escape(label)}</span></li>')
-    st.markdown(
-        f'<nav class="ns-round"><div class="ns-round-top">'
-        f'<span class="ns-round-no">{html.escape(t("round.title", i=i, n=n))}</span>'
-        f'<span class="ns-pips" role="img" aria-label="{html.escape(t("round.progress", i=i, n=n))}">{pips}</span>'
+    title = html.escape(t("round.title", i=i, n=n))
+    st.markdown(   # 轮次文字给读屏当二级标题(v1 是 st.header);视觉样式不变
+        f'<nav class="ns-round" aria-label="{title}"><div class="ns-round-top">'
+        f'<span class="ns-round-no" role="heading" aria-level="2">{title}</span>'
+        f'<span class="ns-pips" aria-hidden="true">{pips}</span>'
         f'</div><ol class="ns-steps">{"".join(items)}</ol></nav>',
         unsafe_allow_html=True,
     )
@@ -119,7 +118,9 @@ def _current_step(cond: str, n_steps: int) -> int:
         return 1  # generate / view
     if cond == "D":
         return 1 if phase == "pipeline" else 2  # generate → polish
-    # E / F(F 的采访只在生成之前,所以进得来就是第 1 步)
+    # E / F(F 的采访只在生成之前,所以进得来就是第 1 步;问完之后那一屏就是在生成 → 第 2 步)
+    if cond == "F" and phase == "interview" and st.session_state.get("r_iv_done"):
+        return 2
     if phase in ("pipeline", "guidance", "interview"):
         # follow-up guidance rounds happen mid-polish
         return 1 if not st.session_state["r_versions"] else 3
@@ -141,7 +142,7 @@ def _topic_card(topic: dict) -> None:
     slang = prompts.situation_lang(topic, lang)
     parts = [
         f'<div class="ns-eyebrow">{html.escape(t("round.topic_heading"))}</div>',
-        f'<div class="ns-topic-title">{html.escape(state.topic_text(topic, "title", slang))}</div>',
+        f'<div class="ns-topic-title" role="heading" aria-level="3">{html.escape(state.topic_text(topic, "title", slang))}</div>',
         f'<div class="ns-topic-scn">{html.escape(state.topic_text(topic, "scenario", slang))}</div>',
     ]
     choices = state.topic_text(topic, "choices", slang)
@@ -165,19 +166,11 @@ def _topic_card(topic: dict) -> None:
     st.markdown(f'<section class="ns-topic">{"".join(parts)}</section>', unsafe_allow_html=True)
 
 
-def _cue(key: str) -> None:
-    """「下一步做什么」的提示行(用户 2026-10-31:先提示题目,再引导到输入框)。四个条件同一句,
-    不涉及各条件的操纵说明(那在 round.instr_* 里,一字未动)。"""
-    st.markdown(f'<div class="ns-cue">{html.escape(t(key))}</div>', unsafe_allow_html=True)
-
-
 def _render_intent(cond: str, topic: dict) -> None:
-    # This round's flow label + the detailed how-to, in one box.
-    st.info(
-        f"**{t('round.flow_label')}**\n\n"
-        + t(f"round.instr_{cond}", shot_count=topic["shot_count"])
-    )
-    _cue("round.cue_write")
+    # 本轮怎么做(各条件的操纵说明,一字未动)。v1 框头还有一行「📍 今回の流れ：」—— 与步骤条重复,去掉;
+    # 包进 ns_flow 是给新手引导点亮用的(题目 → 这个框 → 输入框)。
+    with st.container(key="ns_flow"):
+        st.info(t(f"round.instr_{cond}", shot_count=topic["shot_count"]))
     st.markdown(
         t("round.intent_scope", count=topic["shot_count"], total=topic["total_seconds"])
     )
@@ -189,6 +182,8 @@ def _render_intent(cond: str, topic: dict) -> None:
         max_chars=1000,   # 说明页说「长短都行」—— 这是防整段粘贴长文撑爆上下文的硬上限,不是引导
     )
     val = (st.session_state.get("_intent_input") or "").strip()
+    # 新手引导(第 1 轮聚光圈两步、之后每轮闪一下):先题目、再输入框。纯前端,不占版面、不记事件
+    _tour.intent_tour()
     if st.button(t("round.intent_submit"), type="primary", width="stretch"):
         if len(val) < config.MIN_INTENT_CHARS:
             st.error(t("errors.intent_too_short", n=config.MIN_INTENT_CHARS))

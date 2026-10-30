@@ -212,9 +212,10 @@ _INVISIBLE = re.compile(r"<style.*?</style>|<script.*?</script>|<!--.*?-->", re.
 def _scan_screen(at) -> None:
     """收集当前这一屏所有可见文字,记下含简体字的那几条(只在 ja 模式)。"""
     texts: list[str] = []
+    # html:v2 的品牌栏、续接/引导等都画在 st.html 里(script / style 照样剥掉)
     for kind in ("markdown", "caption", "title", "header", "subheader", "text", "info",
                  "warning", "error", "success", "button", "radio", "selectbox", "checkbox",
-                 "text_area", "text_input", "expander", "button_group", "metric", "tabs"):
+                 "text_area", "text_input", "expander", "button_group", "metric", "tabs", "html"):
         try:
             els = at.get(kind)
         except Exception:  # noqa: BLE001 —— 该版本没有这种元素就跳过
@@ -419,7 +420,12 @@ _ROUND_STEPS = {"C": _round_c, "D": _round_d, "E": _round_e, "F": _round_f}
 
 
 def _assert_no_zh_leak() -> None:
-    """ja 会话:界面每一屏 + 每条发给 LLM 的提示词都不含简体字;分镜提示词要的是 ja 字段标记。"""
+    """ja 会话:界面每一屏 + 每条发给 LLM 的提示词都不含简体字;分镜提示词要的是 ja 字段标记。
+    另查整份 ja 文案:新手引导的气泡文字在 <script> 里,逐屏扫描看不到。"""
+    for key, txt in _TGT_TEXT.items():
+        bad = sorted({ch for ch in txt if ch in _ZH_ONLY})
+        if bad:
+            _LEAKS.append(f"[locale {key}] 含简体字 {''.join(bad)}")
     for group, system, user in _PROMPTS:
         for part, txt in (("system", system), ("user", user)):
             bad = sorted({ch for ch in txt if ch in _ZH_ONLY})

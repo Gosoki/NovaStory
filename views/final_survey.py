@@ -49,8 +49,8 @@ def render() -> None:
     pref_sel = st.radio(t("final_survey.q_pref"), labels, index=None)
     reuse_sel = st.radio(t("final_survey.q_reuse"), labels, index=None)
     # 跨轮强制选择。轮内的 imagine / effort 都是 7 点自评,受个人答题风格影响
-    # (有人从不用 7),而且 imagine 比的是**被 E 自己重塑过的记忆**;做完三轮后是
-    # 三个成品摆在一起比,偏差结构不同 —— 作为主终点的收敛证据,不是替代。
+    # (有人从不用 7),而且 imagine 比的是**被 E 自己重塑过的记忆**;做完全部轮次后是
+    # 几个成品摆在一起比,偏差结构不同 —— 作为主终点的收敛证据,不是替代。
     closest_sel = st.radio(t("final_survey.q_closest"), labels, index=None)
     effort_sel = st.radio(t("final_survey.q_effort"), labels, index=None)
     sat = _scale.likert(t("final_survey.q_overall"), "_fs_sat", anchors="satisfied")

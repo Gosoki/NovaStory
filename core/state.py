@@ -394,6 +394,7 @@ try{
     bar.appendChild(hint);
     bar.appendChild(a);
     d.body.appendChild(bar);
+    d.body.classList.add('ns-has-resume');   // app.py 给页底留出条子的高度,别压住页脚的联系邮箱
   }
 }catch(e){}
 """
