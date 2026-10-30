@@ -26,13 +26,23 @@ sys.path.insert(0, str(ROOT))
 
 os.environ["NOVASTORY_NO_IMAGES"] = "1"   # 配图会真的发图片请求(见 core/imagegen 注释)
 
-# 改了界面代码,刷新页面就要看到:每次运行都重新载入 views / i18n(app.py 本来就每次重读)。
+# 改了界面代码,刷新页面就要看到:views / i18n 的文件一变就重新载入(app.py 本来就每次重读)。
 # Streamlit 自己的文件监视只在「改动那一刻有会话连着」时才清模块缓存,新开的页面会拿到旧模块。
-for _m in [m for m in sys.modules if m in ("views", "i18n") or m.startswith(("views.", "i18n."))]:
-    del sys.modules[_m]
+# 每个会话的脚本跑在各自的线程里:清缓存与重新 import 必须在锁里一次做完,且只在文件真的变了时做 ——
+# 否则一个会话正在 import 时被另一个会话清掉,导入机制会抛 KeyError(多开几个标签页就能撞上)。
+import threading  # noqa: E402
 
-from core import db, llm  # noqa: E402
-from views import analysis_panel  # noqa: E402
+_LOCK = sys.__dict__.setdefault("_ns_preview_lock", threading.Lock())
+with _LOCK:
+    _mtime = max(p.stat().st_mtime for d in ("views", "i18n") for p in (ROOT / d).rglob("*") if p.is_file())
+    if sys.__dict__.get("_ns_preview_mtime") != _mtime:
+        for _m in [m for m in sys.modules if m in ("views", "i18n") or m.startswith(("views.", "i18n."))]:
+            del sys.modules[_m]
+        sys._ns_preview_mtime = _mtime
+    from core import db, llm  # noqa: E402
+    from views import (  # noqa: E402,F401 —— 在锁里把 app.py 要用的模块先载好,run_path 里的 import 只读缓存
+        _scroll, analysis_panel, consent, final_survey, intro, researcher, round_common, screening, sidebar,
+    )
 
 DELAY = float(os.environ.get("NOVASTORY_PREVIEW_DELAY", "1.2"))
 

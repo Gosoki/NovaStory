@@ -42,9 +42,10 @@ _JS = r"""
     (parent || D.body).appendChild(e); if (!parent) T.nodes.push(e); return e; }
   function on(target, ev, fn, opt){ target.addEventListener(ev, fn, opt); T.offs.push(function(){ target.removeEventListener(ev, fn, opt); }); }
   function editing(){ var a = D.activeElement; return !!a && (a.tagName === 'TEXTAREA' || a.tagName === 'INPUT'); }
-  T.stop = function(markDone, focusSel){
+  T.stop = function(markDone, focusSel, fromTap){
     if (!T.alive) return;
     T.alive = false;
+    if (fromTap) swallowNextTap();
     if (T.raf) cancelAnimationFrame(T.raf);
     T.timers.forEach(clearTimeout);
     T.offs.forEach(function(f){ f(); });
@@ -56,6 +57,15 @@ _JS = r"""
     if (markDone) { DONE[C.key] = 1; try { W.sessionStorage.setItem(C.key, '1'); } catch (e) {} }
     if (W.__nsTour === T) W.__nsTour = null;
   };
+
+  // 用按钮关掉引导后 0.4 秒内的点击 / 触摸一律吞掉:节点是在点击处理里同步拆掉的,连点的第二下会落到
+  // 下面的页面上(360px 手机上恰好是页脚的 mailto 链接,第 1 轮中途弹出邮件 App;别处则让刚聚焦的输入框失焦)
+  function swallowNextTap(){
+    var evs = ['pointerdown', 'mousedown', 'touchstart', 'click'];
+    function eat(e){ e.preventDefault(); e.stopPropagation(); }
+    evs.forEach(function(ev){ D.addEventListener(ev, eat, {capture: true, passive: false}); });
+    setTimeout(function(){ evs.forEach(function(ev){ D.removeEventListener(ev, eat, {capture: true}); }); }, 400);
+  }
 
   // 等目标渲染出来(Streamlit 分批画元素),最多等 6 秒
   var tries = 0;
@@ -123,11 +133,11 @@ _JS = r"""
       var row = el('div', 'ns-tour-row', tip);
       var skip = el('button', 'ns-tour-skip', row);
       skip.type = 'button'; skip.textContent = C.skip;
-      skip.onclick = function(){ T.stop(true, C.home); };
+      skip.onclick = function(){ T.stop(true, C.home, true); };
       var nx = el('button', 'ns-tour-next', row);
       nx.type = 'button'; nx.textContent = last ? C.go : C.next;
       nx.onclick = function(){
-        if (last) T.stop(true, C.focus);
+        if (last) T.stop(true, C.focus, true);
         else { idx += 1; show(true); }
       };
       tip.classList.remove('is-in'); void tip.offsetWidth; tip.classList.add('is-in');
@@ -135,8 +145,16 @@ _JS = r"""
     }
 
     // 只有换步时才让聚光圈 / 气泡带过渡地移过去;平时每帧跟着目标走,不能带过渡(否则滚动时拖影)
+    // 目标 + 气泡能同时放进屏幕就居中;放不下(手机横屏、320px 小屏)就把目标滚到屏幕顶部、气泡放在它下面 ——
+    // 否则气泡只能贴在目标身上,盖住要读的题目 / 条件说明
     function scrollTo(n){
-      try { n.scrollIntoView({behavior: reduce ? 'auto' : 'smooth', block: 'center'}); } catch (e) { n.scrollIntoView(); }
+      var r = n.getBoundingClientRect(), vh = W.innerHeight;
+      var fits = (vh - r.height) / 2 >= PAD + GAP + tip.offsetHeight + M;   // 居中后上 / 下单侧放得下气泡
+      var main = q('[data-testid="stMain"]') || q('.stMain');
+      try {
+        if (fits || !main) n.scrollIntoView({behavior: reduce ? 'auto' : 'smooth', block: 'center'});
+        else main.scrollBy({top: r.top - (M + PAD), behavior: reduce ? 'auto' : 'smooth'});
+      } catch (e) { n.scrollIntoView(); }
     }
 
     function show(moving){
@@ -146,8 +164,8 @@ _JS = r"""
         spot.classList.add('is-moving'); tip.classList.add('is-moving');
         later(function(){ spot.classList.remove('is-moving'); tip.classList.remove('is-moving'); }, 650);
       }
+      render();      // 先换好气泡内容(scrollTo 要用它的高度)
       scrollTo(n);
-      render();
     }
 
     function place(){
@@ -179,7 +197,7 @@ _JS = r"""
       T.raf = requestAnimationFrame(place);
     }
 
-    on(D, 'keydown', function(e){ if (e.key === 'Escape') T.stop(true, C.home); });
+    on(D, 'keydown', function(e){ if (e.key === 'Escape') T.stop(true, C.home); });   // 键盘关掉:没有「第二下」要吞
     // 直接点进输入框(没走完引导)= 已经知道该在哪写了
     on(D, 'focusin', function(e){ var f = q(C.focus); if (f && e.target === f) T.stop(true); });
     render();
