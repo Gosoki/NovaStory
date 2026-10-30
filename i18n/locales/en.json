@@ -115,6 +115,8 @@
     "title": "Creation Round {i} / {n}",
     "progress": "Progress: Round {i} / {n}",
     "topic_heading": "This round's topic",
+    "cue_read": "👀 Read this round's topic",
+    "cue_write": "✍️ Then write your idea in the box below",
     "topic_spec": "{count} shots · {total} seconds total",
     "topic_choices": "({choices} … {free})",
     "topic_free": "whatever else you dream up",

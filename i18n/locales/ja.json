@@ -115,6 +115,8 @@
     "title": "第 {i} / {n} ラウンド",
     "progress": "進行状況：第 {i} / {n} ラウンド",
     "topic_heading": "今回のお題",
+    "cue_read": "👀 お題を読んでください",
+    "cue_write": "✍️ 読んだら、下の欄にアイデアを書いてください",
     "topic_spec": "{count} ショット · 合計 {total} 秒",
     "topic_choices": "（{choices}……{free}）",
     "topic_free": "ほかの展開でも構いません",

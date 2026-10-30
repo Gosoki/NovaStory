@@ -388,11 +388,13 @@ def render() -> None:
 
     answers: dict[str, object] = {}
     missing: list[str] = []  # labels of unanswered items, named back to the user
+    pending: list[str] = []  # 还没答的题的容器 key(按页面顺序),第一个套「下一题」框
 
     def likert(key: str, label: str, anchors: str | None = "agree") -> None:
         val = _scale.likert(label, f"_q_{key}_{ridx}", anchors=anchors)   # 题与题之间的分隔线在 _scale 的块样式里
         if val is None:
             missing.append(_scale.truncate_label(label))
+            pending.append(f"ns_lk__q_{key}_{ridx}")
         answers[key] = val
 
     for i in range(1, _OWN_ITEMS + 1):
@@ -440,6 +442,7 @@ def render() -> None:
                 )
             if sel is None:
                 missing.append(t("q.shot_label", i=s["idx"]))
+                pending.append(f"ns_card_shot{s['idx']}_{ridx}")
             shot_annotations.append({"shot": s["idx"], "tag": lbl2tag.get(sel)})
     else:
         sel = st.segmented_control(
@@ -448,13 +451,20 @@ def render() -> None:
         )
         if sel is None:
             missing.append(_scale.truncate_label(t("q.whole_tag_label")))
+            pending.append(f"_q_whole_{ridx}")
         shot_annotations.append({"shot": 0, "tag": lbl2tag.get(sel)})
 
     # E 专属、可选:哪些引导问题真的帮到了。放在逐镜头标注**之后**(见上方注释)。
     if state.current_round()["condition"] in ("E", "F"):
         answers["ai_q_best"] = _ai_q_best_pick(ridx)
 
-    if st.button(t("q.submit"), type="primary", width="stretch"):
+    # 下一步在哪:第一道还没答的题套一圈细框,全答完就把提交按钮圈出来(用户 2026-10-31:要提示下一步)。
+    # 用 outline —— 不占版面,点一下量表、页面重跑时框挪到下一题,下面的内容不会跳。只标位置,不涉及答什么。
+    nxt = f".st-key-{pending[0]}" if pending else f".st-key-ns_q_submit_{ridx} button"
+    st.markdown(f'<span class="ns-css"></span><style>{nxt}{{outline:2px solid var(--ns-accent-line);'
+                f'outline-offset:{"6px" if pending else "3px"};border-radius:12px}}</style>', unsafe_allow_html=True)
+
+    if st.button(t("q.submit"), type="primary", width="stretch", key=f"ns_q_submit_{ridx}"):
         if missing:
             st.error(t("errors.unanswered", items=" / ".join(missing)))
             return

@@ -15,9 +15,11 @@ def render() -> None:
     cond, topic = rd["condition"], rd["topic"]
 
     _round_header(cond)
+    phase = st.session_state["r_phase"]
+    if phase == "intent":
+        _cue("round.cue_read")   # 写创意这一步:先把视线引到题目,再引到输入框(见 _render_intent)
     _topic_card(topic)
 
-    phase = st.session_state["r_phase"]
     # The chat-style history sits at the very top of the loop phases so it stays
     # visible while answering guidance questions and while editing/revising.
     if phase == "guidance" or (phase == "postgen" and cond != "C"):
@@ -163,12 +165,19 @@ def _topic_card(topic: dict) -> None:
     st.markdown(f'<section class="ns-topic">{"".join(parts)}</section>', unsafe_allow_html=True)
 
 
+def _cue(key: str) -> None:
+    """「下一步做什么」的提示行(用户 2026-10-31:先提示题目,再引导到输入框)。四个条件同一句,
+    不涉及各条件的操纵说明(那在 round.instr_* 里,一字未动)。"""
+    st.markdown(f'<div class="ns-cue">{html.escape(t(key))}</div>', unsafe_allow_html=True)
+
+
 def _render_intent(cond: str, topic: dict) -> None:
     # This round's flow label + the detailed how-to, in one box.
     st.info(
         f"**{t('round.flow_label')}**\n\n"
         + t(f"round.instr_{cond}", shot_count=topic["shot_count"])
     )
+    _cue("round.cue_write")
     st.markdown(
         t("round.intent_scope", count=topic["shot_count"], total=topic["total_seconds"])
     )

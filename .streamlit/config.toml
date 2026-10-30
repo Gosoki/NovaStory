@@ -22,13 +22,14 @@ toolbarMode = "minimal"
 # 通用错误,细节仍照常写进服务端日志,研究员那边不受影响。
 showErrorDetails = "none"
 
-# ── 主题(v2设计,2026-10-31):和纸 / 墨 / 瑠璃 ──────────────────────────────
-# 底色是暖白的「和纸」、正文与「决定」按钮是「墨」、强调色与 AI 动作是「瑠璃」(深蓝)。
+# ── 主题(v2设计,2026-10-31):和纸 / 墨 / 青 ────────────────────────────────
+# 底色是暖白的「和纸」、正文与「决定」按钮是「墨」、强调色与 AI 动作是「青」(不带紫的海蓝,色相约 210°;
+# 初版用过偏靛紫的瑠璃色 #1e50a2 / 深色 #8fabf5,用户嫌发紫,2026-10-31 换掉)。
 # 颜色的单一真源仍是 app.py 的 --ns-* 令牌;这里只把同一组值交给 Streamlit 自己的组件
 # (输入框、勾选框、单选点、进度条、提示框、表格),两边改色要一起改。
 # 跟随被试**操作系统**的明暗:只有 [theme.light] 与 [theme.dark] 同时存在时 Streamlit 才自动切换;
 # 只写 [theme] 会锁死浅色。[theme] 这里只放与明暗无关的项(圆角、字阶、边框开关)。
-# 对比度(WCAG):正文 14.5 / 弱化字 4.8(浅)· 6.9(深)/ 强调色 7.1 / 按钮白字 7.7 —— 均过 AA。
+# 对比度(WCAG):正文 14.5 / 弱化字 4.8(浅)· 6.9(深)/ 强调色 5.3(浅)· 8.3(深)/ 按钮字 ≥5.0 —— 均过 AA。
 [theme]
 baseRadius = "0.625rem"
 buttonRadius = "0.625rem"
@@ -38,33 +39,51 @@ headingFontSizes = ["1.75rem", "1.375rem", "1.125rem", "1rem", "0.9375rem", "0.8
 headingFontWeights = [700, 700, 600, 600, 600, 600]
 
 [theme.light]
-primaryColor = "#1e50a2"
+primaryColor = "#1565c0"
 backgroundColor = "#f6f5f1"
 secondaryBackgroundColor = "#ffffff"
 textColor = "#1f2328"
 borderColor = "#d9d5cb"
-linkColor = "#1e50a2"
+linkColor = "#1565c0"
 codeBackgroundColor = "#f1efe9"
 dataframeHeaderBackgroundColor = "#f1efe9"
-blueColor = "#1e50a2"
+blueColor = "#1565c0"
 greenColor = "#2b6e47"
 yellowColor = "#b7791f"
 orangeColor = "#c2410c"
 redColor = "#b42318"
 grayColor = "#8a8f98"
+# 提示框(st.info / success / warning / error)= 整块色块 + 同色系深色字(v1 的形态,用户 2026-10-31 定:
+# 「还是之前那种整个都是色块的好用」),颜色换成和本套配色协调的值。字 / 底对比度 6.8–8.5。
+blueBackgroundColor = "#e3eefb"
+blueTextColor = "#0d4a8f"
+greenBackgroundColor = "#e2efe6"
+greenTextColor = "#1f5a39"
+yellowBackgroundColor = "#f8ecd2"
+yellowTextColor = "#6f4800"
+redBackgroundColor = "#f9e3e1"
+redTextColor = "#962015"
 
 [theme.dark]
-primaryColor = "#8fabf5"
+primaryColor = "#64b5f6"
 backgroundColor = "#131417"
 secondaryBackgroundColor = "#1b1d22"
 textColor = "#e7e5df"
 borderColor = "#30333b"
-linkColor = "#8fabf5"
+linkColor = "#64b5f6"
 codeBackgroundColor = "#22252b"
 dataframeHeaderBackgroundColor = "#22252b"
-blueColor = "#8fabf5"
+blueColor = "#64b5f6"
 greenColor = "#7cc99a"
 yellowColor = "#e5b65a"
 orangeColor = "#f0a060"
 redColor = "#f28b82"
 grayColor = "#5b5f68"
+blueBackgroundColor = "#1e2b36"
+blueTextColor = "#b3dcff"
+greenBackgroundColor = "#24312c"
+greenTextColor = "#b5e3c6"
+yellowBackgroundColor = "#352e22"
+yellowTextColor = "#f3d593"
+redBackgroundColor = "#372728"
+redTextColor = "#f8bdb7"

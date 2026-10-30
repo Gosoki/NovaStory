@@ -115,6 +115,8 @@
     "title": "第 {i} / {n} 轮创作",
     "progress": "进度：第 {i} / {n} 轮",
     "topic_heading": "这次的题目",
+    "cue_read": "👀 请先读一读本轮的题目",
+    "cue_write": "✍️ 读完后，在下面的框里写下你的创意",
     "topic_spec": "{count} 个镜头 · 总时长 {total} 秒",
     "topic_choices": "（{choices}……{free}）",
     "topic_free": "你自己想到的别的做法也可以",

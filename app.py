@@ -137,16 +137,16 @@ def _masthead(*, hero: bool, progress: float | None = None) -> None:
 
 
 # ─────────────────────── 设计语言(单一真源) ───────────────────────
-# v2设计(2026-10-31):和纸 / 墨 / 瑠璃。全站唯一的设计令牌来源 —— 颜色、圆角、阴影、字阶都从这里出;
+# v2设计(2026-10-31):和纸 / 墨 / 青。全站唯一的设计令牌来源 —— 颜色、圆角、阴影、字阶都从这里出;
 # .streamlit/config.toml 把同一组颜色交给 Streamlit 自己的组件(两边改色要一起改)。
 # v1(tag `v1设计`)之前它们散在 5 个文件里,光颜色字面量就有 24 个互不相干的值。
 #
 # 颜色语义(改之前先想清楚它属于哪一档):
 #   --ns-ink    墨   = 决定 / 推进 / 定稿   → 所有 type="primary" 按钮
-#   --ns-ai     瑠璃 = 继续和 AI 折腾       → btn_more_ai(一个明确的非终局动作)
-#   --ns-accent 瑠璃 = 强调 / 当前所在       → 步骤条当前格、选中的量表格、眉标
+#   --ns-ai     青   = 继续和 AI 折腾       → btn_more_ai(一个明确的非终局动作)
+#   --ns-accent 青   = 强调 / 当前所在       → 步骤条当前格、选中的量表格、眉标
 #   --ns-dim    弱化 = 注解 / 锚点 / 提示    → 所有 caption 级文字
-# 墨 / 瑠璃必须泾渭分明,而且**一样醒目**:D/E 里「再让 AI 改」与「就这版提交」是被试的真实选择
+# 墨 / 青必须泾渭分明,而且**一样醒目**:D/E 里「再让 AI 改」与「就这版提交」是被试的真实选择
 # (n_ai_rounds 是因变量),哪个按钮更显眼本身就会推行为 —— v1 的绿 / 蓝也是同重的两块实色。
 # Streamlit 默认的 primary 是珊瑚红,新手会读成「危险操作」,所以 primary 一律改走 --ns-ink。
 #
@@ -162,10 +162,10 @@ _DESIGN_CSS = """
   --ns-bg:#f6f5f1; --ns-surface:#ffffff; --ns-surface-2:#fbfaf7; --ns-sunken:#f1efe9;
   --ns-text:#1f2328; --ns-text-2:#4b5059; --ns-dim:#676c75;
   --ns-line:#e5e1d8; --ns-line-strong:#d4cfc4;
-  --ns-accent:#1e50a2; --ns-on-accent:#ffffff;
-  --ns-accent-soft:rgba(30,80,162,.07); --ns-accent-line:rgba(30,80,162,.32);
+  --ns-accent:#1565c0; --ns-on-accent:#ffffff;
+  --ns-accent-soft:rgba(21,101,192,.08); --ns-accent-line:rgba(21,101,192,.32);
   --ns-ink:#22262d; --ns-ink-hover:#0b0c0e; --ns-on-ink:#ffffff;
-  --ns-ai:#1e50a2; --ns-ai-hover:#173f82;
+  --ns-ai:#1565c0; --ns-ai-hover:#0f4f99;
   --ns-ok:#2b6e47; --ns-ok-soft:rgba(43,110,71,.10);
   --ns-shadow:0 1px 2px rgba(31,35,40,.05),0 4px 14px -6px rgba(31,35,40,.10);
   --ns-radius:14px; --ns-radius-sm:10px;
@@ -179,10 +179,10 @@ _DESIGN_CSS = """
     --ns-bg:#131417; --ns-surface:#1b1d22; --ns-surface-2:#1f2127; --ns-sunken:#22252b;
     --ns-text:#e7e5df; --ns-text-2:#c4c2bc; --ns-dim:#9b9ea6;
     --ns-line:#2c2f36; --ns-line-strong:#3c4049;
-    --ns-accent:#8fabf5; --ns-on-accent:#14161a;
-    --ns-accent-soft:rgba(143,171,245,.10); --ns-accent-line:rgba(143,171,245,.40);
+    --ns-accent:#64b5f6; --ns-on-accent:#14161a;
+    --ns-accent-soft:rgba(100,181,246,.12); --ns-accent-line:rgba(100,181,246,.42);
     --ns-ink:#ece8df; --ns-ink-hover:#ffffff; --ns-on-ink:#17181b;
-    --ns-ai:#3f64cc; --ns-ai-hover:#4c72dc;
+    --ns-ai:#1f6fcf; --ns-ai-hover:#1860b8;   /* 悬停变深:白字对比度保持 ≥4.5 */
     --ns-ok:#7cc99a; --ns-ok-soft:rgba(124,201,154,.13);
     --ns-shadow:0 1px 2px rgba(0,0,0,.35),0 6px 18px -8px rgba(0,0,0,.5);
     --ns-chrome:rgba(20,24,33,.82);
@@ -323,18 +323,11 @@ hr{ border-color:var(--ns-line)!important; }
   background:var(--ns-sunken); color:var(--ns-text-2); font-size:.8rem; font-weight:600; }
 .ns-topic-spec svg{ width:.95rem; height:.95rem; }
 
-/* ── 提示框:柔和底色 + 正文色文字(v1 整段蓝字 / 绿字读起来吃力) ── */
-[data-testid="stAlertContainer"]{ border-radius:var(--ns-radius-sm)!important; padding:.85rem 1.05rem!important; }
-[data-testid="stAlertContainer"] [data-testid="stMarkdownContainer"] p{ color:var(--ns-text); line-height:1.75; }
-[data-testid="stAlertContainer"]:has([data-testid="stAlertContentInfo"]){
-  background:color-mix(in srgb, var(--ns-accent) 6%, var(--ns-surface))!important; box-shadow:inset 3px 0 0 var(--ns-accent); }
-[data-testid="stAlertContainer"]:has([data-testid="stAlertContentSuccess"]){ box-shadow:inset 3px 0 0 var(--ns-ok); }
-[data-testid="stAlertContainer"]:has([data-testid="stAlertContentWarning"]){ box-shadow:inset 3px 0 0 #b7791f; }
-[data-testid="stAlertContainer"]:has([data-testid="stAlertContentError"]){ box-shadow:inset 3px 0 0 #b42318; }
-@media (prefers-color-scheme: dark){
-  [data-testid="stAlertContainer"]:has([data-testid="stAlertContentWarning"]){ box-shadow:inset 3px 0 0 #e5b65a; }
-  [data-testid="stAlertContainer"]:has([data-testid="stAlertContentError"]){ box-shadow:inset 3px 0 0 #f28b82; }
-}
+/* ── 提示框:整块色块(颜色在 config.toml 的 blue/green/yellow/redBackgroundColor 与 *TextColor)──
+   v2 初版做成「左竖线 + 淡底 + 正文色字」,读起来像引用块;用户要回 v1 那种整块色块(2026-10-31),
+   这里只统一圆角与内边距、行距,颜色全交给主题。 */
+[data-testid="stAlertContainer"]{ border-radius:var(--ns-radius-sm)!important; padding:.9rem 1.1rem!important; }
+[data-testid="stAlertContainer"] [data-testid="stMarkdownContainer"] p{ line-height:1.75; }
 
 /* ── 按钮 ──────────────────────────────────────────────────────── */
 .stButton > button, .stFormSubmitButton > button, .stDownloadButton > button{
@@ -370,7 +363,7 @@ button[data-testid="stBaseButton-secondaryFormSubmit"]:hover{
 }
 div.st-key-btn_more_ai button{
   background:var(--ns-ai)!important; border:1px solid var(--ns-ai)!important; color:#ffffff!important;
-  box-shadow:0 1px 2px rgba(0,0,0,.10), 0 8px 18px -12px rgba(30,80,162,.85);
+  box-shadow:0 1px 2px rgba(0,0,0,.10), 0 8px 18px -12px rgba(21,101,192,.85);
 }
 div.st-key-btn_more_ai button:hover{ background:var(--ns-ai-hover)!important; border-color:var(--ns-ai-hover)!important; }
 div.st-key-btn_more_ai button p{ color:#ffffff!important; }
@@ -418,6 +411,14 @@ div.st-key-btn_more_ai button p{ color:#ffffff!important; }
 .st-key-_consent_agree{ background:var(--ns-surface); border:1px solid var(--ns-line-strong); border-radius:var(--ns-radius-sm);
   padding:.8rem 1rem; }
 .st-key-_consent_agree:has(input:checked){ border-color:var(--ns-accent); background:var(--ns-accent-soft); }
+
+/* ── 下一步提示(用户 2026-10-31:先提示题目,再引导到输入框)────────
+   .ns-cue = 创意页的两行提示(views/round_common._cue);当前唯一要填的框(创意 / F 的回答)加一圈光晕。
+   D 的「请 AI 改」框刻意不加:那是被试在「再改 / 提交」之间的自由选择,高亮它就是在推一边。 */
+.ns-cue{ display:inline-flex; align-items:center; gap:.4rem; margin:.15rem 0 .9rem; padding:.3rem .8rem;
+  border-radius:999px; background:var(--ns-accent-soft); color:var(--ns-accent); font-size:.86rem; font-weight:700; }
+:is(.st-key-_intent_input,[class*="st-key-_iv_answer_"]) [data-testid="stTextAreaRootElement"]{
+  border-color:var(--ns-accent)!important; box-shadow:0 0 0 4px var(--ns-accent-soft); }
 
 /* ── 7 点量表 ──────────────────────────────────────────────────────
    一题一块:题干 → 按钮行 → 锚点,块与块之间一条细线。v1 的锚点行紧贴着下一题的题干,
