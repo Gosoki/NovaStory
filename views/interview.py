@@ -195,15 +195,12 @@ def _render_chat(turns: list[dict]) -> None:
         lo, hi = config.INTERVIEW_RANGE
         st.caption(t("interview.progress", i=len(turns), lo=lo, hi=hi))
     for x in turns:
-        with st.chat_message("assistant"):
-            st.markdown(
-                f"<div style='color:var(--ns-dim,#6e6e6e);font-size:.92em;margin-bottom:.15rem'>"
-                f"{html.escape(x['echo'])}</div>",
-                unsafe_allow_html=True,
-            )
-            st.markdown(f"**{x['question']}**")
+        with st.chat_message("assistant", avatar=_postgen.AVATAR_AI):
+            # 复述句(模板生成、只引用被试原话)弱化,题面加粗;都逐字转义(题面有一部分是模型写的)
+            st.markdown(f'<div class="ns-echo">{html.escape(x["echo"])}</div>'
+                        f'<div class="ns-q">{html.escape(x["question"])}</div>', unsafe_allow_html=True)
         if x["answer"] is not None:
-            with st.chat_message("user"):
+            with st.chat_message("user", avatar=_postgen.AVATAR_USER):
                 st.markdown(_postgen._pre(x["answer"]), unsafe_allow_html=True)
 
 

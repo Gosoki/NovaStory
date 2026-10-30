@@ -119,7 +119,7 @@ def render() -> None:
     # onboarding; a subject who clicks through in 2s did not get the briefing.
     state.log_intake_event("intro_shown")
     st.header(t("intro.title"))
-    with st.container(border=True):
+    with st.container(key="ns_card_flow"):
         st.markdown(t("intro.flow"))
     st.info(t("intro.freedom"))
 

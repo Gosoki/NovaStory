@@ -10,10 +10,14 @@ BASELINE_LANG ?= ja
 # 若 v3 刚把它们清空,embed 会拒绝执行 —— 这时不带 EMBED_LANG 重跑,已缓存的不计费)
 EMBED_LANG ?=
 
-.PHONY: help dev baseline norming v3 events pilot embed judge stats stats-zh stats-ja stats-novice stats-f stats-ja-pred audit-db power figures analysis smoke robust smoke-e2e i18n freeze freeze-check precompress serve
+.PHONY: help dev preview baseline norming v3 events pilot embed judge stats stats-zh stats-ja stats-novice stats-f stats-ja-pred audit-db power figures analysis smoke robust smoke-e2e i18n freeze freeze-check precompress serve
 
 dev:        ## 本地开发起服务(热重载;生产 config.toml 默认关)
 	.venv/bin/streamlit run app.py --server.runOnSave true --server.fileWatcherType auto
+
+preview:    ## 本机预览被试界面(桩 LLM、不调任何 API、临时库)→ http://127.0.0.1:8510/?lang=ja(研究员工具加 &admin=1)
+	.venv/bin/streamlit run scripts/ui_preview.py --server.port 8510 --server.address 127.0.0.1 \
+	  --server.headless true --server.runOnSave true --server.fileWatcherType auto
 
 help:       ## 列出所有命令(直接敲 `make` 就看这个)
 	@grep -hE '^[a-z][a-zA-Z0-9_-]*:.*##' $(MAKEFILE_LIST) | sed -E 's/:.*## / — /' | sort

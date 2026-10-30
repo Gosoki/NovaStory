@@ -34,9 +34,10 @@ def render() -> None:
     # shot parser), so a subject gets a single-language session in whichever they
     # pick; ja is the default (langs[0]) for the formal Japanese cohort.
     language_radio("_consent_lang")
-    st.divider()
     st.header(t("consent.title"))
-    st.markdown(t("consent.body"))
+    # 同意书正文放进一张白卡(只是外框;文字与指纹都不变 —— proof_now 盖的是 i18n 原文)
+    with st.container(key="ns_card_consent"):
+        st.markdown(t("consent.body"))
     st.warning(t("consent.no_refresh"))
     agree = st.checkbox(t("consent.agree"), key="_consent_agree")
     if st.button(

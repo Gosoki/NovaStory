@@ -5,7 +5,8 @@
     "contact": "Questions about this study: g2550005@stu.musashino-u.ac.jp"
   },
   "common": {
-    "loading": "The AI is generating… please wait a moment."
+    "loading": "The AI is generating… please wait a moment.",
+    "select_placeholder": "Choose an option"
   },
   "sidebar": {
     "researcher_pw_locked": "Too many attempts. Please wait a minute and try again.",

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import html
 import json
 import re
 import unicodedata
@@ -9,7 +10,7 @@ from datetime import datetime, timedelta
 import streamlit as st
 
 from core import db, state
-from i18n import DEFAULT_LANG, t
+from i18n import DEFAULT_LANG, get_lang, t
 from views import (
     _scroll, consent, final_survey, intro, researcher, round_common, screening,
     sidebar,
@@ -26,10 +27,14 @@ def main() -> None:
     state.init_state()
     sidebar.render()
 
-    st.title(t("app.title"))
-    st.caption(t("app.subtitle"))
+    researcher_view = bool(st.session_state.get("researcher_mode") and st.session_state.get("researcher_ok"))
+    # 同意页是入口,给一块完整的标题区;其余每页只留一条细的品牌栏(v1 每页都是 44px 的 h1 + 副标题,
+    # 手机首屏 844px 里任务本身要往下滑 1–2 屏才看得到)。
+    _masthead(hero=st.session_state["stage"] == "consent" and not researcher_view,
+              progress=None if researcher_view else _flow_progress(st.session_state["stage"]))
 
-    if st.session_state.get("researcher_mode") and st.session_state.get("researcher_ok"):
+    if researcher_view:
+        st.markdown(_WIDE_CSS, unsafe_allow_html=True)
         researcher.render()
         return
 
@@ -55,9 +60,7 @@ def main() -> None:
     elif stage == "screening":
         screening.render()
     elif stage == "rounds":
-        _progress_bar()
-        st.divider()
-        round_common.render()
+        round_common.render()   # 轮次进度与步骤条在轮次头里(views/round_common._round_header)
     elif stage == "final_survey":
         final_survey.render()
     elif stage == "done":
@@ -78,45 +81,125 @@ def _footer() -> None:
     放页脚而不是管理员栏:那栏是研究员的工具,**被试永远不会打开它**,而这个邮箱
     正是给被试用的 —— 卡住了、想中途退出问一句、事后想要自己那份稿子,都得有地方问。
     同意书里也有同一个地址(伦理上必须有),但被试读完同意书就翻过去了,不会记住;
-    真正需要它的时刻是在第 2 轮卡住的那一刻。研究员模式不显示(那是他自己的邮箱)。"""
-    st.divider()
-    st.caption(t("app.contact"))
+    真正需要它的时刻是在第 2 轮卡住的那一刻。研究员模式不显示(那是他自己的邮箱)。
+    仍走 st.caption(markdown 会把邮箱变成可点的 mailto 链接),样式由 .st-key-ns_footer 管。"""
+    with st.container(key="ns_footer"):
+        st.caption(t("app.contact"))
+
+
+_CHECK_SVG = ('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" '
+              'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>')
+
+# 品牌标记:圆角方块里一颗四角星(nova)。纯 CSS 画(.ns-mark + ::after 的 mask),
+# 因为 st.html 的清洗器会删掉 <svg>;颜色走令牌,深色主题自动翻转。
+_MARK = '<span class="ns-mark" aria-hidden="true"></span>'
+# <html lang> 的值。Streamlit 恒为 "en":日文汉字的字形回退因此不确定(Windows 上可能落到中文字体),
+# 浏览器的日文禁则、按词组断行(word-break:auto-phrase)也都不生效。
+_HTML_LANG = {"ja": "ja", "zh": "zh-CN", "en": "en"}
+
+
+# 页头底边那条细线 = 整个流程走到哪了(06 ⑮ (b) 的轻量版:不加任何字)。v1 只有轮内一根进度条,
+# 同意 / 背景问卷 / 说明 / 总问卷全程没有进度,第 1 轮开局还显示 0%。权重大致按时长:入组约 12%、
+# 各轮共 80%(轮内按步骤条细分)、总问卷之后到 100%。
+_STAGE_PROGRESS = {"consent": .02, "screening": .05, "intro": .10, "final_survey": .94, "done": 1.0}
+
+
+def _flow_progress(stage: str) -> float | None:
+    if stage == "rounds":
+        return .12 + .80 * round_common.round_fraction()
+    return _STAGE_PROGRESS.get(stage)
+
+
+def _masthead(*, hero: bool, progress: float | None = None) -> None:
+    """页头 + 把 <html lang> 设成会话语言。
+
+    用 st.html 而不是 st.markdown:要顺带执行那一行设置 lang 的脚本(与 views/_scroll 同一做法,
+    脚本跑在主页面里)。品牌名与副标题都从 app.title(「NovaStory · …」)拆出来,三语同一格式;
+    哪天文案不带「 · 」也只是整句当副标题显示。"""
+    lang = get_lang()
+    brand, sep, product = t("app.title").partition(" · ")
+    if not sep:
+        brand, product = "NovaStory", t("app.title")
+    b, p = html.escape(brand), html.escape(product)
+    # 研究员入口(?admin=1)时左上角有展开侧栏的按钮,窄屏上页头要给它让位(样式见 .ns--shift)
+    shift = " ns--shift" if (st.session_state.get("researcher_ok") or sidebar.admin_requested()) else ""
+    if hero:
+        head = (f'<header class="ns-hero{shift}">{_MARK}<div class="ns-hero-brand">{b}</div>'
+                f'<h1 class="ns-hero-title">{p}</h1>'
+                f'<p class="ns-hero-sub">{html.escape(t("app.subtitle"))}</p></header>')
+    else:
+        line = ("" if progress is None else
+                f'<span class="ns-bar-progress" aria-hidden="true" style="width:{max(0.0, min(progress, 1.0)) * 100:.1f}%"></span>')
+        head = (f'<header class="ns-bar{shift}">{_MARK}<span class="ns-bar-brand">{b}</span>'
+                f'<span class="ns-bar-product">{p}</span>{line}</header>')
+    js = f"<script>document.documentElement.lang={json.dumps(_HTML_LANG.get(lang, lang))};</script>"
+    st.html(head + js, unsafe_allow_javascript=True)
 
 
 # ─────────────────────── 设计语言(单一真源) ───────────────────────
-# 这一块是全站唯一的设计令牌来源:颜色、圆角、细线、弱化文字、窄屏字阶,全从这里出。
-# 之前它们散在 app.py / intro.py / round_common.py / _scale.py / _storyboard.py 里,
-# 光颜色字面量就有 24 个互不相干的值 —— 同一种「弱化的小字」在三处是三个灰度。
+# v2设计(2026-10-31):和纸 / 墨 / 瑠璃。全站唯一的设计令牌来源 —— 颜色、圆角、阴影、字阶都从这里出;
+# .streamlit/config.toml 把同一组颜色交给 Streamlit 自己的组件(两边改色要一起改)。
+# v1(tag `v1设计`)之前它们散在 5 个文件里,光颜色字面量就有 24 个互不相干的值。
 #
 # 颜色语义(改之前先想清楚它属于哪一档):
-#   --ns-go     绿 = 决定 / 推进 / 定稿   → 所有 type="primary" 按钮
-#   --ns-ai     蓝 = 继续和 AI 折腾       → btn_more_ai(一个明确的非终局动作)
-#   --ns-accent 蓝 = 强调「读这句」       → 说明页的两句引导语
-#   --ns-dim    弱化 = 注解 / 锚点 / 提示 → 所有 caption 级文字
-# 绿/蓝两档必须泾渭分明:Streamlit 默认的 primary 是珊瑚红,新手会读成「危险操作」。
+#   --ns-ink    墨   = 决定 / 推进 / 定稿   → 所有 type="primary" 按钮
+#   --ns-ai     瑠璃 = 继续和 AI 折腾       → btn_more_ai(一个明确的非终局动作)
+#   --ns-accent 瑠璃 = 强调 / 当前所在       → 步骤条当前格、选中的量表格、眉标
+#   --ns-dim    弱化 = 注解 / 锚点 / 提示    → 所有 caption 级文字
+# 墨 / 瑠璃必须泾渭分明,而且**一样醒目**:D/E 里「再让 AI 改」与「就这版提交」是被试的真实选择
+# (n_ai_rounds 是因变量),哪个按钮更显眼本身就会推行为 —— v1 的绿 / 蓝也是同重的两块实色。
+# Streamlit 默认的 primary 是珊瑚红,新手会读成「危险操作」,所以 primary 一律改走 --ns-ink。
 #
-# 每个颜色分浅色 / 深色两档:config.toml 同时定义了 [theme.light] 与 [theme.dark],
-# 主题跟被试的**操作系统**走,而 toolbarMode="minimal" 又把切换菜单藏了 —— 浅色是
-# 「手机没开深色模式的人」的默认,不是边角情况。一套值不可能在两个底色上都过 WCAG AA
-# (#3b82f6 在白底只有 3.7:1;#2563eb 在深色底 #0E1117 只有 3.1:1)。
+# 每个颜色分浅色 / 深色两档:主题跟被试的**操作系统**走(toolbarMode="minimal" 把切换菜单藏了),
+# 浅色是「手机没开深色模式的人」的默认,不是边角情况。对比度见 config.toml 顶部(全部过 AA)。
+#
+# 第一行的 .ns-css 标记让这个只装 <style> 的元素不占版面(Streamlit 的纵向 gap 是 1rem,
+# 页面顶部每个零高度元素都会白占一格 —— v1 首屏的空白有一部分就是这么来的)。
 _DESIGN_CSS = """
+<span class="ns-css"></span>
 <style>
 :root{
-  --ns-accent:#2563eb; --ns-dim:#6e6e6e;
-  --ns-go:#15803d;     --ns-go-hover:#166534;   /* 白字 5.02:1 / 7.13:1,均过 AA */
-  --ns-ai:#2563eb;     --ns-ai-hover:#1d4ed8;
-  --ns-line:rgba(128,128,128,.45);   /* 细线:例子框、卡片描边 */
-  --ns-soft:rgba(128,128,128,.12);   /* 弱填充:例子框底色 */
-  --ns-chrome:rgba(255,255,255,.82); /* 浮在正文上的控件底(展开侧栏箭头) */
-  --ns-radius:8px;
-  --ns-fs-note:.82rem;               /* 注解 / 锚点 */
+  --ns-bg:#f6f5f1; --ns-surface:#ffffff; --ns-surface-2:#fbfaf7; --ns-sunken:#f1efe9;
+  --ns-text:#1f2328; --ns-text-2:#4b5059; --ns-dim:#676c75;
+  --ns-line:#e5e1d8; --ns-line-strong:#d4cfc4;
+  --ns-accent:#1e50a2; --ns-on-accent:#ffffff;
+  --ns-accent-soft:rgba(30,80,162,.07); --ns-accent-line:rgba(30,80,162,.32);
+  --ns-ink:#22262d; --ns-ink-hover:#0b0c0e; --ns-on-ink:#ffffff;
+  --ns-ai:#1e50a2; --ns-ai-hover:#173f82;
+  --ns-ok:#2b6e47; --ns-ok-soft:rgba(43,110,71,.10);
+  --ns-shadow:0 1px 2px rgba(31,35,40,.05),0 4px 14px -6px rgba(31,35,40,.10);
+  --ns-radius:14px; --ns-radius-sm:10px;
+  --ns-fs-note:.82rem;
+  --ns-soft:var(--ns-sunken);          /* 旧名:说明页的例子框底色 */
+  --ns-chrome:rgba(255,255,255,.86);   /* 浮在正文上的控件底(展开侧栏箭头) */
+  --ns-star:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 1.5l2.6 7.9L22.5 12l-7.9 2.6L12 22.5l-2.6-7.9L1.5 12l7.9-2.6z'/%3E%3C/svg%3E");
 }
 @media (prefers-color-scheme: dark){
   :root{
-    --ns-accent:#3b82f6; --ns-dim:#a3a3a3;
-    --ns-line:rgba(160,160,160,.38); --ns-soft:rgba(160,160,160,.10);
+    --ns-bg:#131417; --ns-surface:#1b1d22; --ns-surface-2:#1f2127; --ns-sunken:#22252b;
+    --ns-text:#e7e5df; --ns-text-2:#c4c2bc; --ns-dim:#9b9ea6;
+    --ns-line:#2c2f36; --ns-line-strong:#3c4049;
+    --ns-accent:#8fabf5; --ns-on-accent:#14161a;
+    --ns-accent-soft:rgba(143,171,245,.10); --ns-accent-line:rgba(143,171,245,.40);
+    --ns-ink:#ece8df; --ns-ink-hover:#ffffff; --ns-on-ink:#17181b;
+    --ns-ai:#3f64cc; --ns-ai-hover:#4c72dc;
+    --ns-ok:#7cc99a; --ns-ok-soft:rgba(124,201,154,.13);
+    --ns-shadow:0 1px 2px rgba(0,0,0,.35),0 6px 18px -8px rgba(0,0,0,.5);
     --ns-chrome:rgba(20,24,33,.82);
   }
+}
+
+/* ── 不占版面的工具元素 ──────────────────────────────────────────────
+   本块 CSS(.ns-css)、st.html 注入的脚本(.ns-util)、state._bridge 的 1px 桥接 iframe(.ns-bridge 标记
+   连同紧跟其后的 iframe 容器)。position:absolute 让它们退出纵向 flex,不再各占一格 1rem 的 gap;
+   仍是 height:0 + overflow:hidden 而**不是** display:none —— 后者可能让浏览器跳过不可见 iframe 里的
+   脚本,而桥接 iframe 的全部用途就是那段脚本(续接网址的 localStorage 读写)。 */
+.stElementContainer:has(.ns-css),
+.stElementContainer:has(.ns-util),
+.stElementContainer:has(> .stMarkdown .ns-bridge),
+.stElementContainer:has(> .stMarkdown .ns-bridge) + .stElementContainer{
+  position:absolute!important; width:1px!important; height:0!important; min-height:0!important;
+  margin:0!important; padding:0!important; overflow:hidden!important;
 }
 
 /* 手机端两条硬伤(2026-09-06 实测):
@@ -126,44 +209,291 @@ _DESIGN_CSS = """
 html, body, [data-testid="stMain"], [data-testid="stAppViewContainer"]{
   overscroll-behavior-y: contain;
 }
-/* state._bridge 的 1px 桥接 iframe(st.iframe 的 height 最小是 1):marker 容器连同
-   紧跟其后的 iframe 容器一起收掉。用 height:0+overflow 而非 display:none —— 后者
-   可能让浏览器跳过不可见 iframe 里的脚本,而那段脚本正是这个 iframe 的全部用途。 */
-.stElementContainer:has(> .stMarkdown .ns-bridge),
-.stElementContainer:has(> .stMarkdown .ns-bridge) + .stElementContainer{
-  height:0!important; min-height:0!important; margin:0!important; padding:0!important;
-  overflow:hidden!important;
-}
 @media (hover: none) and (pointer: coarse){
   [data-testid="stTextArea"] textarea,
   [data-testid="stTextInput"] input,
   [data-testid="stNumberInput"] input{ font-size:16px !important; }
 }
 
+/* ── 版面 ──────────────────────────────────────────────────────────
+   layout="wide" 只为了让我们自己定宽度。880px:絵コンテ 5 列表的舒适宽度(内容区 ≈832px),
+   同时把日文正文的行长压到 ~50 字(v1 的 1100px 是 ~58 字,眼睛读到行尾找不回行首)。
+   顶部 v1 是 6rem 留白 + 44px 的 h1:手机首屏 844px 里任务要往下滑 1–2 屏才看得到。
+   研究员后台另有 _WIDE_CSS(表格与图要宽)。 */
+.stMainBlockContainer,
+[data-testid="stMainBlockContainer"]{
+  max-width:880px!important; padding:.75rem 1.5rem 4rem!important;
+}
+@media (max-width:640px){
+  .stMainBlockContainer,
+  [data-testid="stMainBlockContainer"]{ padding:.6rem 1rem 3rem!important; }
+}
+
+/* ── 文字 ──────────────────────────────────────────────────────────
+   日文正文行距放到 1.75(拉丁字母的默认 1.6 对全角字太挤)。<html lang> 由 _masthead 设成会话语言,
+   于是 :lang(ja) 下的禁则与按词组断行(word-break:auto-phrase,Chrome 119+;别的浏览器忽略)才生效 ——
+   v1 手机上标题断成「絵コ / ンテ制作」就是没有这个。 */
+.stMarkdown p, .stMarkdown li{ line-height:1.75; }
+[data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] p{ color:var(--ns-dim)!important; line-height:1.6; }
+[data-testid="stHeading"] :is(h1,h2,h3){ letter-spacing:.01em; text-wrap:balance; }
+:lang(ja) :is([data-testid="stHeading"] h1,[data-testid="stHeading"] h2,[data-testid="stHeading"] h3,
+  .ns-hero-title,.ns-topic-title,.ns-done-title){ word-break:auto-phrase; }
+/* 标题右侧的锚点链接图标:被试用不上,手机上还会被当成正文里的一个怪字符 */
+[data-testid="stHeaderActionElements"]{ display:none!important; }
+hr{ border-color:var(--ns-line)!important; }
+
+/* ── 页头 ──────────────────────────────────────────────────────── */
+.ns-mark{ position:relative; display:block; flex:none; width:1.5rem; height:1.5rem; border-radius:28%;
+  background:var(--ns-accent); }
+.ns-mark::after{ content:""; position:absolute; inset:16%; background:var(--ns-on-accent);
+  -webkit-mask:var(--ns-star) center/contain no-repeat; mask:var(--ns-star) center/contain no-repeat; }
+.ns-bar{ position:relative; display:flex; align-items:center; gap:.55rem; min-height:2.75rem; padding:0 4.5rem .55rem 0;
+  border-bottom:1px solid var(--ns-line); }
+.ns-bar-progress{ position:absolute; left:0; bottom:-1px; height:2px; border-radius:2px; background:var(--ns-accent); }
+/* 让出左上角展开侧栏的按钮(只有研究员入口有;正文居中的宽屏上碰不到它) */
+@media (max-width:1000px){ .ns-bar.ns--shift{ padding-left:2.75rem; } .ns-hero.ns--shift{ padding-top:3.4rem; } }
+.ns-bar-brand{ font-weight:700; font-size:1rem; letter-spacing:.01em; color:var(--ns-text); white-space:nowrap; }
+.ns-bar-product{ font-size:.85rem; color:var(--ns-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+.ns-bar-product::before{ content:""; display:inline-block; width:1px; height:.95em; margin:0 .65rem 0 .15rem;
+  background:var(--ns-line-strong); vertical-align:-.12em; }
+.ns-hero{ padding:1.75rem 0 .35rem; }
+.ns-hero .ns-mark{ width:2.6rem; height:2.6rem; margin:0 0 1rem; }
+.ns-hero-brand{ font-size:.8rem; font-weight:700; letter-spacing:.16em; text-transform:uppercase;
+  color:var(--ns-accent); margin:0 0 .4rem; }
+.ns-hero-title{ font-size:2rem!important; line-height:1.3!important; font-weight:700!important;
+  margin:0 0 .55rem!important; padding:0!important; color:var(--ns-text); }
+.ns-hero-sub{ font-size:1rem; color:var(--ns-text-2); margin:0; }
+
+/* ── 卡片 ──────────────────────────────────────────────────────────
+   白卡浮在和纸底上:一张卡 = 一件事(题目 / 要读的说明 / 要答的一组题)。 */
+[data-testid="stForm"],
+[data-testid="stExpander"] details,
+.ns-topic,
+[class*="st-key-ns_card"]{
+  background:var(--ns-surface); border:1px solid var(--ns-line)!important;
+  border-radius:var(--ns-radius)!important; box-shadow:var(--ns-shadow);
+}
+[data-testid="stForm"]{ padding:1.5rem 1.5rem 1.25rem!important; }
+[class*="st-key-ns_card"]{ padding:1.1rem 1.25rem!important; }
+[data-testid="stExpander"] summary{ font-weight:600; }
+[data-testid="stExpander"] summary:hover{ color:var(--ns-accent); }
+.ns-eyebrow{ font-size:.75rem; font-weight:700; letter-spacing:.1em; color:var(--ns-accent); margin:0 0 .4rem; }
+/* 表单里的分节标题(筛查页「基本情報 / 創作経験 / …」):v1 是 2.25rem 的 h2 级大字 */
+[data-testid="stForm"] [data-testid="stHeading"] h3{
+  font-size:.98rem!important; color:var(--ns-accent); padding:1.35rem 0 .3rem!important; margin:0;
+}
+[data-testid="stForm"] [data-testid="stVerticalBlock"] > div:first-child [data-testid="stHeading"] h3{ padding-top:0!important; }
+
+/* ── 轮次头(views/round_common._round_header)──────────────────── */
+/* Streamlit 给每个 markdown 块垫了 margin-bottom:-1rem(抵消末段 <p> 的下边距);自绘的块不以 <p> 收尾,
+   要自己把这 1rem 还回来,否则与下一块之间的 gap 被吃光。下面的 .ns-topic / .ns-done / .ns-shot 同理。 */
+.ns-round{ margin:.4rem 0 .8rem; }
+.ns-round-top{ display:flex; align-items:center; gap:.8rem; margin:0 0 .75rem; }
+.ns-round-no{ font-size:.82rem; font-weight:700; letter-spacing:.06em; color:var(--ns-accent); }
+.ns-pips{ display:inline-flex; gap:4px; }
+.ns-pips i{ display:block; width:18px; height:4px; border-radius:2px; background:var(--ns-line-strong); }
+.ns-pips i.done{ background:var(--ns-text-2); }
+.ns-pips i.cur{ background:var(--ns-accent); }
+.ns-steps{ display:flex; align-items:center; list-style:none; margin:0!important; padding:0!important; }
+.ns-steps li{ display:flex; align-items:center; gap:.45rem; flex:1 1 0; min-width:0; margin:0!important; padding:0;
+  color:var(--ns-dim); font-size:.86rem; line-height:1.3; }
+.ns-steps li:last-child{ flex:0 0 auto; }
+.ns-steps li::after{ content:""; flex:1 1 auto; min-width:.75rem; height:1.5px; margin:0 .6rem; border-radius:1px;
+  background:var(--ns-line-strong); }
+.ns-steps li:last-child::after{ display:none; }
+.ns-steps .dot{ flex:none; display:inline-flex; align-items:center; justify-content:center; width:1.55rem; height:1.55rem;
+  border-radius:50%; border:1.5px solid var(--ns-line-strong); background:var(--ns-surface);
+  font-size:.74rem; font-weight:700; color:var(--ns-dim); }
+.ns-steps .dot svg{ width:.8rem; height:.8rem; }
+.ns-steps .lbl{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.ns-steps li.done{ color:var(--ns-text-2); }
+.ns-steps li.done .dot{ background:var(--ns-text-2); border-color:var(--ns-text-2); color:var(--ns-surface); }
+.ns-steps li.done::after{ background:var(--ns-text-2); }
+.ns-steps li.cur{ color:var(--ns-text); font-weight:700; }
+.ns-steps li.cur .dot{ background:var(--ns-accent); border-color:var(--ns-accent); color:var(--ns-on-accent);
+  box-shadow:0 0 0 4px var(--ns-accent-soft); }
+
+/* ── 题目卡(views/round_common._topic_card)─────────────────────── */
+.ns-topic{ padding:1.05rem 1.25rem 1rem; margin:0 0 1rem; }
+.ns-topic-title{ font-size:1.15rem; font-weight:700; line-height:1.45; margin:0 0 .3rem; color:var(--ns-text); }
+.ns-topic-scn{ font-size:1rem; line-height:1.75; margin:0 0 .15rem; color:var(--ns-text); }
+/* 选择示例刻意弱化(§15):与情境同字重时会被读成「只能三选一」 */
+.ns-topic-choices{ font-size:var(--ns-fs-note); line-height:1.55; color:var(--ns-dim); margin:0 0 .75rem; }
+.ns-topic-spec{ display:inline-flex; align-items:center; gap:.4rem; padding:.22rem .75rem .22rem .6rem; border-radius:999px;
+  background:var(--ns-sunken); color:var(--ns-text-2); font-size:.8rem; font-weight:600; }
+.ns-topic-spec svg{ width:.95rem; height:.95rem; }
+
+/* ── 提示框:柔和底色 + 正文色文字(v1 整段蓝字 / 绿字读起来吃力) ── */
+[data-testid="stAlertContainer"]{ border-radius:var(--ns-radius-sm)!important; padding:.85rem 1.05rem!important; }
+[data-testid="stAlertContainer"] [data-testid="stMarkdownContainer"] p{ color:var(--ns-text); line-height:1.75; }
+[data-testid="stAlertContainer"]:has([data-testid="stAlertContentInfo"]){
+  background:color-mix(in srgb, var(--ns-accent) 6%, var(--ns-surface))!important; box-shadow:inset 3px 0 0 var(--ns-accent); }
+[data-testid="stAlertContainer"]:has([data-testid="stAlertContentSuccess"]){ box-shadow:inset 3px 0 0 var(--ns-ok); }
+[data-testid="stAlertContainer"]:has([data-testid="stAlertContentWarning"]){ box-shadow:inset 3px 0 0 #b7791f; }
+[data-testid="stAlertContainer"]:has([data-testid="stAlertContentError"]){ box-shadow:inset 3px 0 0 #b42318; }
+@media (prefers-color-scheme: dark){
+  [data-testid="stAlertContainer"]:has([data-testid="stAlertContentWarning"]){ box-shadow:inset 3px 0 0 #e5b65a; }
+  [data-testid="stAlertContainer"]:has([data-testid="stAlertContentError"]){ box-shadow:inset 3px 0 0 #f28b82; }
+}
+
+/* ── 按钮 ──────────────────────────────────────────────────────── */
+.stButton > button, .stFormSubmitButton > button, .stDownloadButton > button{
+  min-height:2.85rem; border-radius:var(--ns-radius-sm)!important;
+  transition:background-color .15s ease, border-color .15s ease, box-shadow .15s ease, transform .06s ease;
+}
+.stButton > button p, .stFormSubmitButton > button p, .stDownloadButton > button p{ font-weight:600; }
+.stButton > button:active, .stFormSubmitButton > button:active{ transform:translateY(1px); }
+.stButton > button:focus-visible, .stFormSubmitButton > button:focus-visible,
+[data-testid="stButtonGroup"] button:focus-visible{ outline:3px solid var(--ns-accent-line)!important; outline-offset:2px; }
 button[data-testid="stBaseButton-primary"],
-button[data-testid="stBaseButton-primaryFormSubmit"],
-.stButton button[kind="primary"],
-.stFormSubmitButton button[kind="primary"] {
-    background-color: var(--ns-go) !important;
-    border-color: var(--ns-go) !important;
-    color: #ffffff !important;
+button[data-testid="stBaseButton-primaryFormSubmit"]{
+  background:var(--ns-ink)!important; border-color:var(--ns-ink)!important; color:var(--ns-on-ink)!important;
+  box-shadow:0 1px 2px rgba(0,0,0,.10), 0 8px 18px -12px rgba(0,0,0,.6);
 }
 button[data-testid="stBaseButton-primary"]:hover,
-button[data-testid="stBaseButton-primaryFormSubmit"]:hover,
-.stButton button[kind="primary"]:hover,
-.stFormSubmitButton button[kind="primary"]:hover {
-    background-color: var(--ns-go-hover) !important;
-    border-color: var(--ns-go-hover) !important;
+button[data-testid="stBaseButton-primaryFormSubmit"]:hover{
+  background:var(--ns-ink-hover)!important; border-color:var(--ns-ink-hover)!important;
 }
-div.st-key-btn_more_ai button {
-    background-color: var(--ns-ai) !important;
-    border: 1px solid var(--ns-ai) !important;
-    color: #ffffff !important;
+/* v1 的 !important 实色把「未勾同意时禁用的开始按钮」也涂成了可点的绿 —— 禁用必须看得出是禁用 */
+button[data-testid="stBaseButton-primary"]:disabled,
+button[data-testid="stBaseButton-primaryFormSubmit"]:disabled{
+  background:var(--ns-sunken)!important; border-color:var(--ns-line-strong)!important;
+  color:var(--ns-dim)!important; box-shadow:none; cursor:not-allowed;
 }
-div.st-key-btn_more_ai button:hover {
-    background-color: var(--ns-ai-hover) !important;
-    border-color: var(--ns-ai-hover) !important;
+button[data-testid="stBaseButton-secondary"],
+button[data-testid="stBaseButton-secondaryFormSubmit"]{
+  background:var(--ns-surface); border-color:var(--ns-line-strong); color:var(--ns-text);
 }
+button[data-testid="stBaseButton-secondary"]:hover,
+button[data-testid="stBaseButton-secondaryFormSubmit"]:hover{
+  background:var(--ns-surface-2); border-color:var(--ns-text-2); color:var(--ns-text);
+}
+div.st-key-btn_more_ai button{
+  background:var(--ns-ai)!important; border:1px solid var(--ns-ai)!important; color:#ffffff!important;
+  box-shadow:0 1px 2px rgba(0,0,0,.10), 0 8px 18px -12px rgba(30,80,162,.85);
+}
+div.st-key-btn_more_ai button:hover{ background:var(--ns-ai-hover)!important; border-color:var(--ns-ai-hover)!important; }
+div.st-key-btn_more_ai button p{ color:#ffffff!important; }
+
+/* ── 输入 ──────────────────────────────────────────────────────── */
+[data-testid="stTextArea"] textarea{ line-height:1.7; }
+[data-testid="stTextAreaRootElement"], [data-testid="stTextInputRootElement"]{ border-radius:var(--ns-radius-sm)!important; }
+[data-testid="stTextAreaRootElement"]:focus-within, [data-testid="stTextInputRootElement"]:focus-within{
+  box-shadow:0 0 0 3px var(--ns-accent-soft);
+}
+
+/* ── 选择:分段控件(7 点量表 / 引导选项 / 逐镜头归属)的选中态要一眼看得出 ──
+   v1 选中只是浅蓝底 + 蓝字,答到第十几题时很难扫出哪一题漏了。 */
+[data-testid="stButtonGroup"] button[role="radio"]{ min-height:2.5rem; background:var(--ns-surface); }
+[data-testid="stButtonGroup"] button[role="radio"]:hover{ background:var(--ns-accent-soft); }
+[data-testid="stButtonGroup"] button[role="radio"][aria-checked="true"]{
+  background:var(--ns-accent)!important; border-color:var(--ns-accent)!important; color:var(--ns-on-accent)!important;
+}
+[data-testid="stButtonGroup"] button[role="radio"][aria-checked="true"] *{ color:var(--ns-on-accent)!important; font-weight:700; }
+/* 引导选项(E)与逐镜头三选一是「几句话里挑一句」,不是刻度:做成彼此分开的胶囊,窄屏折行时不会出现
+   连体按钮断成两截的边框(7 点量表保持连体,那是一把尺子)。 */
+:is([class*="st-key-_g_opt_"],[class*="st-key-_q_shot"],[class*="st-key-_q_whole_"]) [role="radiogroup"]{
+  display:flex; flex-wrap:wrap; gap:.45rem; }
+:is([class*="st-key-_g_opt_"],[class*="st-key-_q_shot"],[class*="st-key-_q_whole_"]) button[role="radio"]{
+  border:1px solid var(--ns-line-strong)!important; border-radius:999px!important; margin:0!important;
+  padding:.45rem 1rem!important; }
+:is([class*="st-key-_g_opt_"],[class*="st-key-_q_shot"],[class*="st-key-_q_whole_"]) button[role="radio"][aria-checked="true"]{
+  border-color:var(--ns-accent)!important; }
+/* 单选:竖排的多选项 → 整行可点的选项卡(手机上 v1 每行只有 ~24px 高的点按区域);横排(是 / 否、语言)→ 胶囊 */
+/* 1.60 的 st.radio 默认按内容定宽:每组选项卡宽窄不一(随该组最长的那句)。只让竖排的撑满 */
+.stElementContainer:has(> [data-testid="stRadio"] [aria-orientation="vertical"]){ width:100%!important; }
+[data-testid="stRadio"]:has([aria-orientation="vertical"]), [data-testid="stRadioGroup"][aria-orientation="vertical"]{ width:100%; }
+[data-testid="stRadioGroup"]{ gap:.45rem; }
+[data-testid="stRadioGroup"] [data-testid="stRadioOption"]{
+  margin:0!important; border:1px solid var(--ns-line-strong); border-radius:var(--ns-radius-sm);
+  background:var(--ns-surface); transition:border-color .15s ease, background-color .15s ease;
+}
+[data-testid="stRadioGroup"][aria-orientation="vertical"] [data-testid="stRadioOption"]{ width:100%; padding:.6rem .85rem; }
+[data-testid="stRadioGroup"][aria-orientation="horizontal"] [data-testid="stRadioOption"]{ padding:.4rem .95rem .4rem .75rem; border-radius:999px; }
+[data-testid="stRadioGroup"] [data-testid="stRadioOption"]:hover{ border-color:var(--ns-accent-line); }
+[data-testid="stRadioGroup"] [data-testid="stRadioOption"]:has(input:checked){
+  border-color:var(--ns-accent); background:var(--ns-accent-soft);
+}
+/* 同意的那一下:勾选框单独成框,与上面的长文分开 */
+.st-key-_consent_agree{ background:var(--ns-surface); border:1px solid var(--ns-line-strong); border-radius:var(--ns-radius-sm);
+  padding:.8rem 1rem; }
+.st-key-_consent_agree:has(input:checked){ border-color:var(--ns-accent); background:var(--ns-accent-soft); }
+
+/* ── 7 点量表 ──────────────────────────────────────────────────────
+   一题一块:题干 → 按钮行 → 锚点,块与块之间一条细线。v1 的锚点行紧贴着下一题的题干,
+   看起来像是下一题的(筛查页尤其明显)。 */
+[class*="st-key-ns_lk_"]{ gap:.5rem!important; padding:.2rem 0 .9rem; border-bottom:1px solid var(--ns-line); }
+[class*="st-key-ns_lk_"] .stMarkdown p{ font-weight:500; }
+/* 7 点量表下方的锚点行。原来用 st.columns(3) 拼,窄屏下 Streamlit 会把列**竖着堆**,
+   于是「まったくそう思わない / どちらともいえない / 非常にそう思う」变成三行阶梯,
+   而且看不出哪一句属于哪一端 —— 对一个靠锚点定义刻度含义的 7 点量表来说,这不只是
+   难看,是量表本身失去了刻度说明。改成一行,窄屏也不会拆行。
+   三栏 grid 而不是 flex + space-between:后者让中点随左右两句的长度左右漂移,
+   对不准量表的第 4 格。1fr auto 1fr 下,中间那栏的中心恒在 50% = 第 4 格中心。 */
+.ns-anchor{display:grid;grid-template-columns:1fr auto 1fr;align-items:start;
+  gap:.45rem;margin:-2px 0 1rem;color:var(--ns-dim);
+  font-size:var(--ns-fs-note);line-height:1.25}
+.ns-anchor>span{min-width:0}
+.ns-anchor .a-l{text-align:left}
+.ns-anchor .a-m{text-align:center}
+.ns-anchor .a-r{text-align:right}
+
+/* 逐镜头归属:一镜一张卡(views/questionnaire._shot_preview);镜号圆圈与絵コンテ纸上的同形 */
+[class*="st-key-ns_card_shot"]{ gap:.75rem!important; }
+.ns-shot{ margin-bottom:1rem; }
+.ns-shot-head{ display:flex; align-items:center; gap:.55rem; margin-bottom:.4rem; }
+.ns-shot .cut{ flex:none; display:inline-flex; align-items:center; justify-content:center; width:1.6rem; height:1.6rem;
+  border:1.5px solid var(--ns-text); border-radius:50%; font:700 .88rem/1 Georgia, serif; color:var(--ns-text); }
+.ns-shot-no{ font-size:.78rem; font-weight:700; letter-spacing:.06em; color:var(--ns-dim); }
+.ns-shot-txt{ line-height:1.7; color:var(--ns-text); }
+
+/* E 的引导题卡(views/guidance)与 F 的采访题:题面比正文大一档 */
+.ns-qhead{ display:flex; align-items:center; gap:.7rem; margin:0 0 .45rem; }
+.ns-qhead .ns-eyebrow{ margin:0; }
+.ns-dots{ display:inline-flex; gap:5px; }
+.ns-dots i{ display:block; width:7px; height:7px; border-radius:50%; background:var(--ns-line-strong); }
+.ns-dots i.done{ background:var(--ns-text-2); }
+.ns-dots i.cur{ background:var(--ns-accent); box-shadow:0 0 0 3px var(--ns-accent-soft); }
+.ns-q{ font-size:1.08rem; font-weight:700; line-height:1.6; color:var(--ns-text); margin-bottom:1rem; }   /* 1rem:抵消 markdown 块的 -1rem */
+.ns-echo{ font-size:.9rem; line-height:1.6; color:var(--ns-dim); margin:0 0 .25rem; }
+
+/* 生成后的稿子:C 的只读稿与「你写的创意」回显 */
+.st-key-ns_card_script{ background:var(--ns-surface-2)!important; }
+.st-key-ns_card_intent{ gap:.35rem!important; box-shadow:none!important; background:var(--ns-sunken)!important; }
+/* 历史面板:内容多高就多高,最高 480px(st.container(height=) 是写死的高度,只有一版时下面一大块空白) */
+.st-key-ns_history{ height:auto!important; max-height:480px; }
+
+/* ── 对话(历史 / F 的采访)──────────────────────────────────────── */
+/* 自定义图标头像在 1.60 里统一是 stChatMessageAvatarCustom,谁说的话只能从内容区的 aria-label 分
+   (Streamlit 内部固定的英文串,不随界面语言变)。 */
+[data-testid="stChatMessage"]{ border-radius:var(--ns-radius); padding:.75rem .9rem; gap:.75rem; background:transparent; }
+[data-testid="stChatMessage"]:has([aria-label="Chat message from user"]){ background:var(--ns-sunken); }
+[data-testid="stChatMessageAvatarCustom"]{ border:0!important; border-radius:9px!important; }
+[data-testid="stChatMessage"]:has([aria-label="Chat message from assistant"]) [data-testid="stChatMessageAvatarCustom"]{
+  background:var(--ns-accent)!important; }
+[data-testid="stChatMessage"]:has([aria-label="Chat message from assistant"]) [data-testid="stChatMessageAvatarCustom"] *{
+  color:var(--ns-on-accent)!important; }
+[data-testid="stChatMessage"]:has([aria-label="Chat message from user"]) [data-testid="stChatMessageAvatarCustom"]{
+  background:var(--ns-text-2)!important; }
+[data-testid="stChatMessage"]:has([aria-label="Chat message from user"]) [data-testid="stChatMessageAvatarCustom"] *{
+  color:var(--ns-surface)!important; }
+
+/* ── 页脚 ──────────────────────────────────────────────────────── */
+.st-key-ns_footer{ margin-top:2rem; padding-top:1.1rem; border-top:1px solid var(--ns-line); }
+.st-key-ns_footer [data-testid="stCaptionContainer"]{ text-align:center; font-size:.8rem; }
+
+/* ── 完成页 ──────────────────────────────────────────────────────── */
+.ns-done{ text-align:center; padding:1.5rem 0 .25rem; margin-bottom:1rem; }
+.ns-done-mark{ width:3.6rem; height:3.6rem; margin:0 auto 1rem; border-radius:50%; display:flex;
+  align-items:center; justify-content:center; background:var(--ns-ok-soft); color:var(--ns-ok); }
+.ns-done-mark svg{ width:1.9rem; height:1.9rem; }
+.ns-done-title{ font-size:1.45rem!important; line-height:1.45!important; font-weight:700!important;
+  margin:0 0 .55rem!important; padding:0!important; color:var(--ns-text); }
+.ns-done-msg{ color:var(--ns-text-2); }
+.st-key-ns_done_code [data-testid="stCode"] pre{ padding:1.15rem 1rem!important; border:1px dashed var(--ns-line-strong);
+  border-radius:var(--ns-radius-sm); }
+.st-key-ns_done_code [data-testid="stCode"] code{ display:block; text-align:center; font-size:1.7rem!important;
+  font-weight:700; letter-spacing:.22em; color:var(--ns-text)!important; }
 
 /* Streamlit 1.60 的顶栏(position:absolute、高 60px)只在「没东西可显示」时才自己
    透明且不挡点击。侧栏一收起,展开箭头就住进去,顶栏随之变成一条横贯整幅的实色
@@ -195,32 +525,7 @@ header[data-testid="stHeader"] [data-testid="stExpandSidebarButton"]{
 header[data-testid="stHeader"] [data-testid="stExpandSidebarButton"]:hover,
 header[data-testid="stHeader"] [data-testid="stExpandSidebarButton"]:active{
     background: var(--ns-accent) !important;
-    color: #fff !important;
-}
-
-/* 7 点量表下方的锚点行。原来用 st.columns(3) 拼,窄屏下 Streamlit 会把列**竖着堆**,
-   于是「まったくそう思わない / どちらともいえない / 非常にそう思う」变成三行阶梯,
-   而且看不出哪一句属于哪一端 —— 对一个靠锚点定义刻度含义的 7 点量表来说,这不只是
-   难看,是量表本身失去了刻度说明。改成一行 flex,窄屏也不会拆行。 */
-/* 三栏 grid 而不是 flex + space-between:后者让中点随左右两句的长度左右漂移,
-   对不准量表的第 4 格。1fr auto 1fr 下,中间那栏的中心恒在 50% = 第 4 格中心。 */
-.ns-anchor{display:grid;grid-template-columns:1fr auto 1fr;align-items:start;
-  gap:.45rem;margin:-2px 0 2px;color:var(--ns-dim);
-  font-size:var(--ns-fs-note);line-height:1.25}
-.ns-anchor>span{min-width:0}
-.ns-anchor .a-l{text-align:left}
-.ns-anchor .a-m{text-align:center}
-.ns-anchor .a-r{text-align:right}
-
-/* PC 全屏:layout="wide" 是给絵コンテ表格留的宽度(5 列的表在 centered 的 730px 里会挤成
-   一团),但在 24 吋以上的屏幕上正文会横跨整幅 —— 一行两百多个字,眼睛读到行尾找不回行首。
-   给正文容器一个最大宽度并居中:窄屏完全不受影响(max-width 只在窗口够宽时才起作用),
-   宽屏则留出左右留白。1100px ≈ 絵コンテ表的舒适宽度上限。 */
-.stMainBlockContainer,
-[data-testid="stAppViewBlockContainer"]{max-width:1100px}
-@media (min-width:1400px){
-  .stMainBlockContainer,
-  [data-testid="stAppViewBlockContainer"]{padding-left:4rem;padding-right:4rem}
+    color: var(--ns-on-accent) !important;
 }
 
 /* 关掉 Streamlit 的「运行中变暗」。
@@ -254,28 +559,37 @@ body:has(.stElementContainer:not([data-stale="true"]) .ns-busy) .stElementContai
 .stExpander summary,
 [data-baseweb="tab-list"],[data-baseweb="tab"]{opacity:1!important}
 
-@media (max-width:600px){
+@media (max-width:640px){
   /* 窄屏字阶:实测 h1 在 390px 上是 44px,一个 st.subheader 的分节标题能占掉三行屏幕。 */
-  [data-testid="stHeading"] h1{font-size:1.55rem!important;line-height:1.3}
-  [data-testid="stHeading"] h2{font-size:1.22rem!important;line-height:1.35}
-  [data-testid="stHeading"] h3{font-size:1.08rem!important;line-height:1.4}
+  [data-testid="stHeading"] h1{font-size:1.4rem!important;line-height:1.35}
+  [data-testid="stHeading"] h2{font-size:1.2rem!important;line-height:1.4}
+  [data-testid="stHeading"] h3{font-size:1.06rem!important;line-height:1.45}
+  .ns-hero{ padding-top:1rem; }
+  .ns-hero .ns-mark{ width:2.1rem; height:2.1rem; margin-bottom:.8rem; }
+  .ns-hero-title{ font-size:1.5rem!important; }
+  .ns-bar{ padding-right:3.25rem; }
+  .ns-bar-product{ font-size:.8rem; }
+  [data-testid="stForm"]{ padding:1.1rem .95rem 1rem!important; }
+  [class*="st-key-ns_card"]{ padding:.95rem 1rem!important; }
+  .ns-topic{ padding:.95rem 1rem .9rem; }
+  /* 步骤条:只留当前一步的名字,其余是编号圆点(五个名字一行放不下) */
+  .ns-steps li{ flex:0 0 auto; }
+  .ns-steps li.cur{ flex:1 1 auto; }
+  .ns-steps li:not(.cur) .lbl{ display:none; }
+  .ns-steps li::after{ flex:0 0 .7rem; min-width:.7rem; margin:0 .3rem; }
+  .ns-steps li.cur::after{ flex:1 1 .7rem; }
   .ns-anchor{font-size:.7rem;gap:.3rem}
 }
 </style>
 """
 
+# 研究员后台:表格、图、平衡格要宽,不受被试页 880px 的阅读宽度限制。
+_WIDE_CSS = ('<span class="ns-css"></span><style>.stMainBlockContainer,[data-testid="stMainBlockContainer"]'
+             '{max-width:1320px!important}</style>')
+
 
 def _inject_css() -> None:
     st.markdown(_DESIGN_CSS, unsafe_allow_html=True)
-
-
-def _progress_bar() -> None:
-    i = st.session_state["round_idx"]
-    n = state.rounds_total()
-    st.progress(
-        (i - 1) / n,
-        text=t("round.progress", i=i, n=n),
-    )
 
 
 # Deliberately permissive: one @, a dot in the domain, no whitespace. A stricter
@@ -293,9 +607,15 @@ def _render_done() -> None:
         # 只有「在本次会话里真的做完了」才置位。续接一位已完成的被试时完成码是从库里
         # 读回来的,不会走这里 —— 这是联系方式表单的归属凭据之一(另一条见 _finished_recently)。
         st.session_state["_completed_in_this_session"] = True
-    st.success(t("done.title"))
-    st.write(t("done.message"))
-    st.code(st.session_state["completion_code"])
+    # 文字与顺序同 v1,只把「完成」做成一块居中的标题区、完成码放大(v1 是两块绿框 + 一块黄框压过了完成码)。
+    st.markdown(
+        f'<div class="ns-done"><div class="ns-done-mark">{_CHECK_SVG}</div>'
+        f'<h2 class="ns-done-title">{html.escape(t("done.title"))}</h2>'
+        f'<div class="ns-done-msg">{html.escape(t("done.message"))}</div></div>',
+        unsafe_allow_html=True,
+    )
+    with st.container(key="ns_done_code"):
+        st.code(st.session_state["completion_code"], language=None)   # 页上第一个 st.code(E2E 按它取码)
     # 先说这串码怎么用(紧贴着码本身,普通字号),再说「到这儿就结束了」(绿标)。
     # 顺序反过来的话,被试读到「可以关页面了」就走了,根本不会往下看完成码有什么用。
     st.caption(t("done.code_use"))

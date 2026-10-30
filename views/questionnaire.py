@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import json
 
 import streamlit as st
@@ -372,7 +373,7 @@ def _install_sb_scroll_observer() -> None:
     st.components.v1.html) so the script runs in the MAIN page, not an
     iframe — the iframe path in 1.57 uses `sandbox` without `allow-same-origin`
     which blocks `window.parent.document` access."""
-    st.html(_SB_SCROLL_JS, unsafe_allow_javascript=True)
+    st.html('<span class="ns-util"></span>' + _SB_SCROLL_JS, unsafe_allow_javascript=True)   # .ns-util:不占版面
 
 
 def render() -> None:
@@ -389,11 +390,10 @@ def render() -> None:
     missing: list[str] = []  # labels of unanswered items, named back to the user
 
     def likert(key: str, label: str, anchors: str | None = "agree") -> None:
-        val = _scale.likert(label, f"_q_{key}_{ridx}", anchors=anchors)
+        val = _scale.likert(label, f"_q_{key}_{ridx}", anchors=anchors)   # 题与题之间的分隔线在 _scale 的块样式里
         if val is None:
             missing.append(_scale.truncate_label(label))
         answers[key] = val
-        st.divider()
 
     for i in range(1, _OWN_ITEMS + 1):
         likert(f"own{i}", t(f"q.own{i}"))
@@ -431,16 +431,16 @@ def render() -> None:
     if parsed:
         st.caption(t("q.shots_hint"))
         for s in parsed:
-            with st.container(border=True):
-                st.markdown(_shot_preview(s))
-            sel = st.segmented_control(
-                t("q.shot_tag_label"), tag_labels, selection_mode="single",
-                key=f"_q_shot{s['idx']}_{ridx}",
-            )
+            # 一镜一张卡:镜号圆圈(与上方絵コンテ的镜号同一个样子)+ 画面文字 + 三选一
+            with st.container(key=f"ns_card_shot{s['idx']}_{ridx}"):
+                st.markdown(_shot_preview(s), unsafe_allow_html=True)
+                sel = st.segmented_control(
+                    t("q.shot_tag_label"), tag_labels, selection_mode="single",
+                    key=f"_q_shot{s['idx']}_{ridx}",
+                )
             if sel is None:
                 missing.append(t("q.shot_label", i=s["idx"]))
             shot_annotations.append({"shot": s["idx"], "tag": lbl2tag.get(sel)})
-            st.divider()
     else:
         sel = st.segmented_control(
             t("q.whole_tag_label"), tag_labels, selection_mode="single",
@@ -464,11 +464,13 @@ def render() -> None:
 
 
 def _shot_preview(s: dict) -> str:
-    head = f"**{t('q.shot_label', i=s['idx'])}**"
+    """镜号 + 画面文字(截 120 字,同 v1)。逐字转义:AI 稿里的「*」「1.」经 markdown 会变成斜体 / 列表。"""
     body = s.get("visual") or s.get("raw", "")
     if len(body) > 120:
         body = body[:120] + "…"
-    return f"{head} {body}"
+    return (f'<div class="ns-shot"><div class="ns-shot-head"><span class="cut" aria-hidden="true">{s["idx"]}</span>'
+            f'<span class="ns-shot-no">{html.escape(t("q.shot_label", i=s["idx"]).rstrip("：: "))}</span></div>'
+            f'<div class="ns-shot-txt">{html.escape(body)}</div></div>')
 
 
 def _submit(ridx: int, answers: dict, shot_annotations: list[dict]) -> None:

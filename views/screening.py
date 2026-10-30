@@ -20,29 +20,31 @@ def render() -> None:
     st.header(t("screening.title"))
     st.caption(t("screening.hint"))
 
+    # 下拉框的占位文字:Streamlit 1.60 默认是英文「Choose an option」,日本被试在这页会看到四处英文
+    ph = t("common.select_placeholder")
     with st.form("screening_form"):
         st.subheader(t("screening.demo_section"))
         age = st.selectbox(
             t("screening.age"),
             [t(f"screening.age_opt{i}") for i in range(1, 7)],
-            index=None,
+            index=None, placeholder=ph,
         )
         gender = st.selectbox(
             t("screening.gender"),
             [t(f"screening.gender_opt{i}") for i in range(1, 5)],
-            index=None,
+            index=None, placeholder=ph,
         )
         ai_freq = st.selectbox(
             t("screening.ai_freq"),
             [t(f"screening.ai_freq_opt{i}") for i in range(1, 5)],
-            index=None,
+            index=None, placeholder=ph,
         )
         # AI *creative* experience — distinct from ai_freq (general usage); a
         # covariate for D/E workflow familiarity (paper/10 H1-H3, H7).
         aiexp = st.selectbox(
             t("screening.aiexp"),
             [t(f"screening.aiexp_opt{i}") for i in range(1, 4)],
-            index=None,
+            index=None, placeholder=ph,
         )
 
         st.subheader(t("screening.exp_section"))

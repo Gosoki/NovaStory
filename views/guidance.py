@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import html
+
 import streamlit as st
 
 from core import config, prompts, state
@@ -59,10 +61,18 @@ def render(topic: dict) -> None:
     g_round = len(st.session_state["r_guidance_rounds"]) + 1
 
     st.subheader(t("guidance.title"))
-    st.caption(t("guidance.progress", i=idx + 1, n=len(qs)))
-    st.markdown(f"**{q['question']}**")
+    # 一题一张卡:眉标(第 i / n 问 + 每题一个点)→ 题面 → 为什么问 → 选项 → 自己写 → 前后翻页。
+    # 题面是模型写的,逐字转义显示(v1 按 markdown 渲染,模型偶尔带的「*」会变斜体)。
+    card = st.container(key="ns_card_gq")
+    dots = "".join(f'<i class="{"done" if k < idx else "cur" if k == idx else ""}"></i>' for k in range(len(qs)))
+    card.markdown(
+        f'<div class="ns-qhead"><span class="ns-eyebrow">{html.escape(t("guidance.progress", i=idx + 1, n=len(qs)))}</span>'
+        f'<span class="ns-dots" aria-hidden="true">{dots}</span></div>'
+        f'<div class="ns-q">{html.escape(q["question"])}</div>',
+        unsafe_allow_html=True,
+    )
     if q.get("why"):
-        st.caption(q["why"])
+        card.caption(q["why"])
 
     saved = st.session_state["r_g_answers"].get(idx, {})
     options = list(q.get("options") or [])
@@ -76,7 +86,7 @@ def render(topic: dict) -> None:
         # cleared its widget key while it was off-screen during pagination).
         if opt_key not in st.session_state and saved.get("opt") in opts:
             st.session_state[opt_key] = saved["opt"]
-        st.segmented_control(
+        card.segmented_control(
             t("guidance.pick_label"), opts,
             selection_mode="single",
             key=opt_key,
@@ -85,9 +95,9 @@ def render(topic: dict) -> None:
     cust_key = f"_g_custom_{g_round}_{idx}"
     if cust_key not in st.session_state and saved.get("custom"):
         st.session_state[cust_key] = saved["custom"]
-    st.text_input(t("guidance.custom_label"), key=cust_key, max_chars=300)
+    card.text_input(t("guidance.custom_label"), key=cust_key, max_chars=300)
 
-    cols = st.columns(2)
+    cols = card.columns(2)
     # 按题加 key(2026-10-29 审计):没有 key 的按钮 id 只由标签决定、各题相同,双击「次の質問」时第二下
     # 落在下一题的同一个按钮上(下一题还没答 → 报错;「前の質問」则连退两题)。外观不变。
     if idx > 0 and cols[0].button(t("guidance.prev"), width="stretch", key=f"_g_prev_{g_round}_{idx}"):

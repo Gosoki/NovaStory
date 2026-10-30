@@ -19,6 +19,9 @@ from views._streaming import stream_llm
 
 
 _HISTORY_HEIGHT = 480   # px; scrollable height of the chat-history pane (tunable)
+# 对话头像:被试 = 人形,AI = 星芒(与品牌标记同一个意象)。v1 是 Streamlit 默认的橙色机器人 / 红色笑脸。
+AVATAR_USER = ":material/person:"
+AVATAR_AI = ":material/auto_awesome:"
 
 
 def render_editable(topic: dict, cond: str) -> None:
@@ -67,8 +70,10 @@ def render_editable(topic: dict, cond: str) -> None:
 
 def _pre(text: str) -> str:
     """逐字回显(pre-wrap + 转义):被试写的「1. 起きる」经 markdown 会变成有序列表,AI 稿里的
-    「*」会变斜体 —— 被试看到的必须与编辑框 / 库里存的是同一份文字。"""
-    return f"<div style='white-space:pre-wrap;line-height:1.6'>{html.escape(text or '')}</div>"
+    「*」会变斜体 —— 被试看到的必须与编辑框 / 库里存的是同一份文字。
+    margin-bottom:1rem 与 Streamlit 给 markdown 块垫的 -1rem 抵消(同一个 <p> 的行为),否则卡片 / 对话气泡
+    的底边距被吃掉、末行压在边框上。"""
+    return f"<div style='white-space:pre-wrap;line-height:1.7;margin-bottom:1rem'>{html.escape(text or '')}</div>"
 
 
 def render_readonly(topic: dict) -> None:
@@ -82,13 +87,14 @@ def render_readonly(topic: dict) -> None:
     rejected, and in C there is exactly one."""
     intent = (st.session_state.get("r_intent") or "").strip()
     if intent:
-        st.caption(t("postgen.readonly_intent"))
-        with st.container(border=True):
+        with st.container(key="ns_card_intent"):
+            st.caption(t("postgen.readonly_intent"))
             # 逐字回显:被试写的「1. 起きる 2. 走る」经 markdown 会变成有序列表,
             # 排版上与紧邻其下的 AI 稿难以区分 —— 而这段回显存在的意义就是分开两者。
             st.markdown(_pre(intent), unsafe_allow_html=True)
     st.subheader(t("postgen.readonly_title"))
-    st.markdown(_pre(state.current_script()), unsafe_allow_html=True)
+    with st.container(key="ns_card_script"):
+        st.markdown(_pre(state.current_script()), unsafe_allow_html=True)
     if st.button(t("postgen.submit_c"), type="primary", width="stretch"):
         _trial.submit_trial(state.current_script())
         st.rerun()
@@ -124,22 +130,23 @@ def render_history() -> None:
     requests = st.session_state["r_revision_requests"]   # condition D
     guidance_rounds = st.session_state["r_guidance_rounds"]   # condition E(别叫 guidance:与下面局部 import 的模块同名)
     with st.expander(t("history.title"), expanded=True):
-        with st.container(height=_HISTORY_HEIGHT):
+        # key → app.py 把它改成「内容多高就多高、最高 _HISTORY_HEIGHT」:只有一版时 v1 下面是一大块空白
+        with st.container(height=_HISTORY_HEIGHT, key="ns_history"):
             intent = (st.session_state.get("r_intent") or "").strip()
             if intent:
-                with st.chat_message("user"):
+                with st.chat_message("user", avatar=AVATAR_USER):
                     st.caption(t("history.intent"))
                     st.markdown(_pre(intent), unsafe_allow_html=True)
             ai_seen = 0
             for v in versions:
                 if v["author"] == "ai":
                     _history_user_turn(ai_seen, requests, guidance_rounds)
-                    with st.chat_message("assistant"):
+                    with st.chat_message("assistant", avatar=AVATAR_AI):
                         st.caption(t("history.ai", v=v["v"]))
                         st.markdown(_pre(v["text"]), unsafe_allow_html=True)
                     ai_seen += 1
                 else:  # user_edit
-                    with st.chat_message("user"):
+                    with st.chat_message("user", avatar=AVATAR_USER):
                         st.caption(t("history.edit"))
                         st.markdown(_pre(v["text"]), unsafe_allow_html=True)
 
@@ -148,7 +155,7 @@ def _history_user_turn(ai_idx: int, requests: list, guidance_rounds: list) -> No
     """The user message that triggered the ai_idx-th AI version: guidance answers
     for E; the free-text request for D's 2nd+ generation; nothing for the first."""
     if guidance_rounds and ai_idx < len(guidance_rounds):
-        with st.chat_message("user"):
+        with st.chat_message("user", avatar=AVATAR_USER):
             st.caption(t("history.guide"))
             for it in guidance_rounds[ai_idx]["items"]:
                 answer = (
@@ -158,7 +165,7 @@ def _history_user_turn(ai_idx: int, requests: list, guidance_rounds: list) -> No
                 st.markdown(f"**{it['question']}**")
                 st.markdown(_pre(f"→ {answer}"), unsafe_allow_html=True)   # 被试写的字逐字显示,不按 markdown 排
     elif requests and 1 <= ai_idx <= len(requests):
-        with st.chat_message("user"):
+        with st.chat_message("user", avatar=AVATAR_USER):
             st.caption(t("history.req"))
             st.markdown(_pre(requests[ai_idx - 1]["text"]), unsafe_allow_html=True)
 
@@ -166,15 +173,18 @@ def _history_user_turn(ai_idx: int, requests: list, guidance_rounds: list) -> No
 def _render_revision_channel(topic: dict) -> None:
     if st.session_state.pop("_revision_clear", False):
         st.session_state["_revision_input"] = ""
-    st.text_area(
-        t("d.revision_label"),
-        key="_revision_input",
-        placeholder=t("d.revision_placeholder"),
-        height=80,
-        max_chars=600,
-    )
-    st.caption(t("d.revision_hint"))
-    if st.button(t("d.revision_send"), type="secondary", width="stretch", key="btn_more_ai"):
+    # 「请 AI 改」的输入、说明与按钮收进一张卡,与下面的「就这版提交」分开:两者是被试的两条路
+    with st.container(key="ns_card_ai"):
+        st.text_area(
+            t("d.revision_label"),
+            key="_revision_input",
+            placeholder=t("d.revision_placeholder"),
+            height=80,
+            max_chars=600,
+        )
+        st.caption(t("d.revision_hint"))
+        clicked = st.button(t("d.revision_send"), type="secondary", width="stretch", key="btn_more_ai")
+    if clicked:
         request = (st.session_state.get("_revision_input") or "").strip()
         if not request:
             st.error(t("errors.revision_empty"))

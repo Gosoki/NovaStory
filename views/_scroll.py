@@ -44,6 +44,7 @@ def _emit() -> None:
     但不带 `allow-same-origin`,拿不到 `window.parent.document`。
     """
     st.html(
+        '<span class="ns-util"></span>'   # app.py:不占版面
         "<script>(function(){var n=%d;" % int(time.time() * 1000)
         + "var go=function(){var d=(window.parent&&window.parent.document)||document;"
         + "var m=d.querySelector('.stMain')||d.querySelector('[data-testid=\"stMain\"]');"

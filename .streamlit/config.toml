@@ -22,14 +22,49 @@ toolbarMode = "minimal"
 # 通用错误,细节仍照常写进服务端日志,研究员那边不受影响。
 showErrorDetails = "none"
 
-# Theme: blue accent that FOLLOWS each participant's system light/dark preference.
-# Streamlit auto-switches (and shows the ☰ → Settings toggle) ONLY when BOTH
-# [theme.light] and [theme.dark] are defined; a bare [theme] would lock the app
-# to a single (light) mode — that's why a dark system wasn't followed before.
-# Decide buttons stay green & continue-AI blue via the !important CSS in app.py
-# (white text → legible on either background).
+# ── 主题(v2设计,2026-10-31):和纸 / 墨 / 瑠璃 ──────────────────────────────
+# 底色是暖白的「和纸」、正文与「决定」按钮是「墨」、强调色与 AI 动作是「瑠璃」(深蓝)。
+# 颜色的单一真源仍是 app.py 的 --ns-* 令牌;这里只把同一组值交给 Streamlit 自己的组件
+# (输入框、勾选框、单选点、进度条、提示框、表格),两边改色要一起改。
+# 跟随被试**操作系统**的明暗:只有 [theme.light] 与 [theme.dark] 同时存在时 Streamlit 才自动切换;
+# 只写 [theme] 会锁死浅色。[theme] 这里只放与明暗无关的项(圆角、字阶、边框开关)。
+# 对比度(WCAG):正文 14.5 / 弱化字 4.8(浅)· 6.9(深)/ 强调色 7.1 / 按钮白字 7.7 —— 均过 AA。
+[theme]
+baseRadius = "0.625rem"
+buttonRadius = "0.625rem"
+showWidgetBorder = true
+# 原默认 h1–h3 是 2.75 / 2.25 / 1.75rem:一个 st.subheader 就占掉手机三行屏幕。
+headingFontSizes = ["1.75rem", "1.375rem", "1.125rem", "1rem", "0.9375rem", "0.875rem"]
+headingFontWeights = [700, 700, 600, 600, 600, 600]
+
 [theme.light]
-primaryColor = "#2563eb"
+primaryColor = "#1e50a2"
+backgroundColor = "#f6f5f1"
+secondaryBackgroundColor = "#ffffff"
+textColor = "#1f2328"
+borderColor = "#d9d5cb"
+linkColor = "#1e50a2"
+codeBackgroundColor = "#f1efe9"
+dataframeHeaderBackgroundColor = "#f1efe9"
+blueColor = "#1e50a2"
+greenColor = "#2b6e47"
+yellowColor = "#b7791f"
+orangeColor = "#c2410c"
+redColor = "#b42318"
+grayColor = "#8a8f98"
 
 [theme.dark]
-primaryColor = "#2563eb"
+primaryColor = "#8fabf5"
+backgroundColor = "#131417"
+secondaryBackgroundColor = "#1b1d22"
+textColor = "#e7e5df"
+borderColor = "#30333b"
+linkColor = "#8fabf5"
+codeBackgroundColor = "#22252b"
+dataframeHeaderBackgroundColor = "#22252b"
+blueColor = "#8fabf5"
+greenColor = "#7cc99a"
+yellowColor = "#e5b65a"
+orangeColor = "#f0a060"
+redColor = "#f28b82"
+grayColor = "#5b5f68"

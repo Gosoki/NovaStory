@@ -57,13 +57,17 @@ def likert(label: str, key: str, *, anchors: str | None = "agree"):
     """One labelled 7-point item; returns the selection, None if unanswered.
 
     `anchors` names an _ANCHOR_SETS entry, or None for no anchor line (the
-    attention check, which is an instruction rather than a scale)."""
-    st.markdown(label)
-    val = st.segmented_control(
-        label, SCALE, selection_mode="single", key=key,
-        width=WIDTH, label_visibility="collapsed",
-    )
-    _render_anchors(anchors)
+    attention check, which is an instruction rather than a scale).
+
+    一题一个容器(.st-key-ns_lk_*,样式在 app.py):题干、按钮行、锚点收在同一块里,块与块之间
+    有间距和细线 —— v1 的锚点行紧贴着下一题的题干,读起来像是下一题的锚点。"""
+    with st.container(key=f"ns_lk_{key}"):
+        st.markdown(label)
+        val = st.segmented_control(
+            label, SCALE, selection_mode="single", key=key,
+            width=WIDTH, label_visibility="collapsed",
+        )
+        _render_anchors(anchors)
     return val
 
 

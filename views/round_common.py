@@ -14,8 +14,7 @@ def render() -> None:
     rd = state.current_round()
     cond, topic = rd["condition"], rd["topic"]
 
-    st.header(t("round.title", i=st.session_state["round_idx"], n=state.rounds_total()))
-    _step_strip(cond)
+    _round_header(cond)
     _topic_card(topic)
 
     phase = st.session_state["r_phase"]
@@ -55,8 +54,41 @@ def render() -> None:
         questionnaire.render()
 
 
-def _step_strip(cond: str) -> None:
-    """Visual stepper; every condition previews its own steps the same way."""
+_CHECK_SVG = ('<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" '
+              'stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg>')
+_FILM_SVG = ('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" '
+             'stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/>'
+             '<path d="M7.5 5v14M16.5 5v14M3 9.7h4.5M16.5 9.7H21M3 14.3h4.5M16.5 14.3H21"/></svg>')
+
+
+def _round_header(cond: str) -> None:
+    """轮次头:「第 i / n 轮」+ 每轮一格的进度 + 本轮的步骤条,一块。
+
+    取代 v1 的 进度条 + 分割线 + h2 轮次标题 + markdown 步骤条(进度文字与 h2 写的是同一句;
+    手机上这一摞占掉半屏)。每个条件照旧预告自己的步骤,文字都是原来的 i18n 键。
+    手机上只显示当前一步的名字,其余是带编号的圆点(五个名字一行放不下,v1 是折成两行的箭头串)。"""
+    i, n = st.session_state["round_idx"], state.rounds_total()
+    steps = _steps(cond)
+    cur = _current_step(cond, len(steps))
+
+    pips = "".join(f'<i class="{"done" if k < i else "cur" if k == i else ""}"></i>' for k in range(1, n + 1))
+    items = []
+    for k, label in enumerate(steps):
+        cls, dot = ("done", _CHECK_SVG) if k < cur else ("cur", str(k + 1)) if k == cur else ("", str(k + 1))
+        aria = ' aria-current="step"' if k == cur else ""
+        items.append(f'<li class="{cls}"{aria}><span class="dot">{dot}</span>'
+                     f'<span class="lbl">{html.escape(label)}</span></li>')
+    st.markdown(
+        f'<nav class="ns-round"><div class="ns-round-top">'
+        f'<span class="ns-round-no">{html.escape(t("round.title", i=i, n=n))}</span>'
+        f'<span class="ns-pips" role="img" aria-label="{html.escape(t("round.progress", i=i, n=n))}">{pips}</span>'
+        f'</div><ol class="ns-steps">{"".join(items)}</ol></nav>',
+        unsafe_allow_html=True,
+    )
+
+
+def _steps(cond: str) -> list[str]:
+    """本条件的步骤名(每个条件如实预告自己的流程)。"""
     steps = [t("round.step_intent")]
     if cond in ("E", "F"):
         steps.append(t("round.step_guidance"))
@@ -64,19 +96,15 @@ def _step_strip(cond: str) -> None:
     if cond in ("D", "E", "F"):
         steps.append(t("round.step_polish"))
     steps.append(t("round.step_questionnaire"))
+    return steps
 
-    cur = _current_step(cond, len(steps))
-    # E 条件 5 格(事前意图快照屏已于 2026-09-01 撤销);备到 ⑩ 以免以后再加一步越界
-    nums = "①②③④⑤⑥⑦⑧⑨⑩"
-    parts = []
-    for i, s_ in enumerate(steps):
-        if i < cur:
-            parts.append(f":green[✓ {s_}]")
-        elif i == cur:
-            parts.append(f"**:blue[▶ {nums[i]} {s_}]**")
-        else:
-            parts.append(f":gray[{nums[i]} {s_}]")
-    st.markdown(" → ".join(parts))
+
+def round_fraction() -> float:
+    """已做完的轮 + 本轮走到第几步,折成 0–1(app.py 页头那条全流程进度线用)。"""
+    cond = state.current_round()["condition"]
+    n_steps = len(_steps(cond))
+    i, n = st.session_state["round_idx"], state.rounds_total()
+    return ((i - 1) + _current_step(cond, n_steps) / n_steps) / n
 
 
 def _current_step(cond: str, n_steps: int) -> int:
@@ -102,40 +130,37 @@ _TAIL_RE = re.compile(r"(?:[。．.?？!！\s]+|[—―─]+)+$")
 
 
 def _topic_card(topic: dict) -> None:
+    """题目卡:眉标(今回のお題)→ 题名 → 情境 → 选择示例(弱化)→ 规格。文字与 v1 一字不差,
+    v1 的「今回のお題」小标题收进卡片当眉标(省一行 h3)。题库文本是纯文字(无 markdown),逐字转义。"""
     lang = get_lang()
-    st.subheader(t("round.topic_heading"))
-    with st.container(border=True):
-        # 情境的两半必须同语言解析(prompts.situation_lang),否则半译的题库会让
-        # 被试看到「英文设定 + 日文选择」,而模型拿到的也是同一份混语前提。
-        # 题名一并用它 —— 否则会出现「日文题名 + 英文情境」的另一种混语。
-        slang = prompts.situation_lang(topic, lang)
-        st.markdown(f"**{state.topic_text(topic, 'title', slang)}**")
-        st.write(state.topic_text(topic, "scenario", slang))
-        choices = state.topic_text(topic, "choices", slang)
-        if choices:
-            # Bracketed and greyed out on purpose (§15). Set in the same weight as
-            # the setup sentence, the "map / scent / ask someone" list reads as
-            # the three allowed stories; it is meant as one suggestion among many,
-            # and a participant who narrows their idea to fit it is a participant
-            # whose intent we partly wrote for them — which is exactly what the
-            # fidelity measure is supposed to be measuring.
-            st.markdown(
-                "<div style='color:var(--ns-dim,#6e6e6e);"
-                "font-size:var(--ns-fs-note,.82rem);"
-                "line-height:1.5;margin:-.35rem 0 .35rem'>"
-                + html.escape(t("round.topic_choices",
-                                choices=_TAIL_RE.sub("", choices),
-                                free=t("round.topic_free")))
-                + "</div>",
-                unsafe_allow_html=True,
-            )
-        st.caption(
-            t(
-                "round.topic_spec",
-                count=topic["shot_count"],
-                total=topic["total_seconds"],
-            )
+    # 情境的两半必须同语言解析(prompts.situation_lang),否则半译的题库会让
+    # 被试看到「英文设定 + 日文选择」,而模型拿到的也是同一份混语前提。
+    # 题名一并用它 —— 否则会出现「日文题名 + 英文情境」的另一种混语。
+    slang = prompts.situation_lang(topic, lang)
+    parts = [
+        f'<div class="ns-eyebrow">{html.escape(t("round.topic_heading"))}</div>',
+        f'<div class="ns-topic-title">{html.escape(state.topic_text(topic, "title", slang))}</div>',
+        f'<div class="ns-topic-scn">{html.escape(state.topic_text(topic, "scenario", slang))}</div>',
+    ]
+    choices = state.topic_text(topic, "choices", slang)
+    if choices:
+        # Bracketed and greyed out on purpose (§15). Set in the same weight as
+        # the setup sentence, the "map / scent / ask someone" list reads as
+        # the three allowed stories; it is meant as one suggestion among many,
+        # and a participant who narrows their idea to fit it is a participant
+        # whose intent we partly wrote for them — which is exactly what the
+        # fidelity measure is supposed to be measuring.
+        parts.append(
+            '<div class="ns-topic-choices">'
+            + html.escape(t("round.topic_choices", choices=_TAIL_RE.sub("", choices),
+                            free=t("round.topic_free")))
+            + "</div>"
         )
+    parts.append(
+        f'<div class="ns-topic-spec">{_FILM_SVG}'
+        f'{html.escape(t("round.topic_spec", count=topic["shot_count"], total=topic["total_seconds"]))}</div>'
+    )
+    st.markdown(f'<section class="ns-topic">{"".join(parts)}</section>', unsafe_allow_html=True)
 
 
 def _render_intent(cond: str, topic: dict) -> None:

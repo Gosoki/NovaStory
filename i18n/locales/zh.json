@@ -5,7 +5,8 @@
     "contact": "本研究相关咨询：g2550005@stu.musashino-u.ac.jp"
   },
   "common": {
-    "loading": "AI 生成中，请稍候…"
+    "loading": "AI 生成中，请稍候…",
+    "select_placeholder": "请选择"
   },
   "sidebar": {
     "researcher_pw_locked": "尝试次数过多，请等一分钟再试。",

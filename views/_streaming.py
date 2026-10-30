@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import html
 import threading
 import time
 from typing import Optional
@@ -32,6 +33,12 @@ _FORGET_AFTER_S = 600   # 已结束、没人来取的调用(会话放弃 / 换�
 # 等待中的标记:app.py 的 CSS 见到「本次运行里有它」,就把上一次运行残留、还没被重画的旧元素
 # 藏起来、不可点(只在有 AI 调用的那次运行里;问卷页等其他运行不受影响)。
 _BUSY = '<span class="ns-busy"></span>'
+
+
+def _verbatim(text: str) -> str:
+    """流式输出逐字显示(与生成后的稿子同一个样子):按 markdown 渲染时「1.」变成列表、
+    【画面】与【秒数】两行被并成一段,被试看到的稿子在生成完的那一刻突然换了排版。"""
+    return f"<div style='white-space:pre-wrap;line-height:1.7;margin-bottom:1rem'>{html.escape(text)}</div>"
 
 
 def _job_key(group: str, system: str, user: str) -> str:
@@ -106,13 +113,14 @@ def stream_llm(system: str, user: str, *, group: str) -> Optional[str]:
     job, new = _job(key, run)
     _log_start(group, job, new)
     st.markdown(_BUSY, unsafe_allow_html=True)
-    status = st.status(t("common.loading"), expanded=True)
+    # 状态行收起:输出本来就画在它下面,展开只会多一个空框
+    status = st.status(t("common.loading"), expanded=False)
     out = st.empty()
     while not job["done"]:
-        out.markdown("".join(job["chunks"]))
+        out.markdown(_verbatim("".join(job["chunks"])), unsafe_allow_html=True)
         time.sleep(0.15)
     raw = "".join(job["chunks"])
-    out.markdown(raw)
+    out.markdown(_verbatim(raw), unsafe_allow_html=True)
 
     if job["settled"] is None:   # 记账只做一次:被打断在记账之后、取走之前,下一次运行不重复记
         elapsed = round(time.time() - job["t0"], 2)

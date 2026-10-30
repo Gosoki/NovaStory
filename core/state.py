@@ -377,16 +377,20 @@ try{
   if (saved && w.location.href.indexOf('t=') < 0 && !d.getElementById('ns-resume-bar')) {
     var bar = d.createElement('div');
     bar.id = 'ns-resume-bar';
+    // 颜色走 app.py 的 --ns-* 令牌(同一个 document,:root 上的变量这里取得到),括号里是兜底值
     bar.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:99999;'
-      + 'background:#fff7ed;border-top:2px solid #ea580c;padding:10px 14px;'
-      + 'font:400 13px/1.5 system-ui,-apple-system,sans-serif;text-align:center;'
-      + 'color:#7c2d12;box-shadow:0 -4px 14px -8px rgba(0,0,0,.35)';
+      + 'background:var(--ns-surface,#fff);border-top:2px solid var(--ns-accent,#1e50a2);'
+      + 'padding:12px 16px calc(12px + env(safe-area-inset-bottom));'
+      + 'font:400 13px/1.55 system-ui,-apple-system,sans-serif;text-align:center;'
+      + 'color:var(--ns-text-2,#4b5059);box-shadow:0 -6px 18px -10px rgba(0,0,0,.35)';
     var hint = d.createElement('div');
     hint.textContent = %(hint)s;
     var a = d.createElement('a');
     a.href = saved;
     a.textContent = %(label)s;
-    a.style.cssText = 'color:#c2410c;font-weight:700;font-size:15px;text-decoration:none';
+    a.style.cssText = 'display:inline-block;margin-top:6px;padding:8px 20px;border-radius:999px;'
+      + 'background:var(--ns-accent,#1e50a2);color:var(--ns-on-accent,#fff);'
+      + 'font-weight:700;font-size:14px;text-decoration:none';
     bar.appendChild(hint);
     bar.appendChild(a);
     d.body.appendChild(bar);
