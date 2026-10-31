@@ -1,17 +1,19 @@
-"""创意页的新手引导(用户 2026-10-31:「不是加文字引导,是要动效,像新手引导一样」)。
+"""创意页的新手引导(用户 2026-10-31:「不是加文字引导,是要动效,像新手引导一样」「只有第一次有这个引导就行了」)。
 
-第 1 轮:页面稍暗,聚光圈依次落在 题目卡 → 本轮说明框 → 输入框 上(阅读顺序;说明框里是各条件的
-操纵说明,引导不能跳过它),「書きはじめる」关掉引导并把光标放进输入框。第 2 轮起不再遮罩,
-三处依次闪一下(每轮条件都换,说明框也要闪)。
+只在第 1 轮、每位被试一次:页面稍暗,聚光圈依次落在 题目卡 → 本轮说明框 → 输入框 上(阅读顺序;
+说明框里是各条件的操纵说明,引导不能跳过它),「書きはじめる」关掉引导并把光标放进输入框。
+第 2 轮起什么都不出(此前曾让三处各闪一下,用户要求只留第一次)。
 
 纯前端:st.html 注入主页面执行(与 views/_scroll、问卷的分镜观察器同一做法),不回传 Python、
 不记事件、不写任何数据;四个条件同一套引导。⚠️ 但第 1 轮的 t_read_intent / t_total
 (round_start → 提交)包含看引导的那几秒 —— 第 1 轮的条件随 Williams 序列轮换,期望上平衡,
 见 docs/paper/20 §5。几条护栏:
   · 不锁页面:遮罩是聚光圈的 box-shadow(pointer-events:none),底下照样能点能输入;
-  · 每位被试每轮只演一次(sessionStorage + 页内记号,存储被禁也不会重演),rerun / 刷新不重演;
+  · 每位被试只演一次:记号存 localStorage(键里带被试编号 —— 关掉标签页再用续接链接回来也不重演,
+    同一台设备上的下一位被试编号不同、照常会看到),另有页内记号兜底(存储被禁时也不重演);
     被试已经在写了就不演,也不从正在输入的框里抢焦点;
-  · 输入框一消失(提交创意、续接跳页)就撤场,不会残留遮罩;气泡始终留在屏内;
+  · 输入框一消失(提交创意、续接跳页)就撤场,不会残留遮罩;气泡始终留在屏内、放不下时不压目标;
+  · 用按钮关掉后 0.4 秒内的点击被吞掉(连点不会穿透到下面的页面);
   · 不依赖外部库(不发外部请求),尊重系统「减少动态效果」。
 样式在 app.py 的 .ns-tour-*。
 """
@@ -27,9 +29,9 @@ _JS = r"""
 (function(){
   var C = __CFG__;
   var W = window, D = document;
-  var DONE = W.__nsTourDone || (W.__nsTourDone = {});   // 页内记号:sessionStorage 被禁时也不重演
+  var DONE = W.__nsTourDone || (W.__nsTourDone = {});   // 页内记号:存储被禁时也不重演
   if (DONE[C.key]) return;
-  try { if (W.sessionStorage.getItem(C.key)) return; } catch (e) {}
+  try { if (W.localStorage.getItem(C.key)) return; } catch (e) {}
   if (W.__nsTour && W.__nsTour.key === C.key) return;   // 本轮正在演:rerun 又注入了一次
   if (W.__nsTour) W.__nsTour.stop(false);
   var reduce = !!(W.matchMedia && W.matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -54,7 +56,7 @@ _JS = r"""
     if (f) { if (!f.hasAttribute('tabindex') && f.tagName !== 'TEXTAREA') f.setAttribute('tabindex', '-1');
              try { f.focus({preventScroll: true}); } catch (e) { f.focus(); } }
     T.nodes.forEach(function(n){ if (n.parentNode) n.parentNode.removeChild(n); });
-    if (markDone) { DONE[C.key] = 1; try { W.sessionStorage.setItem(C.key, '1'); } catch (e) {} }
+    if (markDone) { DONE[C.key] = 1; try { W.localStorage.setItem(C.key, '1'); } catch (e) {} }
     if (W.__nsTour === T) W.__nsTour = null;
   };
 
@@ -73,43 +75,12 @@ _JS = r"""
     if (!T.alive) return;
     var first = q(C.steps[0].sel), last = q(C.steps[C.steps.length - 1].sel);
     if (first && last && first.getBoundingClientRect().height > 0) {
-      later(C.mode === 'tour' ? tour : pulse, reduce ? 0 : 450);
+      later(tour, reduce ? 0 : 450);
       return;
     }
     if (++tries > 60) { T.stop(false); return; }
     later(wait, 100);
   })();
-
-  function visible(n){
-    var r = n.getBoundingClientRect(), vh = W.innerHeight;
-    return r.height > 0 && Math.min(r.bottom, vh) - Math.max(r.top, 0) >= Math.min(r.height, vh) * 0.3;
-  }
-
-  // 第 2 轮起:不遮罩,三处依次闪一下。光圈是自己挂的浮层(跟着目标走),不往 Streamlit 的节点上加类
-  // —— React 一重绘就会把类名抹掉。不在屏内的那一处不闪(手机上输入框常在折线以下)。
-  function pulse(){
-    if (reduce) { T.stop(true); return; }
-    var i = 0;
-    (function next(){
-      if (!T.alive) return;
-      if (i >= C.steps.length) { later(function(){ T.stop(true); }, 1600); return; }
-      var n = q(C.steps[i++].sel);
-      if (n && visible(n)) flash(n);
-      later(next, 1100);
-    })();
-  }
-
-  function flash(n){
-    var f = el('div', 'ns-tour-flash'), t0 = W.performance.now();
-    (function track(){
-      if (!T.alive || !f.parentNode) return;
-      if (W.performance.now() - t0 > 1500 || !D.body.contains(n)) { f.parentNode.removeChild(f); return; }
-      var r = n.getBoundingClientRect();
-      f.style.top = (r.top - 4) + 'px'; f.style.left = (r.left - 4) + 'px';
-      f.style.width = (r.width + 8) + 'px'; f.style.height = (r.height + 8) + 'px';
-      W.requestAnimationFrame(track);
-    })();
-  }
 
   // 第 1 轮:聚光圈 + 气泡,逐步
   function tour(){
@@ -211,12 +182,12 @@ _JS = r"""
 
 
 def intent_tour() -> None:
-    """写创意这一步的引导。第 1 轮完整演一遍,之后每轮只闪一下(见模块说明)。"""
-    ridx = st.session_state.get("round_idx") or 1
+    """写创意这一步的新手引导:只在第 1 轮、每位被试一次(见模块说明)。"""
+    if (st.session_state.get("round_idx") or 1) != 1:
+        return
     pid = st.session_state.get("participant_id") or "anon"
     cfg = {
-        "key": f"ns_tour_{pid}_{ridx}",
-        "mode": "tour" if ridx == 1 else "pulse",
+        "key": f"ns_tour_{pid}",
         "steps": [
             {"sel": ".ns-topic", "text": t("tour.read")},
             {"sel": ".st-key-ns_flow", "text": t("tour.flow")},          # 各条件的操纵说明(round_common._render_intent)

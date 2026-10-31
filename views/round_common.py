@@ -182,7 +182,7 @@ def _render_intent(cond: str, topic: dict) -> None:
         max_chars=1000,   # 说明页说「长短都行」—— 这是防整段粘贴长文撑爆上下文的硬上限,不是引导
     )
     val = (st.session_state.get("_intent_input") or "").strip()
-    # 新手引导(第 1 轮聚光圈两步、之后每轮闪一下):先题目、再输入框。纯前端,不占版面、不记事件
+    # 新手引导(只在第 1 轮、每位被试一次):题目 → 本轮说明 → 输入框。纯前端,不占版面、不记事件
     _tour.intent_tour()
     if st.button(t("round.intent_submit"), type="primary", width="stretch"):
         if len(val) < config.MIN_INTENT_CHARS:

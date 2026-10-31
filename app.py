@@ -452,12 +452,7 @@ div.st-key-btn_more_ai button p{ color:#ffffff!important; }
 .ns-tour-next{ border:0; border-radius:10px; padding:9px 18px; font:inherit; font-size:.92rem; font-weight:700;
   background:var(--ns-go); color:#ffffff; cursor:pointer; }
 .ns-tour-next:focus-visible, .ns-tour-skip:focus-visible{ outline:2px solid var(--ns-accent); outline-offset:2px; }
-/* 第 2 轮起:题目卡、输入框依次闪一下(浮层,见 _tour.py 的 flash) */
-.ns-tour-flash{ position:fixed; z-index:1000001; pointer-events:none; border-radius:16px; border:2px solid var(--ns-accent);
-  opacity:0; animation:ns-flash 1.5s ease-out forwards; }
 @keyframes ns-ring{ 0%{ box-shadow:0 0 0 0 var(--ns-accent-line); } 100%{ box-shadow:0 0 0 14px rgba(0,0,0,0); } }
-@keyframes ns-flash{ 0%{ opacity:0; box-shadow:0 0 0 0 var(--ns-accent-line); } 15%{ opacity:1; }
-  70%{ opacity:1; box-shadow:0 0 0 12px rgba(0,0,0,0); } 100%{ opacity:0; box-shadow:0 0 0 12px rgba(0,0,0,0); } }
 @keyframes ns-tip-in{ from{ opacity:0; transform:translateY(8px) scale(.98); } to{ opacity:1; transform:none; } }
 :is(.st-key-_intent_input,[class*="st-key-_iv_answer_"]) [data-testid="stTextAreaRootElement"]{
   border-color:var(--ns-accent)!important; box-shadow:0 0 0 4px var(--ns-accent-soft); }
@@ -467,7 +462,7 @@ div.st-key-btn_more_ai button p{ color:#ffffff!important; }
 .stElementContainer.st-key-_consent_agree:has(input:checked) + .stElementContainer button{ animation:ns-ring 1.6s ease-out 2; }
 @media (prefers-reduced-motion: reduce){
   .ns-tour-spot, .ns-tour-tip, .ns-tour-spot.is-moving, .ns-tour-tip.is-moving{ transition:none; }
-  .ns-tour-spot::after, .ns-tour-tip.is-in, .ns-tour-flash,
+  .ns-tour-spot::after, .ns-tour-tip.is-in,
   [class*="st-key-_iv_answer_"] [data-testid="stTextAreaRootElement"],
   .stElementContainer.st-key-_consent_agree:has(input:checked) + .stElementContainer button{ animation:none!important; }
 }
