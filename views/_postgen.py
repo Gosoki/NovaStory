@@ -7,7 +7,7 @@ import streamlit as st
 from core import prompts, state
 from i18n import get_lang, t
 from views import _trial
-from views._streaming import stream_llm, verbatim
+from views._streaming import script_view, stream_llm, verbatim
 
 # The post-generation loop (paper/7 §2, D24 revision): the script lives in an
 # always-editable textarea; the condition's AI channel sits alongside; hand
@@ -87,7 +87,7 @@ def render_readonly(topic: dict) -> None:
             st.markdown(verbatim(intent), unsafe_allow_html=True)
     st.subheader(t("postgen.readonly_title"))
     with st.container(key="ns_card_script"):
-        st.markdown(verbatim(state.current_script()), unsafe_allow_html=True)
+        st.markdown(script_view(state.current_script()), unsafe_allow_html=True)
     if st.button(t("postgen.submit_c"), type="primary", width="stretch"):
         _trial.submit_trial(state.current_script())
         st.rerun()
@@ -126,7 +126,7 @@ def render_history() -> None:
     st.markdown(f'<span class="ns-css"></span><style>.st-key-ns_history{{height:auto!important;'
                 f'max-height:{_HISTORY_HEIGHT}px}}</style>', unsafe_allow_html=True)
     with st.expander(t("history.title"), expanded=True):
-        with st.container(height=_HISTORY_HEIGHT, key="ns_history"):
+        with st.container(height=_HISTORY_HEIGHT, border=False, key="ns_history"):   # 外面的展开框就是框,不再套一层
             intent = (st.session_state.get("r_intent") or "").strip()
             if intent:
                 with st.chat_message("user", avatar=AVATAR_USER):
@@ -138,12 +138,12 @@ def render_history() -> None:
                     _history_user_turn(ai_seen, requests, guidance_rounds)
                     with st.chat_message("assistant", avatar=AVATAR_AI):
                         st.caption(t("history.ai", v=v["v"]))
-                        st.markdown(verbatim(v["text"]), unsafe_allow_html=True)
+                        st.markdown(script_view(v["text"]), unsafe_allow_html=True)
                     ai_seen += 1
                 else:  # user_edit
                     with st.chat_message("user", avatar=AVATAR_USER):
                         st.caption(t("history.edit"))
-                        st.markdown(verbatim(v["text"]), unsafe_allow_html=True)
+                        st.markdown(script_view(v["text"]), unsafe_allow_html=True)
 
 
 def _history_user_turn(ai_idx: int, requests: list, guidance_rounds: list) -> None:

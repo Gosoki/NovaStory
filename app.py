@@ -458,11 +458,14 @@ div.st-key-btn_more_ai button p{ color:#ffffff!important; }
   border-color:var(--ns-accent)!important; box-shadow:0 0 0 4px var(--ns-accent-soft); }
 /* F 的回答框:每出一道新题(新 key = 新节点)呼吸两下 */
 [class*="st-key-_iv_answer_"] [data-testid="stTextAreaRootElement"]{ animation:ns-ring 1.6s ease-out .3s 2; }
+/* 第 2 轮起的写创意页:题目卡同样呼吸两下、之后常亮一圈(views/round_common._topic_card) */
+.ns-topic.ns-topic--cue{ border-color:var(--ns-accent)!important; box-shadow:0 0 0 4px var(--ns-accent-soft);
+  animation:ns-ring 1.6s ease-out .3s 2; }
 /* 同意页:勾上同意、开始按钮亮起的那一下 */
 .stElementContainer.st-key-_consent_agree:has(input:checked) + .stElementContainer button{ animation:ns-ring 1.6s ease-out 2; }
 @media (prefers-reduced-motion: reduce){
   .ns-tour-spot, .ns-tour-tip, .ns-tour-spot.is-moving, .ns-tour-tip.is-moving{ transition:none; }
-  .ns-tour-spot::after, .ns-tour-tip.is-in,
+  .ns-tour-spot::after, .ns-tour-tip.is-in, .ns-topic.ns-topic--cue,
   [class*="st-key-_iv_answer_"] [data-testid="stTextAreaRootElement"],
   .stElementContainer.st-key-_consent_agree:has(input:checked) + .stElementContainer button{ animation:none!important; }
 }
@@ -491,10 +494,30 @@ div.st-key-btn_more_ai button p{ color:#ffffff!important; }
 /* 镜号圆圈浮在行首:文字绕着它排,第二行起与下方的选项控件左对齐 */
 .ns-shot{ margin-bottom:1rem; }
 .ns-shot::after{ content:""; display:block; clear:both; }
+/* 镜号圆圈用正文字体:Georgia 的数字是旧式数字(3、4、5 下沉),在圆圈里看着不居中 */
 .ns-shot .cut{ float:left; display:inline-flex; align-items:center; justify-content:center; width:1.6rem; height:1.6rem;
   margin:.05rem .6rem .2rem 0; border:1.5px solid var(--ns-text); border-radius:50%;
-  font:700 .88rem/1 Georgia, serif; color:var(--ns-text); }
+  font-size:.82rem; font-weight:700; line-height:1; font-variant-numeric:tabular-nums; color:var(--ns-text); }
 .ns-shot-txt{ line-height:1.7; color:var(--ns-text); }
+
+/* 分镜稿的看稿排版(views/_streaming.script_view:C 的只读稿 / 历史各版 / 生成中):镜号圆圈同上,
+   【画面】这类标签是小标签。<i> 是藏起来的【】与镜号的「.」—— 0 号字,看不见、复制时还在。 */
+.ns-sb{ line-height:1.7; color:var(--ns-text); margin-bottom:1rem; }   /* 1rem:抵消 markdown 块的 -1rem */
+.ns-sb i{ font-size:0; }
+.ns-sb > * + *{ margin-top:.9rem; }
+.ns-sb-cut{ display:grid; grid-template-columns:1.6rem minmax(0, 1fr); gap:0 .7rem; }
+.ns-sb-no{ display:inline-flex; align-items:center; justify-content:center; width:1.6rem; height:1.6rem; margin-top:.1rem;
+  border:1.5px solid var(--ns-text); border-radius:50%; font-size:.82rem; font-weight:700; line-height:1;
+  font-variant-numeric:tabular-nums; color:var(--ns-text); }
+.ns-sb-ln{ white-space:pre-wrap; overflow-wrap:anywhere; }
+.ns-sb-gap{ height:.55em; }
+/* 左边距按前面是什么分三档:行首(.ns-fl0)顶格;前面是空格的只补一点 —— 折行时那个空格挂在上一行
+   行尾,折到行首的标签只缩进这一点;紧贴前文的(.ns-flg)补足 */
+.ns-fl{ display:inline-block; margin:0 .4rem 0 .15rem; padding:0 .42rem; border-radius:5px; vertical-align:.08em;
+  font-size:.74rem; font-weight:700; line-height:1.6; letter-spacing:.03em; color:var(--ns-accent); background:var(--ns-accent-soft); }
+.ns-fl0{ margin-left:0; }
+.ns-flg{ margin-left:.3rem; }
+.ns-flq{ margin-right:0; }   /* 后面紧跟「『(:全角括号自带半格空白,再加外边距就成了两格 */
 
 /* E 的引导题卡(views/guidance)与 F 的采访题:题面比正文大一档 */
 .ns-qhead{ display:flex; align-items:center; gap:.7rem; margin:0 0 .45rem; }
@@ -509,8 +532,9 @@ div.st-key-btn_more_ai button p{ color:#ffffff!important; }
 /* 生成后的稿子:C 的只读稿与「你写的创意」回显 */
 .st-key-ns_card_script{ background:var(--ns-surface-2)!important; }
 .st-key-ns_card_intent{ gap:.35rem!important; box-shadow:none!important; background:var(--ns-sunken)!important; }
-/* 模型写的题面(历史面板)与「为什么问」(E 的引导卡):逐字转义后的样式。1rem 下边距抵消 markdown 块的 -1rem */
-.ns-hq{ font-weight:700; line-height:1.6; margin-bottom:1rem; }
+/* 模型写的题面(历史面板)与「为什么问」(E 的引导卡):逐字转义后的样式。markdown 块自带 -1rem 下边距:
+   .ns-why 垫回 1rem;.ns-hq 只垫 .3rem,紧贴它下面的「→ 回答」,一问一答成组 */
+.ns-hq{ font-weight:700; line-height:1.6; margin-bottom:.3rem; }
 .ns-why{ font-size:.9rem; line-height:1.6; color:var(--ns-dim); margin-bottom:1rem; }
 
 /* ── 对话(历史 / F 的采访)──────────────────────────────────────── */
@@ -631,6 +655,10 @@ body:has(.stElementContainer:not([data-stale="true"]) .ns-busy) .stElementContai
   .ns-steps li::after{ flex:0 0 .7rem; min-width:.7rem; margin:0 .3rem; }
   .ns-steps li.cur::after{ flex:1 1 .7rem; }
   .ns-anchor{font-size:.7rem;gap:.3rem}
+  /* 历史面板去掉头像:390px 上头像那一列吃掉 ~45px,稿子一行只剩八九个字。谁说的看小标题与底色就知道。 */
+  .st-key-ns_history [data-testid="stChatMessageAvatarCustom"]{ display:none; }
+  .st-key-ns_history [data-testid="stChatMessage"]{ padding:.65rem .75rem; }
+  .ns-sb-cut{ gap:0 .55rem; }
 }
 </style>
 """

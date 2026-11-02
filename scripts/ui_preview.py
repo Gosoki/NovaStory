@@ -46,23 +46,25 @@ with _LOCK:
 
 DELAY = float(os.environ.get("NOVASTORY_PREVIEW_DELAY", "1.2"))
 
+# 与真实输出同一排版(prompts.build_system_script:镜号单独一行、镜与镜之间空一行)——
+# 空行要留:2026-11-02 历史面板的 markdown 串版就是空行触发的,桩稿没有空行时预览里看不出来。
 _SCRIPT = {
     "ja": ("1.\n【画面】駅のホームで、足もとに落ちた切符に気づく主人公\n"
-           "【秒数】4秒 【カメラ】クローズアップ 【セリフ・音】発車メロディが遠くで鳴る\n"
+           "【秒数】4秒 【カメラ】クローズアップ 【セリフ・音】発車メロディが遠くで鳴る\n\n"
            "2.\n【画面】切符を拾い、改札の向こうへ走り出す\n"
-           "【秒数】6秒 【カメラ】引き 【セリフ・音】「すみません、落としましたよ！」\n"
+           "【秒数】6秒 【カメラ】引き 【セリフ・音】「すみません、落としましたよ！」\n\n"
            "3.\n【画面】息を切らして手渡すと、相手がほっと笑う\n"
            "【秒数】5秒 【カメラ】ミディアム 【セリフ・音】「ありがとう、助かりました」"),
     "zh": ("1.\n【画面描写】站台上，主角注意到脚边掉着一张车票\n"
-           "【时长】4 秒 【拍法】特写 【台词/音效】远处响起发车铃声\n"
+           "【时长】4 秒 【拍法】特写 【台词/音效】远处响起发车铃声\n\n"
            "2.\n【画面描写】主角捡起车票，朝检票口外跑去\n"
-           "【时长】6 秒 【拍法】远景 【台词/音效】“不好意思，您的票掉了！”\n"
+           "【时长】6 秒 【拍法】远景 【台词/音效】“不好意思，您的票掉了！”\n\n"
            "3.\n【画面描写】气喘吁吁地递过去，对方松了口气笑了\n"
            "【时长】5 秒 【拍法】中景 【台词/音效】“谢谢，帮大忙了”"),
     "en": ("1.\n【Visual】On the platform, the hero notices a ticket on the ground\n"
-           "【Duration】4 s 【Shot】close-up 【Audio】A departure chime in the distance\n"
+           "【Duration】4 s 【Shot】close-up 【Audio】A departure chime in the distance\n\n"
            "2.\n【Visual】The hero grabs it and runs past the gate\n"
-           "【Duration】6 s 【Shot】wide 【Audio】\"Excuse me, you dropped this!\"\n"
+           "【Duration】6 s 【Shot】wide 【Audio】\"Excuse me, you dropped this!\"\n\n"
            "3.\n【Visual】Out of breath, the hero hands it over; the other smiles in relief\n"
            "【Duration】5 s 【Shot】medium 【Audio】\"Thank you, you saved me\""),
 }

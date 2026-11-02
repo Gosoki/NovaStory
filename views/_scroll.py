@@ -27,9 +27,15 @@ def request() -> None:
 
 
 def apply_pending() -> None:
-    """有待处理的请求就注入滚动脚本。在页面主体渲染前调用一次。"""
+    """有待处理的请求就注入滚动脚本。在页面主体渲染前调用一次。
+
+    没有请求时也放一个空的 st.html 占住这一格:元素按位置对应,换页后第一次重跑这一格一消失,
+    后面整页元素都错一位、全部重新挂载 —— 第 2 轮起题目卡的闪光会在被试第一次点别处时再闪一遍
+    (2026-11-02 实测)。"""
     if st.session_state.pop(_FLAG, False):
         _emit()
+    else:
+        st.html('<span class="ns-util"></span>')
 
 
 def _emit() -> None:

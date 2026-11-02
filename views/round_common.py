@@ -163,7 +163,11 @@ def _topic_card(topic: dict) -> None:
         f'<div class="ns-topic-spec">{_FILM_SVG}'
         f'{html.escape(t("round.topic_spec", count=topic["shot_count"], total=topic["total_seconds"]))}</div>'
     )
-    st.markdown(f'<section class="ns-topic">{"".join(parts)}</section>', unsafe_allow_html=True)
+    # 第 2 轮起换了新题,版面却和上一轮一样:写创意这一步题目卡闪两下、再常亮一圈(与 F 的回答框同一个
+    # 效果;用户 2026-11-02)。第 1 轮由新手引导指到题目,不叠加。class 一出现动画就播,同一步里重跑不重播。
+    cue = (st.session_state.get("round_idx") or 1) >= 2 and st.session_state.get("r_phase") == "intent"
+    cls = "ns-topic ns-topic--cue" if cue else "ns-topic"
+    st.markdown(f'<section class="{cls}">{"".join(parts)}</section>', unsafe_allow_html=True)
 
 
 def _render_intent(cond: str, topic: dict) -> None:

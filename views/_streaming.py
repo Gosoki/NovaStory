@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import html
+import re
 import threading
 import time
 from typing import Optional
@@ -35,6 +36,13 @@ _FORGET_AFTER_S = 600   # 已结束、没人来取的调用(会话放弃 / 换�
 _BUSY = '<span class="ns-busy"></span>'
 
 
+def _one_line(s: str) -> str:
+    """换行写成 &#10;,整段 HTML 留在 markdown 源码的同一行。HTML 块遇到空行就结束(CommonMark),
+    之后的文字又按 markdown 排:AI 稿镜与镜之间正好空一行,于是第 2 镜起「2.」变成有序列表的
+    圆点、上下各空出一大块,「*」变斜体(2026-11-02 用户截图;v1 起就有,中国队列看到的也是这样)。"""
+    return re.sub(r"\r\n?|\n", "&#10;", s)
+
+
 def verbatim(text: str | None) -> str:
     """被试写的字与 AI 稿都逐字显示(pre-wrap + 转义),全站唯一一份。按 markdown 渲染时
     「1. 起きる」会变成有序列表、「*」变斜体、【画面】与【秒数】两行被并成一段 —— 被试看到的
@@ -42,7 +50,62 @@ def verbatim(text: str | None) -> str:
     margin-bottom:1rem 抵消 Streamlit 给 markdown 块垫的 -1rem(同一个 <p> 的行为),
     否则卡片 / 对话气泡的底边距被吃掉、末行压在边框上。"""
     return (f"<div style='white-space:pre-wrap;line-height:1.7;margin-bottom:1rem'>"
-            f"{html.escape(text or '')}</div>")
+            f"{_one_line(html.escape(text or ''))}</div>")
+
+
+# 分镜稿的看稿排版:C 的只读稿、历史面板里的各版、生成中的流式输出(三处同一排版,生成完不跳)。
+# 只加样式、不改字:单独成行的镜号「1.」画成圆圈,【画面】这类标签画成小标签,其余逐行原样转义;
+# 认不出镜号的稿子(被试手改过的也一样)就是逐行原文。【】和镜号后的「.」用 0 号字留在页面里而不是删掉:
+# 被试从历史里复制旧版贴回编辑框时标签还在,分镜解析(parse_ok)不受影响。
+_CUT_LINE_RE = re.compile(r"^\s*(镜头|カット|ショット|Shot|Cut)?\s*(\d{1,2}|[①-⑩])\s*([.．、:：)）]?)\s*$", re.IGNORECASE)
+_CUT_LEAD_RE = re.compile(r"^\s*(镜头|カット|ショット|Shot|Cut)?\s*(\d{1,2}|[①-⑩])\s*([.．、:：)）])\s*(?=【)", re.IGNORECASE)
+_LABEL_RE = re.compile(r"【([^【】\n]{1,12})】")
+
+
+def _cut_no(m: re.Match) -> str:
+    """圆圈里只显示数字;「カット」与「.」藏着(复制时还在)。"""
+    word, no, punct = (html.escape(g or "") for g in m.group(1, 2, 3))
+    return f"<i>{word}</i>{no}<i>{punct}</i>"
+
+
+def _script_line(line: str) -> str:
+    out, pos = [], 0
+    for m in _LABEL_RE.finditer(line):
+        prev = line[:m.start()]
+        cls = "ns-fl" + (" ns-fl0" if not prev.strip() else "" if prev[-1].isspace() else " ns-flg") + (
+            " ns-flq" if line[m.end():m.end() + 1] in ("「", "『", "（", "“") else "")
+        out += [html.escape(line[pos:m.start()]),
+                f'<span class="{cls}"><i>【</i>{html.escape(m.group(1))}<i>】</i></span>']
+        pos = m.end()
+    out.append(html.escape(line[pos:]))
+    return f'<div class="ns-sb-ln">{"".join(out)}</div>'
+
+
+def script_view(text: str | None) -> str:
+    blocks: list[tuple[str, list[str]]] = [("", [])]   # (镜号圆圈的 HTML, 行);首块是镜号之前的文字
+    for line in re.split(r"\r\n?|\n", text or ""):
+        m = _CUT_LINE_RE.match(line)
+        if m and (m.group(1) or m.group(3) or not m.group(2).isdecimal()):   # 光一个「10」不算镜号
+            blocks.append((_cut_no(m), []))
+            continue
+        m = _CUT_LEAD_RE.match(line)
+        if m:
+            blocks.append((_cut_no(m), []))
+            line = line[m.end():]
+        blocks[-1][1].append(line)
+    parts = []
+    for no, lines in blocks:
+        while lines and not lines[-1].strip():
+            lines.pop()
+        while lines and not lines[0].strip():
+            lines.pop(0)
+        if not no and not lines:
+            continue
+        body = "".join('<div class="ns-sb-gap"></div>' if not ln.strip() else _script_line(ln) for ln in lines)
+        # 圆圈里再包一层 span:flex 容器的每个子节点各算一块,复制出来「1」和「.」会被拆成两行
+        parts.append(f'<div class="ns-sb-cut"><span class="ns-sb-no"><span>{no}</span></span><div>{body}</div></div>' if no
+                     else f'<div class="ns-sb-head">{body}</div>')
+    return f'<div class="ns-sb">{"".join(parts)}</div>'
 
 
 def _job_key(group: str, system: str, user: str) -> str:
@@ -121,10 +184,10 @@ def stream_llm(system: str, user: str, *, group: str) -> Optional[str]:
     status = st.status(t("common.loading"), expanded=False)
     out = st.empty()
     while not job["done"]:
-        out.markdown(verbatim("".join(job["chunks"])), unsafe_allow_html=True)
+        out.markdown(script_view("".join(job["chunks"])), unsafe_allow_html=True)
         time.sleep(0.15)
     raw = "".join(job["chunks"])
-    out.markdown(verbatim(raw), unsafe_allow_html=True)
+    out.markdown(script_view(raw), unsafe_allow_html=True)
 
     if job["settled"] is None:   # 记账只做一次:被打断在记账之后、取走之前,下一次运行不重复记
         elapsed = round(time.time() - job["t0"], 2)
