@@ -415,11 +415,24 @@ def _bridge(script: str) -> None:
         pass
 
 
+# 同意页的「继续上次」条子插在 parent 的 body 上、React 重绘不到,没人撤就一直挂着:没理会它、按了同意的
+# 下一位被试整场都看得到它,一点就跳进上一位的会话,浏览器记住的续接网址也被换成上一位的(2026-11-02 实测)。
+# 离开同意页就撤:背景问卷页由 app.py 调 drop_resume_bar,入组之后每次渲染的 remember / forget 顺手再撤一次。
+_DROP_RESUME_BAR_JS = ("var b=window.parent.document.getElementById('ns-resume-bar');"
+                       "if(b){b.remove();window.parent.document.body.classList.remove('ns-has-resume');}")
+
+
+def drop_resume_bar() -> None:
+    """撤掉同意页的「继续上次」条子(见 _DROP_RESUME_BAR_JS 上面的说明)。"""
+    _bridge("try{" + _DROP_RESUME_BAR_JS + "}catch(e){}")
+
+
 def remember_resume_url() -> None:
     """把当前带 ?t= 的 URL 记进 localStorage(每次渲染覆盖,总是最新的那条)。"""
     _bridge(
         "try{var u=window.parent.location.href;"
         f"if(u.indexOf('t=')>-1)window.parent.localStorage.setItem('{_RESUME_KEY}',u);"
+        f"{_DROP_RESUME_BAR_JS}"
         "}catch(e){}"
     )
 
@@ -448,6 +461,7 @@ def forget_resume_url() -> None:
     _bridge(
         "try{var w=window.parent;"
         f"w.localStorage.removeItem('{_RESUME_KEY}');"
+        f"{_DROP_RESUME_BAR_JS}"
         "}catch(e){}"
     )
 

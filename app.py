@@ -51,6 +51,10 @@ def main() -> None:
             state.forget_resume_url()
         else:
             state.remember_resume_url()
+    elif st.session_state.get("stage") != "consent":
+        # 按了同意 = 选了「作为新的一位开始」:同意页的「继续上次」条子不能再跟到背景问卷页上
+        # (它写着「この端末に、途中までの回答が残っています」,填问卷的人会当成自己的;一点就进了上一位的会话)
+        state.drop_resume_bar()
 
     stage = st.session_state["stage"]
     if stage == "consent":
@@ -423,7 +427,8 @@ div.st-key-btn_more_ai button p{ color:#ffffff!important; }
 
 /* ── 下一步引导(用户 2026-10-31:「不是加文字引导,是要动效,像新手引导一样」)────────
    聚光圈与气泡由 views/_tour.py 的脚本挂到 <body> 上(position:fixed,每帧跟着目标走)。
-   遮罩就是聚光圈的 box-shadow,pointer-events:none —— 引导期间页面照样能点能输入,不会把人卡住。
+   遮罩就是聚光圈的 box-shadow(pointer-events:none);引导期间页面的点击由 _tour.py 在捕获阶段拦掉
+   (只有气泡里的两个按钮能点),滚动照常。
    当前唯一要填的框(创意 / F 的回答)常亮一圈光晕;D 的「请 AI 改」框刻意不加:那是被试在
    「再改 / 提交」之间的自由选择,高亮它就是在推一边。 */
 .ns-tour-spot{ position:fixed; z-index:1000001; top:0; left:0; width:0; height:0; border-radius:14px; pointer-events:none;
@@ -438,7 +443,23 @@ div.st-key-btn_more_ai button p{ color:#ffffff!important; }
   padding:14px 16px 12px; border-radius:14px; background:var(--ns-raised); color:var(--ns-text);
   border:1px solid var(--ns-line); box-shadow:0 14px 36px -10px rgba(0,0,0,.45); }
 .ns-tour-tip.is-moving{ transition:top .55s cubic-bezier(.22,.7,.2,1), left .55s cubic-bezier(.22,.7,.2,1); }
+/* 气泡只有两个按钮接事件:点到气泡的字 = 点在页面上(被拦、晃一下,焦点不丢),在气泡的字上滑动 = 滑页面。
+   长按按钮也不选字、不弹 iOS 的长按菜单 */
+.ns-tour-tip{ pointer-events:none; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
+.ns-tour-tip button{ pointer-events:auto; }
+/* 引导期间(_tour.py 给 <html> 加 .ns-tour-lock):页面不能选字、长按不弹菜单(iOS 长按不发 contextmenu,
+   只能靠 CSS)、光标不变手形 —— 看着就不像能点 */
+.ns-tour-lock .stApp{ -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
+.ns-tour-lock .stApp *{ cursor:default!important; }
+/* 强制配色(Windows 高对比度):遮罩的 box-shadow 会被去掉、按钮底色被覆盖成纯文字 —— 给气泡和两个按钮描边。
+   按钮前面多一层 .ns-tour-tip:这一段在 .ns-tour-next / .ns-tour-skip 的 border:0 之前,同等权重会被它盖掉 */
+@media (forced-colors: active){
+  .ns-tour-tip{ border:2px solid CanvasText; }
+  .ns-tour-tip .ns-tour-next, .ns-tour-tip .ns-tour-skip{ border:1px solid ButtonText; }
+}
 .ns-tour-tip.is-in{ animation:ns-tip-in .38s cubic-bezier(.22,.7,.2,1); }
+/* 引导期间点到气泡以外:气泡左右晃一下 —— 「点这里的按钮」。用 translate 不用 transform,不与 ns-tip-in 打架 */
+.ns-tour-tip.is-nudge{ animation:ns-nudge .42s cubic-bezier(.36,.07,.19,.97); }
 .ns-tour-tip::before{ content:""; position:absolute; left:calc(var(--ax, 24px) - 7px); width:14px; height:14px;
   background:inherit; transform:rotate(45deg); border-radius:3px; }
 .ns-tour-tip[data-side="below"]::before{ top:-6px; }
@@ -454,6 +475,7 @@ div.st-key-btn_more_ai button p{ color:#ffffff!important; }
 .ns-tour-next:focus-visible, .ns-tour-skip:focus-visible{ outline:2px solid var(--ns-accent); outline-offset:2px; }
 @keyframes ns-ring{ 0%{ box-shadow:0 0 0 0 var(--ns-accent-line); } 100%{ box-shadow:0 0 0 14px rgba(0,0,0,0); } }
 @keyframes ns-tip-in{ from{ opacity:0; transform:translateY(8px) scale(.98); } to{ opacity:1; transform:none; } }
+@keyframes ns-nudge{ 20%{ translate:-6px 0; } 40%{ translate:5px 0; } 60%{ translate:-3px 0; } 80%{ translate:2px 0; } }
 :is(.st-key-_intent_input,[class*="st-key-_iv_answer_"]) [data-testid="stTextAreaRootElement"]{
   border-color:var(--ns-accent)!important; box-shadow:0 0 0 4px var(--ns-accent-soft); }
 /* F 的回答框:每出一道新题(新 key = 新节点)呼吸两下 */
@@ -465,7 +487,7 @@ div.st-key-btn_more_ai button p{ color:#ffffff!important; }
 .stElementContainer.st-key-_consent_agree:has(input:checked) + .stElementContainer button{ animation:ns-ring 1.6s ease-out 2; }
 @media (prefers-reduced-motion: reduce){
   .ns-tour-spot, .ns-tour-tip, .ns-tour-spot.is-moving, .ns-tour-tip.is-moving{ transition:none; }
-  .ns-tour-spot::after, .ns-tour-tip.is-in, .ns-topic.ns-topic--cue,
+  .ns-tour-spot::after, .ns-tour-tip.is-in, .ns-tour-tip.is-nudge, .ns-topic.ns-topic--cue,
   [class*="st-key-_iv_answer_"] [data-testid="stTextAreaRootElement"],
   .stElementContainer.st-key-_consent_agree:has(input:checked) + .stElementContainer button{ animation:none!important; }
 }
