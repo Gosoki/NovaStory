@@ -559,6 +559,9 @@ def _assert_db() -> None:
         assert all(it["is_custom"] and not it["ai_decided"] and not it["options"] for it in items)
         assert items[0]["question"] == L("这个创意里，你最喜欢的是哪一部分？"), items[0]["question"]
         assert items[1]["question"] == _INPUT["iv_question"] and not items[1]["fallback"]
+        # 桩对第 2、3 问回同一句题面 → 第 3 问必须退回固定题面,不能把同一个问题问两遍(2026-11-03)
+        assert items[2]["fallback"] and items[2]["question"] == L("你觉得这份感受在 15 秒里的哪一瞬间最能传达出来？"), \
+            items[2]
         assert all(it["echo"] for it in items), "复述句没落库"
         assert [x["author"] for x in json.loads(f["script_versions"])] == ["ai", "user_edit"]
         assert f["n_ai_rounds"] == 0 and f["n_hand_edits"] == 1

@@ -100,10 +100,15 @@ _FOLLOWUP = {
     "en": [("pacing", "Is shot 2 (6 s) too long?", ["Shorten", "Keep", "Split in two"], "Pacing"),
            ("dialogue", "Change the closing line?", ["Change", "Keep"], "The ending")],
 }
+# F 采访的桩题面:第 2 问(观众感受)/ 第 3 问(哪一瞬间)/ 追问 各不相同 —— 以前第 2、3 问回同一句,
+# 预览里看起来就是「同一个问题问了两遍」(2026-11-03 用户截图)
 _INTERVIEW = {"ja": ("そのとき、観る人にはどんな気持ちになってほしいですか？",
+                     "その気持ちがいちばん伝わるのは、15秒のうちどの瞬間だと思いますか？",
                      "手渡す瞬間で、いちばん大事にしたいのはどんなところですか？"),
-              "zh": ("那一刻，你希望观众有什么感受？", "递过去的那一瞬间，你最想守住的是什么？"),
+              "zh": ("那一刻，你希望观众有什么感受？", "这种感受在 15 秒里的哪一瞬间最能传达？",
+                     "递过去的那一瞬间，你最想守住的是什么？"),
               "en": ("At that moment, how do you want the audience to feel?",
+                     "Which moment in the 15 seconds carries that feeling best?",
                      "In the handover moment, what matters most to you?")}
 
 _KANA = re.compile(r"[ぁ-ゖァ-ヺ]")
@@ -136,10 +141,10 @@ def _stub_json(system, user, *, group, user_id="", retries=None, temperature=Non
     lang = _lang(system, user)
     time.sleep(DELAY)
     if group.startswith("F-interview-more"):   # 第 3 题之后追问一次,第 5 题停
-        return ({"more": True, "question": _INTERVIEW[lang][1]} if group.endswith("more4")
+        return ({"more": True, "question": _INTERVIEW[lang][2]} if group.endswith("more4")
                 else {"more": False, "question": ""})
     if group.startswith("F-interview"):
-        return {"question": _INTERVIEW[lang][0]}
+        return {"question": _INTERVIEW[lang][1 if group.endswith("q3") else 0]}
     return _qs(_QUESTIONS[lang] if group == "E-guidance-r1" else _FOLLOWUP[lang])
 
 

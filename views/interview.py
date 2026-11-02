@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import html
 import re
+import unicodedata
+from difflib import SequenceMatcher
 
 import streamlit as st
 
@@ -40,6 +42,11 @@ _JA_KANA = re.compile(r"[ぁ-ゖァ-ヺ]")
 _MID_STOP = re.compile(r"[。．.!！?？]\s*\S")   # 句末符号后面还有字 = 不止一句(先夸奖 / 复述再问)
 _PAIRED_QUOTES = ("「」", "『』", "“”", '""', "''")
 _JA_MAX = 80   # 提示要求 60 字以内,留一点余量
+# 防重复(2026-11-03 用户:「注意不要问一样的问题」):模型给的题面与本轮已问过的某题近乎逐字相同 →
+# 固定观点退回固定题面、追问则不问。只拦近乎逐字的重复 —— 换个说法的重复与正常追问的字符串相似度
+# 都在 0.5–0.6(10-28 实测),分不开,那一类靠提示词(e67472f)。
+_REPEAT_RATIO = 0.80
+_Q_NOISE = re.compile(r"[\s。．.,，、!！?？「」『』“”\"'()（）…]")
 
 
 def begin() -> None:
@@ -87,6 +94,23 @@ def _clean_question(data) -> str | None:
     return q
 
 
+def _norm_q(q: str) -> str:
+    return _Q_NOISE.sub("", unicodedata.normalize("NFKC", q or "")).lower()
+
+
+def _is_repeat(q: str, asked: list[str]) -> bool:
+    """q 与已经问过的某题近乎逐字相同:去标点后相同、互相包含(都 ≥ 8 字),或相似度 ≥ _REPEAT_RATIO。"""
+    n = _norm_q(q)
+    for prev in asked:
+        p = _norm_q(prev)
+        if not p:
+            continue
+        if n == p or (min(len(n), len(p)) >= 8 and (n in p or p in n)) \
+                or SequenceMatcher(None, n, p).ratio() >= _REPEAT_RATIO:
+            return True
+    return False
+
+
 def _fixed_turn(i: int) -> dict:
     """第 i 题的固定题面版本(模型给不出可用题面 / 网关连续失败时用)。"""
     turns = st.session_state["r_iv_turns"]
@@ -106,7 +130,7 @@ def _next_turn(topic: dict, i: int) -> dict | object:
     if data is RETRY:
         return RETRY
     q = _clean_question(data)
-    if q is None:
+    if q is None or _is_repeat(q, [x["question"] for x in turns]):
         return _fixed_turn(i)
     return {"dimension": _DIMS[i], "echo": t("interview.echo", a=_clip(turns[-1]["answer"])),
             "question": q, "answer": None, "fallback": False}
@@ -126,8 +150,8 @@ def _more_turn(topic: dict) -> dict | None | object:
     if not (isinstance(data, dict) and data.get("more") is True):
         return None   # 模型说不用再问(或 JSON 不可用):采访到此结束
     q = _clean_question(data)
-    if q is None:
-        return None   # 想追问但题面不合要求(带例子 / 太长):宁可不问
+    if q is None or _is_repeat(q, [x["question"] for x in turns]):
+        return None   # 想追问但题面不合要求(带例子 / 太长)或与已问过的题重复:宁可不问
     return {"dimension": "follow_up", "echo": t("interview.echo", a=_clip(turns[-1]["answer"])),
             "question": q, "answer": None, "fallback": False}
 
