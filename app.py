@@ -424,6 +424,15 @@ div.st-key-btn_more_ai button p{ color:#ffffff!important; }
 .st-key-_consent_agree{ background:var(--ns-surface); border:1px solid var(--ns-line-strong); border-radius:var(--ns-radius-sm); }
 .st-key-_consent_agree label{ display:flex; width:100%; box-sizing:border-box; padding:.8rem 1rem; cursor:pointer; }   /* 整张卡都能点 */
 .st-key-_consent_agree:has(input:checked){ border-color:var(--ns-accent); background:var(--ns-accent-soft); }
+/* E / F 问卷「哪些问题帮到了你」(选填、可多选;views/questionnaire._ai_q_best_pick):不进「下一题」实线框的顺序,
+   用总问卷选填题同一个静态虚线框;选项是整行卡片(同单选 / 同意页),勾上的亮起来,方形勾选框留着 = 可以多选 */
+[class*="st-key-ns_aqbest_"]{ border:1.5px dashed var(--ns-accent-line); border-radius:12px; padding:.6rem .8rem .8rem; }
+[class*="st-key-ns_aqopts_"]{ gap:.45rem!important; }
+[class*="st-key-ns_aqopts_"] [data-testid="stCheckbox"] label{ display:flex; width:100%; box-sizing:border-box; padding:.6rem .85rem;
+  cursor:pointer; background:var(--ns-surface); border:1px solid var(--ns-line-strong); border-radius:var(--ns-radius-sm);
+  transition:border-color .15s ease, background-color .15s ease; }
+[class*="st-key-ns_aqopts_"] [data-testid="stCheckbox"] label:hover{ border-color:var(--ns-accent-line); }
+[class*="st-key-ns_aqopts_"] [data-testid="stCheckbox"] label:has(input:checked){ border-color:var(--ns-accent); background:var(--ns-accent-soft); }
 
 /* ── 下一步引导(用户 2026-10-31:「不是加文字引导,是要动效,像新手引导一样」)────────
    聚光圈与气泡由 views/_tour.py 的脚本挂到 <body> 上(position:fixed,每帧跟着目标走)。

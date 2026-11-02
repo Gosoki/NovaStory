@@ -38,17 +38,20 @@ def _ai_q_best_pick(ridx: int):
             return t("guidance.ai_decide")
         return (it.get("chosen") or "").strip()
 
-    st.markdown(t("q.ai_q_best"))
-    st.caption(t("q.ai_q_best_ph"))
+    # 选填、可多选:不进「下一题」实线框的顺序(多选没有「答完」的那一刻,圈住它又像是必答),改用总问卷选填题
+    # 同一个静态虚线框;选项是整行卡片,勾上的那张亮起来(用户 2026-11-03:「好像没有做高亮,但是是多选」)。样式在 app.py
     chosen = []
-    for i, it in enumerate(asked):
-        ans = _answer(it)
-        label = f"{it['question']} → {ans}" if ans else it["question"]
-        # 勾选框的标签按 markdown 渲染,而这里是模型写的题面 + 被试原话(F):控制符先转义,逐字显示
-        if st.checkbox(_MD_SPECIAL.sub(r"\\\1", label), key=f"_q_aqbest_{ridx}_{i}"):
-            chosen.append({"idx": i, "dimension": it.get("dimension", "other"),
-                           "question": it.get("question", ""), "chosen": ans})
-    st.divider()
+    with st.container(key=f"ns_aqbest_{ridx}"):
+        st.markdown(t("q.ai_q_best"))
+        st.caption(t("q.ai_q_best_ph"))
+        with st.container(key=f"ns_aqopts_{ridx}"):
+            for i, it in enumerate(asked):
+                ans = _answer(it)
+                label = f"{it['question']} → {ans}" if ans else it["question"]
+                # 勾选框的标签按 markdown 渲染,而这里是模型写的题面 + 被试原话(F):控制符先转义,逐字显示
+                if st.checkbox(_MD_SPECIAL.sub(r"\\\1", label), key=f"_q_aqbest_{ridx}_{i}", width="stretch"):
+                    chosen.append({"idx": i, "dimension": it.get("dimension", "other"),
+                                   "question": it.get("question", ""), "chosen": ans})
     return chosen
 
 
