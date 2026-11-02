@@ -113,17 +113,17 @@
   .rq .t{font-size:clamp(1.2rem,1.95vw,1.56rem); color:#e7e2d7; margin-top:.2em}
 
   /* 3-lane workflow */
-  .lanes{display:grid; grid-template-columns:repeat(3,1fr); gap:clamp(14px,2vw,30px); margin-top:clamp(8px,1.6vh,18px)}
+  .lanes{display:grid; grid-template-columns:repeat(4,1fr); gap:clamp(12px,1.6vw,26px); margin-top:clamp(8px,1.6vh,18px)}
   .lane{border:1px solid var(--line2); border-radius:8px; padding:clamp(14px,1.9vw,24px);
     background:linear-gradient(180deg,#15151f,#0d0d14); display:flex; flex-direction:column; gap:.7em}
   .lane .lh{display:flex; align-items:baseline; gap:.55em}
   .lane .code{font-family:var(--serif); font-size:clamp(1.95rem,3.4vw,2.9rem); font-weight:700; line-height:1}
-  .lane.C .code{color:var(--muted)} .lane.D .code{color:var(--teal)} .lane.E .code{color:var(--gold)}
+  .lane.C .code{color:var(--muted)} .lane.D .code{color:var(--teal)} .lane.E .code{color:var(--gold)} .lane.F .code{color:var(--rose)}
   .lane .name{font-size:clamp(1.12rem,1.7vw,1.42rem); font-weight:700; color:#fff}
   .lane .flow{font-size:clamp(1.02rem,1.5vw,1.3rem); color:#cbc5b9; line-height:1.55}
   .lane .mini{display:flex; gap:5px; margin-top:auto}
   .lane .mini .frame{flex:1; box-shadow:inset 0 0 0 2px #101018,inset 0 0 0 3px #20202c}
-  .lane.E{box-shadow:0 0 0 1px var(--gold-soft), 0 8px 30px -14px var(--gold)}
+  .lane.proposed{box-shadow:0 0 0 1px var(--gold-soft), 0 8px 30px -14px var(--gold)}
   .lane .badge{align-self:flex-start; font-size:.82rem; letter-spacing:.16em; color:var(--gold);
     border:1px solid var(--gold); border-radius:999px; padding:.24em .7em; font-weight:700}
 
@@ -213,6 +213,9 @@
   .slide.active > *:nth-child(5){transition-delay:.27s}
   .slide.active > *:nth-child(6){transition-delay:.34s}
 
+  @media (max-width:1180px){
+    .lanes{grid-template-columns:repeat(2,1fr)}
+  }
   @media (max-width:820px){
     .cols,.grid2,.lanes{grid-template-columns:1fr}
     .chart{gap:24px}
@@ -278,9 +281,11 @@
     <div class="title-wrap">
       <div class="kicker">研究報告（中間） · Interim Report</div>
       <h1><span class="ph">生成する前に、</span><span class="ph gold">問いを。</span></h1>
-      <div class="title-sub">AI共創における<span class="nw">「事前の意図引き出し」</span>と<span class="nw">「事後修正」</span>の<span class="nw">対照実験</span></div>
+      <!-- ROUTE-SLOT:cover BEGIN (06 ㉛:pr/主推E・pr/主推F はここだけ差し替える) -->
+      <div class="title-sub"><span class="nw">「生成前の意図の引き出し」</span>と<span class="nw">「生成後の修正」</span>は、<span class="nw">何を変えるのか</span></div>
+      <!-- ROUTE-SLOT:cover END -->
       <div class="title-meta">
-        <span>絵コンテ創作を題材に</span><span>実験参加者 35（中国）＋ 16〜32（日本・収集中）</span><span>C / D / E の3ワークフロー（日本は＋F）</span>
+        <span>15秒・3カットの絵コンテを題材に</span><span>4つのやり方を同じ参加者が体験</span><span>中国 35名（3つ）＋ 日本 16〜32名（4つ・収集中）</span>
       </div>
       <div class="credit"><span class="name">呉 祖熙</span> ／ 中村ゼミ ・ 2026</div>
     </div>
@@ -289,14 +294,15 @@
   <!-- 2 · PROBLEM -->
   <section class="slide">
     <div class="kicker">01 ── 問題</div>
-    <h2>「思い」は<span class="gold">プロンプトに入りきらない</span></h2>
+    <h2>何を指示すればよいか、<span class="gold">分からない</span></h2>
     <p class="lead">
-      生成AIで創作するとき、作り手は――とくに映像経験のない人は――主人公の心理・物語の転換点・画面の設計まで
-      <b>書き切れない</b>。<br><br>書かれなかった部分は、AI が<em>既定値で補う</em>。
+      生成AIでは<b>「まず作らせ、あとで直す」</b>使い方が一般的。<br>
+      しかし映像の基礎知識がない人は、主人公の心理・物語の転換点・カメラや秒数まで、
+      <b>そもそも何を指示すればよいかが分からない</b>。<br><br>書かれなかった部分は、AI が<em>既定値で補う</em>。
       <br>　—— 作品は「どこかで見たような」形に<span class="nw">寄りやすい。</span>
       <br><br>ただし、意図は作る前から決まっているとは限らない。<b>出来たものを見て形になる</b>ことも多い。
     </p>
-    <div class="cite">cf. Yang et al. 2026（Findings of ACL）書かれなかった要件をモデルが自分で補えるのは約 41% ／ Simonen et al. 2026（CHI）イメージの弱い入力は「既定の画像」に収束 ／ Zhang &amp; Wang 2026（C&amp;C）意図は生成と評価の往復で形になる</div>
+    <div class="cite">cf. Subramonyam et al. 2024（CHI）何を作りたいか・どう指示するかで利用者と AI がずれる ／ Yang et al. 2026（Findings of ACL）書かれなかった要件をモデルが自分で補えるのは約 41% ／ Simonen et al. 2026（CHI）イメージの弱い入力は「既定の画像」に収束 ／ Zhang &amp; Wang 2026（C&amp;C）意図は生成と評価の往復で形になる</div>
   </section>
 
 
@@ -319,17 +325,18 @@
     <div class="note">創作領域では、<b>作り手が作品をまるごと作る</b>〈エンドツーエンド〉の設定で、この対照を検証した証拠は、まだ十分ではない。</div>
   </section>
 
-  <!-- 5 · SOUL SENTENCE -->
+  <!-- 5 · RESEARCH QUESTION(研究の主旨 2026-11-02、09 §0.5) -->
   <section class="slide statement">
-    <div class="kicker">魂の一句 ── Research Question</div>
+    <div class="kicker">Research Question</div>
     <div class="big">
-      良いAI共創は、生成の<span class="hl">「後」</span>に手直しを繰り返すのではなく、<br>
-      生成の<span class="hl">「前」</span>に問題を<br>回避すべきではないか。
+      生成の<span class="hl">「前」</span>に意図を引き出す方法は、<br>
+      生成の<span class="hl">「後」</span>に直す方法と比べて、<br>何を変えるのか。
     </div>
     <div class="rqrow">
-      <div class="rq"><div class="n">RQ 1</div><div class="t">意図の忠実性</div></div>
-      <div class="rq"><div class="n">RQ 2</div><div class="t">所有感・主体感</div></div>
-      <div class="rq"><div class="n">RQ 3</div><div class="t">努力の再配分</div></div>
+      <div class="rq"><div class="n">RQ 1</div><div class="t">意図への忠実性</div></div>
+      <div class="rq"><div class="n">RQ 2</div><div class="t">所有感</div></div>
+      <div class="rq"><div class="n">RQ 3</div><div class="t">制作負担</div></div>
+      <div class="rq"><div class="n">RQ 4 · 日本</div><div class="t">問い方（選ぶ／自分の言葉）</div></div>
     </div>
   </section>
 
@@ -343,7 +350,7 @@
     </p>
     <ul>
       <li><b>作り手</b>が、AIと<b>作品をまるごと</b>作る場面で</li>
-      <li>忠実性・<b>所有感</b>・修正量を<b>同時に</b>比べたとき、事前に問う E が効くか</li>
+      <li>忠実性・<b>所有感</b>・<b>制作負担</b>を<b>同時に</b>比べたとき、事前に問うことで何が変わるか</li>
     </ul>
     <div class="note">「初」とは主張しない。狙いは<b>仕組み</b> ── 事前に問うことが、作り手の<b>「自分の作品だ」</b>という感覚を守るか。</div>
   </section>
@@ -378,7 +385,7 @@
   <!-- 7 · SYSTEM -->
   <section class="slide">
     <div class="kicker">04 ── システム</div>
-    <h2>NovaStory：<span class="gold">3つの</span>ワークフロー</h2>
+    <h2>NovaStory：<span class="gold">4つの</span>やり方</h2>
     <div class="lanes">
       <div class="lane C">
         <div class="lh"><span class="code">C</span><span class="name">一発生成</span></div>
@@ -390,14 +397,21 @@
         <div class="flow">生成後もいつでも編集でき、「AIにこう直して」と自由記述で指示。<br>ChatGPT 型ワークフローの代表例。</div>
         <div class="mini"><div class="frame"></div><div class="frame"></div><div class="frame"></div></div>
       </div>
-      <div class="lane E">
+      <!-- ROUTE-SLOT:system BEGIN (06 ㉛:「本研究の提案」の角標と .proposed は主推する方に付ける) -->
+      <div class="lane E proposed">
         <div class="badge">本研究の提案</div>
-        <div class="lh"><span class="code">E</span><span class="name">事前引き出し → 生成</span></div>
-        <div class="flow">AI が先に5–7問 → 確定 → 生成 → 追加の引き出しも可能。</div>
+        <div class="lh"><span class="code">E</span><span class="name">選択式で先に問う</span></div>
+        <div class="flow">AI が先に5–7問（選択肢／自分で書く／AIに任せる）→ 生成 → 追加の引き出しも可能。</div>
         <div class="mini"><div class="frame"></div><div class="frame"></div><div class="frame"></div></div>
       </div>
+      <div class="lane F">
+        <div class="lh"><span class="code">F</span><span class="name">想いを聞く</span></div>
+        <div class="flow">AI が作品への想いを3–5問たずね、自分の言葉で答える → 生成 → 手で直す。日本のみ。</div>
+        <div class="mini"><div class="frame"></div><div class="frame"></div><div class="frame"></div></div>
+      </div>
+      <!-- ROUTE-SLOT:system END -->
     </div>
-    <div class="cite">C / D / E ＝「人の意図が生成パイプラインに入る<b>タイミング</b>」の操作。タスクは全条件で同一。</div>
+    <div class="cite">C / D / E ＝「人の意図が生成パイプラインに入る<b>タイミング</b>」の操作 ／ E / F ＝ 同じ「生成前」での<b>問い方</b>の違い（F は日本のみ）。タスクは全条件で同一。</div>
   </section>
 
   <!-- 05 · REAL OUTPUT (full 絵コンテ sheet) -->
@@ -433,17 +447,39 @@
     </div>
   </section>
 
+  <!-- F DESIGN(日本のみ;06 ㉖) -->
+  <section class="slide">
+    <div class="kicker">07 ── F の設計（日本）</div>
+    <h2>F：AI が<span class="rose">「想いを聞く」</span></h2>
+    <div class="cols">
+      <div>
+        <ul>
+          <li><b>3–5問</b>：第1問は固定<br>「このアイデアの、どこがいちばん気に入っていますか？」</li>
+          <li>続く2問（観る人に感じてほしい気持ち／それが伝わる瞬間）は、前の答えに合わせて AI が言い換える。答えが曖昧なときだけ <b>0–2問</b>追加</li>
+          <li><b>自分の言葉だけ</b>で答える ── 選択肢なし・AIに任せるなし。<br>次の問いの前に、答えを原文のまま復唱</li>
+          <li>生成は E と<b>同じ指示文</b>／生成後は手で直すのみ</li>
+        </ul>
+      </div>
+      <div class="frame" style="aspect-ratio:4/3; flex-direction:column; gap:.7em; padding:1.2em">
+        <div class="muted" style="font-size:.8rem;letter-spacing:.2em">INTERVIEW</div>
+        <div style="font-size:clamp(1rem,1.6vw,1.3rem);color:#fff;font-weight:700">このアイデアの、どこが<br>いちばん気に入っていますか？</div>
+        <div style="width:82%;border:1px solid var(--rose);border-radius:6px;padding:.5em .8em;font-size:.85rem;color:#cbc5b9;text-align:left">あなたの答え（一言でもOK）</div>
+      </div>
+    </div>
+    <div class="note">E と F は<b>同じタイミング</b>（生成前）。違うのは<b>問い方</b> ── AI が示す選択肢から選ぶか、作品への想いを自分の言葉で答えるか。</div>
+  </section>
+
   <!-- 10 · METHOD (Williams) -->
   <section class="slide">
-    <div class="kicker">07 ── 手法</div>
+    <div class="kicker">08 ── 手法</div>
     <h2>手法：<span class="gold">Williams 型</span>で<br>順序をカウンターバランス</h2>
     <div class="cols" style="grid-template-columns:minmax(0,1fr) max-content; align-items:center; gap:clamp(28px,4.5vw,80px)">
       <div>
         <ul>
-          <li>参加者内：<br>── 中国は <b>3条件 × 3題</b>（1人が C・D・E をすべて体験）／日本は F を加えた <b>4条件 × 4題</b></li>
-          <li><b>中国 35名</b>（解析対象：職業学校での講義後 22名＋その他の成人 13名、年齢・所属は限定せず。研究者のデモ 1 件は除外）＋ <b>日本 16〜32名</b>（大学生）<br>── <b>18系列 × 中国各2人（1系列のみ1人）／日本は4条件（C/D/E＋F）・16系列 × 各1〜2人</b></li>
-          <li>条件順は<b>全6並べ替え（Williams）<span class="nw">× 3題ローテーション</span></b></li>
-          <li>募集は<b>誰でも可</b>／<b>主解析は全参加者</b>（2026-09-07 決定）<br>── 初心者性は5項目で測定・記録し、初心者／経験者の切り分けは<b>事後の探索的解析</b>・所要 約15分（中国の実測中央値 17.5分。日本は 4 本で約20〜30分）</li>
+          <li>参加者内：<br>── <b>実験1（中国）</b>3つのやり方（C・D・E）× 3題 ／ <b>実験2（日本）</b>4つのやり方（C・D・E・F）× 4題</li>
+          <li><b>中国 35名</b>（職業学校での講義後 22名＋その他の成人 13名。研究者のデモ 1 件は除外）＋ <b>日本 16〜32名</b>（大学生）<br>── 中国は 18系列 × 各2人（1系列のみ1人）／日本は 16系列 × 各1〜2人</li>
+          <li>条件順は<b>全6並べ替え（Williams）<span class="nw">× 3題ローテーション</span></b>（日本は 4 次の Williams × 4題）</li>
+          <li>募集は<b>誰でも可</b>／<b>主解析は全参加者</b><br>── 中国の約9割（32名）は映像の基礎知識のない初心者。経験者 3 名を除いても結論は変わらない（探索的）・所要 約15分（中国の実測中央値 17.5分。日本は 4 本で約20〜30分）</li>
         </ul>
       </div>
       <div style="justify-self:center">
@@ -467,14 +503,14 @@
 
   <!-- 11 · MEASUREMENT -->
   <section class="slide">
-    <div class="kicker">08 ── 測定</div>
-    <h2>忠実性の<span class="gold">三角</span> ＋ 所有感<br>＋ 3通りの投入量</h2>
+    <div class="kicker">09 ── 測定</div>
+    <h2>忠実性・所有感・<span class="gold">制作負担</span></h2>
     <div class="cols" style="grid-template-columns:1.1fr 1fr">
       <div>
         <ul>
-          <li><b>忠実性</b> <br>= 想像一致（自己申告）<br>＋ ショット単位アノテーション（細粒度）<br>＋ 埋め込み距離Δ（客観・自動）</li>
-          <li><b>所有感</b> own1–3 ／ <b>主体感</b> soa1–2（1–7）</li>
-          <li><b>投入</b> = 事前 ＋ 事後 ＋ 総計（<em>3通りを併記</em>）</li>
+          <li><b>意図への忠実性</b> <br>= 想像一致（自己申告）＋ 意図との食い違い（逆転）<br>＋ ショット単位アノテーション ＋ 埋め込み距離Δ（客観・自動）</li>
+          <li><b>所有感</b> own1–3（1–7）<span class="muted">／ 主体感 soa1–2 は補助</span></li>
+          <li><b>制作負担</b> = 作業時間 ＋ 主観的負荷<br>＋ 生成後の手直し ＋「一番手間がかかった」ラウンド<br><span class="muted">トークン（システム側のコスト）は別に報告</span></li>
         </ul>
       </div>
       <div class="frame" style="flex-direction:column;gap:.5em;padding:1.4em">
@@ -489,7 +525,7 @@
 
   <!-- 12 · ANALYSIS PLAN -->
   <section class="slide">
-    <div class="kicker">09 ── 分析計画</div>
+    <div class="kicker">10 ── 分析計画</div>
     <h2>分析：<span class="gold">参加者内 LMM</span> ＋<br>事前に確定した対比</h2>
     <div class="cols" style="grid-template-columns:1fr 1.05fr; align-items:start">
       <div>
@@ -506,18 +542,18 @@
         <tbody>
           <tr><td class="h">H1 忠実性</td><td>忠実性複合<br><span class="faint" style="font-size:.82em">想像一致 + 違反(逆転) + not_against(意図一致) + 埋込Δ</span></td><td><span class="c">E&gt;D&gt;C</span></td></tr>
           <tr><td class="h">H2 所有感</td><td>所有感複合（own1–3）</td><td><span class="c">E≥D&gt;C</span></td></tr>
-          <tr><td class="h">H3a 事後の手直し</td><td>投入複合（事後↓）</td><td><span class="c">E&lt;D</span></td></tr>
-          <tr><td class="h">H3b 再配分</td><td>事前投入（総投入は非劣）</td><td><span class="c">E&gt;D</span></td></tr>
+          <tr><td class="h">H3a 制作負担：<br>生成後の手直し</td><td>投入複合（事後↓）</td><td><span class="c">E&lt;D</span></td></tr>
+          <tr><td class="h">H3b 制作負担：<br>前倒し</td><td>事前投入（総投入は非劣）</td><td><span class="c">E&gt;D</span></td></tr>
           <tr><td class="h">H4 品質</td><td>構造的完全性（客観的な下限）</td><td><span class="c">|E−D|&lt;SESOI</span></td></tr>
         </tbody>
       </table>
-      <div class="note">中国コホートの判定：H1 は支持されず、H2 は境界的に同等、H3b（総投入は非劣）は不成立、用量反応（H5）も支持されず。</div>
+      <div class="note">中国コホートの判定：H1 は支持されず、H2 は境界的に同等、H3b（総投入は非劣）は不成立、用量反応（H5）も支持されず。<br>日本：F−E（各カットを自分のアイデアと感じるか）を事前に確定した主検定、F−D は探索的に比較。</div>
     </div>
   </section>
 
   <!-- 13 · SIGNATURE FIGURE (H3 direction — conceptual, not data) -->
   <section class="slide">
-    <div class="kicker">10 ── 予測</div>
+    <div class="kicker">11 ── 制作負担の内訳</div>
     <h2>仮説 H3（a・b）：<br>努力は<span class="gold">「後」から「前」</span>へ</h2>
     <div class="chart">
       <div class="bar C">
@@ -540,7 +576,7 @@
       <span><i style="background:var(--gold)"></i>事前投入（問いに答える）</span>
       <span><i style="background:var(--teal)"></i>事後修正（直す）</span>
     </div>
-    <div class="note">概念図 ── 予測の<b>向き</b>のみを示す。数値・効果量は主張しない（実データではない）。</div>
+    <div class="note">概念図 ── 予測の<b>向き</b>のみを示す（実データではない）。<br>中国の実測：E は総投入が約 90 秒長いが、生成後の手直しは D より少なかった（記述的）。主観的な負荷には差がなく、「一番手間がかかった」は D が最多。</div>
   </section>
 
 
@@ -548,15 +584,18 @@
   <!-- CLOSING -->
   <section class="slide statement">
     <div class="kicker">結び</div>
+    <!-- ROUTE-SLOT:closing BEGIN (06 ㉛) -->
     <div class="big">
-      <span class="hl">「生成する前に問う」</span>は、<br>手間に見合うのか。
+      <span class="hl">「作る前に問う」</span>と<span class="hl">「作ったあとで直す」</span>、<br>何が変わるのか。
     </div>
     <div class="title-meta" style="margin-top:clamp(30px,5vh,60px)">
-      <span>中国コホート（N=35）の一次解析では、E の D に対する優位は検出されなかった（所有感・忠実度とも）</span>
+      <span>中国（N=35）：意図への忠実性・所有感とも、E の D に対する向上は検出されず</span>
+      <span>制作負担：E は時間が長いが、生成後の手直しは少ない</span>
     </div>
     <div class="title-meta">
-      <span>実装済み</span><span>中国コホート収集済み</span><span>→ 日本コホート</span><span>→ 合併解析</span>
+      <span>実装済み</span><span>中国 収集済み</span><span>→ 日本 4つのやり方（収集中）</span><span>→ 提案する問い方（E か F）を日本の結果で決める</span>
     </div>
+    <!-- ROUTE-SLOT:closing END -->
     <div class="credit" style="margin-top:clamp(24px,4vh,44px)">
       ご清聴ありがとうございました ・ <span class="muted">［g2550005@stu.musashino-u.ac.jp］</span>
     </div>

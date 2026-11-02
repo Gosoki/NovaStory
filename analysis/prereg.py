@@ -337,7 +337,8 @@ CONFIRMATORY_CONDITIONS = ("C", "D", "E")
 F_CONDITION = "F"
 # F 的研究问题(RQ4,2026-10-27 加入:中国结果之后、日本数据之前):生成前由 AI 提问时,「选 AI 给的选项」(E)
 # 与「用自己的话回答对作品的想法」(F),是否改变镜头层面的想法来源归属。F−E 是两套提问风格的**整包**比较
-# (问什么 × 怎么答 × 能否交给 AI × 题数 × 原话复述 × 生成后通道),不归因到单一维度;F 不是新的提案手法。
+# (问什么 × 怎么答 × 能否交给 AI × 题数 × 原话复述 × 生成后通道),不归因到单一维度。
+# 〔2026-11-03 06 ㉛〕原「F 不是新的提案手法」改为:论文主推 E 或 F 之一,按下方 PROMOTION_RULE 二选一。
 F_PRIMARY = {
     "dv": "mine_ratio",               # 逐镜头「主に自分のアイデア」的占比(中国数据里最敏感的指标,E−D dz .48)
     # 构念 = 镜头层面的「想法来源归属」,**不是**所有权:F 的回答按生成 prompt「必ず脚本に反映」写进脚本,
@@ -369,8 +370,22 @@ F_SECONDARY = (                       # 次要:不进确证判定,方向写在�
     ("total_investment", "两侧"),
     ("ai_q_quality", "两侧"),         # E 与 F 都问:检查「AI 亲切所以分高」
 )
-# 不比较:F−D(D 有 AI 修改入口、F 只能手改 → 生成后指标的差由设计决定);F 也不进中国与合并分析。
-F_NOT_COMPARED = (("F", "D"), "D 有 AI 修改入口而 F 没有,生成后的投入与修改指标之差由设计决定")
+# F−D(2026-11-03 06 ㉚-4 改,取代 10-28 的「F−D 不比较」;日本数据进库前):研究主旨问的是「生成前引出意图 vs
+# 生成后修正」,F 同样是生成前由 AI 提问 → 按**整包**做探索性比较,只报估计与 95% CI,不进判定、不做校正推断。
+# 10-28 不比的理由(D 有 AI 修改入口、F 只能手改)只影响**生成后**的指标 → 这些仍不比(F_NOT_COMPARED)。
+F_VS_D_EXPLORATORY = (
+    "own_mean",            # 所有感
+    "fidelity_composite",  # 忠实性(复合在日本 4 条件全部 trial 上 z,同 F_SECONDARY)
+    "imagine",
+    "mine_ratio",          # ⚠️ F 的回答按生成 prompt 必须写进脚本 → F>D 有一部分按构造出现
+    "satisfaction",
+    "total_investment",    # 制作負担①(整包:F 多的是事前回答,D 多的是事后修改)
+    "tlx1",                # 制作負担②
+)
+F_NOT_COMPARED_DVS = ("n_ai_rounds", "post_investment", "effort_composite")
+F_NOT_COMPARED = (("F", "D"), "只有生成后的指标不比(" + " / ".join(F_NOT_COMPARED_DVS) + "):"
+                  "D 有 AI 修改入口而 F 没有,这些差由设计决定;其余按 F_VS_D_EXPLORATORY 作探索性比较")
+# F 也不进中国与合并分析。
 F_MANIPULATION_CHECK = ("F 里全部回答的总字数与题数分布(3-5 题;guidance_json 中 source=interview 的 chosen;"
                         "题数作描述,不作协变量进主检验)")
 # 机制(描述性,复现中国挖掘报告 SPA1 / SPA2 的定义,analysis/f_analysis.py 执行):
@@ -381,6 +396,48 @@ F_MANIPULATION_CHECK = ("F 里全部回答的总字数与题数分布(3-5 题;gu
 #   预期方向:本人文字重合 OR > 1(复现 SPA1);所选选项重合两侧(中国 OR 0.79,不显著)。
 F_MECHANISM = ("镜头层条件 logit:mine ~ z(本人文字 bigram 重合) + z(所选 AI 选项 bigram 重合) + 镜头位置,"
                "按 trial 分层,E / F 各一次;本人文字重合预期 OR>1,选项重合两侧;描述性")
+
+# ---- 研究主旨的三个评价轴(2026-11-03 06 ㉚;主旨原文 docs/paper/09 §0.5)----
+# 日语对外用词:意図への忠実性 / 所有感 / 制作負担。终点层级**不变**:主终点仍是 PRIMARY_ENDPOINTS;
+# 制作負担 = 被试一侧的负担,由下面 4 项组成(①③ 是 SECONDARY_ENDPOINTS 里事先确定的次要终点,②④ 描述)。
+# token 是系统成本,不算制作負担,另作「システム側のコスト」报(events 口径,14 §8)。
+BURDEN_MEASURES = (
+    ("total_investment", "作業時間:被试净投入秒数(事前回答 + 事后修改;次要终点)"),
+    ("tlx1", "主観的負荷:「このラウンドの作業は、精神的な負荷が大きかった」7 点(描述)"),
+    ("effort_composite", "生成後の手直し:mean z(log1p(AI 修改轮数, 手改字数, 生成后时长))(H3a,次要终点)"),
+    ("fs_effort_cond", "「一番手間がかかった」强制选择(总问卷,按条件计数,描述)"),
+)
+SYSTEM_COST = "每轮 token(events 口径,只算最终提交那一轮的调用;记录值,下界)—— 不算制作負担"
+
+# ---- 提问的价值(2026-11-03 06 ㉚-5;日本数据进库前写死;全部探索性、双侧、成败都报)----
+# 用户(2026-11-02):「再聪明的模型也猜不出用户没想好的东西,所以提问应该会提升用户的作品质量或者帮他做出更好的决定」。
+# 下面三项把「问出了模型自己写不出来的东西,并且进了作品」量出来。analysis/question_value.py(QV1)与
+# analysis/f_analysis.py(QV2 / QV3)执行;中国 E 只算 QV1 的描述值(make stats-qv)。
+QUESTION_VALUE_EXPLORATORY = (
+    {"id": "QV1", "dv": "qv_yield",
+     "what": "问题产出:回答的字符 bigram 里,同题同语言机器基线(全部稿子)没有、创意陈述没有、题面与分镜格式词也没有,"
+             "而终稿里有的个数(每个 trial 一个值)。E 按「自己写」与「点选 AI 选项」两种来源分开报;F 全是自己写",
+     "test": "中国 E:描述(自己写 vs 点选的人均值);日本:F−E 配对 t(双侧)+ 95% CI"},
+    {"id": "QV2", "dv": "dist_base",
+     "what": "终稿离同语言同题机器基线质心的 embedding 距离(定义同 P1);只读缓存,不调 API",
+     "test": "日本:F−E、F−C 配对 t(双侧)+ 95% CI"},
+    {"id": "QV3", "dv": "embed_fidelity_guided",
+     "what": "以「创意 + 引导 / 采访里被试确定下来的回答」为锚的 embedding 保真(analysis/embed.py 定义②)",
+     "test": "日本:F−E 配对 t(双侧)+ 95% CI"},
+)
+
+# ---- 论文主推 E 还是 F(2026-11-03 06 ㉛;**在任何日本数据进库之前**写死;analysis/route.py 执行)----
+# 论文把生成前提问的一种方式作为提案手法主推。不看结果再挑:按下面的规则二选一,结果全部照报,
+# 中国的确证结论在两条路线里都不变;「主推」≠ 宣称「更好」(措辞按 docs/paper/14 §7、01 §3.2)。
+PROMOTION_RULE = {
+    "F": ("F_PRIMARY 判定为「显著:F 高于 E」,且 own_mean 的 F−E 没有显著为负(双侧 p < α 且差 < 0 才算)"
+          " —— 想法来源归属上赢过 E,所有感上没有可检测的损失"),
+    "E": "其余一切情况(F_PRIMARY 不显著 / E 高于 F / 数据不足 / F 赢了归属但所有感显著更低);E 是本来的提案",
+    "e_tiers": {"strong": "P1–P3 至少 2 条复核成功", "partial": "恰好 1 条", "design_only": "0 条"},
+    "explor": "日本不满一整轮(WILLIAMS_ROUND_N_BY_LANG['ja'] 个序列)时路线照走,日本侧的宣称一律加「探索的」",
+    "branches": {"E": "pr/主推E", "F": "pr/主推F"},
+    "slots": "文档里用 ROUTE-SLOT 注释标出的段落(01 §0.5、08 §1–2、09 §1.2 / §2.5 / §6、docs/index.html)",
+}
 
 # ---- 复合公式(as-run,见 analysis/stats.build_composites) ----
 # z 一律按**全样本**算(跨全部 trial 的均值/标准差;两个队列都在时按队列内 —— 见 Z_REFERENCE),被试间差异交给 LMM 的随机截距
@@ -473,7 +530,16 @@ def as_dict() -> dict:
             "primary": {k: (list(v) if isinstance(v, tuple) else v) for k, v in F_PRIMARY.items()},
             "secondary": [list(x) for x in F_SECONDARY],
             "not_compared": [list(F_NOT_COMPARED[0]), F_NOT_COMPARED[1]],
+            "not_compared_dvs": list(F_NOT_COMPARED_DVS),
+            "vs_d_exploratory": list(F_VS_D_EXPLORATORY),
             "manipulation_check": F_MANIPULATION_CHECK,
             "mechanism": F_MECHANISM,
+        },
+        # ---- 研究主旨对齐(2026-11-03,06 ㉚ ㉛)----
+        "aim": {
+            "burden_measures": [list(x) for x in BURDEN_MEASURES],
+            "system_cost": SYSTEM_COST,
+            "question_value": [dict(x) for x in QUESTION_VALUE_EXPLORATORY],
+            "promotion_rule": {k: (dict(v) if isinstance(v, dict) else v) for k, v in PROMOTION_RULE.items()},
         },
     }

@@ -288,6 +288,23 @@ def run(tmp: Path) -> None:
         (A_f.verdict(tight, sesoi, a_), A_f.verdict(wide, sesoi, a_))
     ok("F 主检验的判定三分支:显著 → 方向;CI 窄 → 等价;CI 宽 → INCONCLUSIVE")
 
+    # 研究主旨对齐(2026-11-03 06 ㉚-4 / ㉛):F−D 探索性比较逐条打印;论文主推路线按 prereg.PROMOTION_RULE 判定
+    assert "[F−D 探索性比较]" in out_fa and all(f"{dv:<20} F−D" in out_fa for dv in prereg.F_VS_D_EXPLORATORY), \
+        "F−D 探索性比较没有逐条打印"
+    from analysis import route as A_route  # noqa: PLC0415
+    rc_r, out_r = quiet(lambda: A_route.main(["--csv", str(fa_csv), "--db", str(tmp / "no.db")]))
+    assert rc_r == 0 and "路线:**主推 F**" in out_r, out_r[-800:]
+    same_csv = tmp / "ja_f_same_as_e.csv"
+    pd.concat([ja_part, ja_part[ja_part["condition"] == "E"].assign(condition="F")]).to_csv(same_csv, index=False)
+    rc_s, out_s = quiet(lambda: A_route.main(["--csv", str(same_csv), "--db", str(tmp / "no.db")]))
+    assert rc_s == 0 and "路线:**主推 E**" in out_s, out_s[-800:]
+    win = {"n": 20, "mean": 0.2, "p_t": 0.001}
+    assert A_route.decide_route(win, {"n": 20, "mean": -0.6, "p_t": 0.01}, 3)[:2] == ("E", "strong")
+    assert A_route.decide_route(win, {"n": 20, "mean": -0.1, "p_t": 0.5}, 0)[:2] == ("F", None)
+    assert A_route.decide_route({"n": 20, "mean": -0.2, "p_t": 0.001}, None, 1)[:2] == ("E", "partial")
+    assert A_route.decide_route(None, None, 0)[:2] == ("E", "design_only")
+    ok("F−D 探索性比较逐条打印;主推路线:F 赢 → F,F 与 E 相同 → E,所有感显著更低 → E,档位按 P1–P3 条数")
+
     # 复合 z 的参照(prereg.Z_REFERENCE,06 ㉒-6,2026-10-28):两队列 → 队列内标准化;--z-ref zh → zh 当固定尺子
     two = pd.concat([zh_part, ja_part.assign(imagine=ja_part["imagine"] + 1.0, violation=ja_part["violation"] - 1.0)])
     by_lang = A_stats.build_composites(two).groupby("lang")["fidelity_composite"].mean()

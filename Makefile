@@ -10,7 +10,7 @@ BASELINE_LANG ?= ja
 # 若 v3 刚把它们清空,embed 会拒绝执行 —— 这时不带 EMBED_LANG 重跑,已缓存的不计费)
 EMBED_LANG ?=
 
-.PHONY: help dev preview baseline norming v3 events pilot embed judge stats stats-zh stats-ja stats-novice stats-f stats-ja-pred audit-db power figures analysis smoke robust smoke-e2e i18n freeze freeze-check precompress serve
+.PHONY: help dev preview baseline norming v3 events pilot embed judge stats stats-zh stats-ja stats-novice stats-f stats-ja-pred stats-qv route audit-db power figures analysis smoke robust smoke-e2e i18n freeze freeze-check precompress serve
 
 dev:        ## 本地开发起服务(热重载;生产 config.toml 默认关)
 	.venv/bin/streamlit run app.py --server.runOnSave true --server.fileWatcherType auto
@@ -58,11 +58,17 @@ stats-zh:   ## 只跑中国队列(确证结论;单队列模型;先筛语言再 z
 stats-ja:   ## 只跑日本队列(单队列模型;N 16–32 → MDES dz≈0.75–0.51,分国结果只作描述)
 	$(PY) analysis/stats.py --lang ja
 
-stats-f:    ## 第 4 条件 F 的日本内部分析(prereg.F_PRIMARY:逐镜头 mine_ratio F vs E 双侧 + 判定三分支;次要 + 操纵检查 + 机制)
+stats-f:    ## 第 4 条件 F 的日本内部分析(prereg.F_PRIMARY:逐镜头 mine_ratio F vs E 双侧 + 判定三分支;次要 + F−D 探索 + 提问价值 + 操纵检查 + 机制)
 	$(PY) analysis/f_analysis.py
 
 stats-ja-pred: ## 日本队列的方向复核预测(prereg.JA_DIRECTION_PREDICTIONS P1–P3 + 描述性 B1–B3;2026-10-28;只读 embedding 缓存)
 	$(PY) analysis/ja_predictions.py
+
+stats-qv:   ## 提问的价值 QV1「问题产出」(回答里模型写不出、又进了终稿的内容;探索性描述;06 ㉚-5;只读,不调 API)
+	$(PY) analysis/question_value.py
+
+route:      ## 论文主推 E 还是 F(prereg.PROMOTION_RULE,日本数据前写死;06 ㉛)→ 打印该合并 pr/主推E 还是 pr/主推F
+	$(PY) analysis/route.py
 
 DB ?= data/novastory.db
 audit-db:   ## 数据层审计(只读,只出汇总;拿到服务器新副本后:make audit-db DB=<副本路径>;docs/paper/19 §6)

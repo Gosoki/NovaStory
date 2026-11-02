@@ -2,7 +2,9 @@
 
   主要检验  prereg.F_PRIMARY    逐镜头「主に自分のアイデア」比例 mine_ratio(构念 = 想法来源归属,不是所有权),
                                 F vs E,双侧配对 t(+ Wilcoxon、95% CI)→ 判定三分支(显著报方向 / 不显著走 TOST ±1/6)
-  次要      prereg.F_SECONDARY  带事先写明的方向,只作描述,不进确证判定;F−D 不比较(prereg.F_NOT_COMPARED)
+  次要      prereg.F_SECONDARY  带事先写明的方向,只作描述,不进确证判定
+  F−D       prereg.F_VS_D_EXPLORATORY  整包的探索性比较(2026-11-03 06 ㉚-4);生成后的指标仍不比(prereg.F_NOT_COMPARED)
+  提问价值  prereg.QUESTION_VALUE_EXPLORATORY  QV1 问题产出 / QV2 离机器基线的距离 / QV3 以回答为锚的保真(06 ㉚-5)
   操纵检查  prereg.F_MANIPULATION_CHECK  F 里全部回答的总字数与题数分布(3-5 题;从库里的 guidance_json 读)
   机制      prereg.F_MECHANISM  镜头层条件 logit:本人文字重合 / 所选选项重合 → 标「mine」(复现中国 SPA1 / SPA2)
 
@@ -198,6 +200,26 @@ def mechanism(shots: pd.DataFrame, cond: str) -> str:
     return f"{cond}(信息 trial {d['trial'].nunique()} 个,镜头 {len(d)}):" + ";".join(out)
 
 
+def question_value(df: pd.DataFrame, db_path: Path, ids: set[int], lang: str) -> None:
+    """QV1 问题产出 F−E、QV2 dist_base F−E / F−C、QV3 embed_fidelity_guided F−E。只读库与 embedding 缓存。"""
+    if db_path.exists():
+        from analysis.question_value import trial_qv  # noqa: PLC0415
+        from analysis.ja_predictions import dist_base  # noqa: PLC0415
+        qv = trial_qv(db_path, ids)
+        print("  QV1 qv_yield             F−E  " + _fmt(paired(qv, "qv_yield", "F", "E") if len(qv) else None))
+        db_, miss = dist_base(df, db_path, lang)
+        d2 = df.merge(db_, on=["participant_id", "round_idx"], how="left")
+        for a, b in (("F", "E"), ("F", "C")):
+            print(f"  QV2 dist_base            {a}−{b}  " + _fmt(paired(d2, "dist_base", a, b)))
+        if miss:
+            print(f"      ⚠️ embedding 缓存缺 {miss} 条向量 → QV2 只用到有向量的 trial(补齐先跑 make embed,需授权调 OpenAI)")
+    else:
+        print(f"  QV1 / QV2:(没有 {db_path},跳过)")
+    col = "embed_fidelity_guided"
+    print(f"  QV3 {col}  F−E  " + (_fmt(paired(df, col, "F", "E")) if col in df and df[col].notna().any()
+                                     else "(CSV 里没有这一列 —— 先跑 make embed)"))
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--csv", type=Path, default=CSV)
@@ -248,7 +270,14 @@ def main(argv: list[str] | None = None) -> int:
         r = paired(src, dv, a, b) if dv in src.columns else None
         print(f"  {dv:<20} {a}−{b}  预测 {direction:<6}  " + _fmt(r))
 
-    print(f"  (不比较 {'−'.join(prereg.F_NOT_COMPARED[0])}:{prereg.F_NOT_COMPARED[1]})")
+    print("\n[F−D 探索性比较](prereg.F_VS_D_EXPLORATORY,2026-11-03 06 ㉚-4;整包比较,双侧,只报估计与 95% CI,不进判定)")
+    for dv in prereg.F_VS_D_EXPLORATORY:
+        src = comp if dv in comp.columns else df
+        print(f"  {dv:<20} F−D  " + _fmt(paired(src, dv, "F", "D") if dv in src.columns else None))
+    print(f"  (不比较:{prereg.F_NOT_COMPARED[1]})")
+
+    print("\n[提问的价值](prereg.QUESTION_VALUE_EXPLORATORY,2026-11-03 06 ㉚-5;探索性,双侧,成败都报)")
+    question_value(df, args.db, have_f, langs[0])
 
     print(f"\n[操纵检查] {prereg.F_MANIPULATION_CHECK}")
     print("  " + manipulation_check(args.db, have_f))
