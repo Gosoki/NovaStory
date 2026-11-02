@@ -161,6 +161,24 @@ def main(argv: list[str] | None = None) -> int:
     e_pos = allc.loc[allc["condition"] == "E", "round_idx"].value_counts().sort_index()
     if len(e_pos):
         print("  E 所在轮次:" + " · ".join(f"第{int(r)}轮 {n} 人" for r, n in e_pos.items()))
+
+    # prereg.JA_FINAL_SURVEY_EXPLORATORY(2026-11-02):总问卷新增两题,中国没有 → 只作日本内部的探索性描述
+    print("\n[总问卷新增两题](prereg.JA_FINAL_SURVEY_EXPLORATORY;探索性)")
+    pp = allc.drop_duplicates("participant_id")
+    if "fs_owned_cond" not in pp or pp["fs_owned_cond"].isna().all():
+        print("  owned_round 无数据(中国队列没有这两题)")
+    else:
+        conds = sorted(allc["condition"].dropna().unique())
+        cnt = pp["fs_owned_cond"].value_counts().reindex(conds, fill_value=0)
+        chi = st.chisquare(cnt.to_numpy())
+        print(f"  [FS1] 一番「自分の作品」:" + " · ".join(f"{c} {n}" for c, n in cnt.items())
+              + f"(χ² 拟合优度 p = {chi.pvalue:.3f},n = {int(cnt.sum())})")
+        both = pp[["fs_owned_cond", "fs_closest_cond"]].dropna()
+        if len(both):
+            print(f"        与「最もイメージに近い」选同一条件:{(both.iloc[:, 0] == both.iloc[:, 1]).mean():.0%}")
+    if "fs_pref_reason" in pp:
+        filled = pp["fs_pref_reason"].fillna("").astype(str).str.strip().ne("")
+        print(f"  [FS2] 「一番好き」の理由 填写:{int(filled.sum())}/{len(pp)} 人(原话不在这里打印)")
     return 0
 
 

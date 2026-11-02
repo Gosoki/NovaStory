@@ -311,6 +311,16 @@ JA_SENSITIVITY = (
     "E 所在的轮次(1–4)",
     "剔除注意力题失败者(V1)与日本的中点作答率、第 4 轮 straightline 率(对 TOST 反保守)",
 )
+# 总问卷新增两题(2026-11-02,06 ㉙;日本数据进库前写死)。中国没有这两题 → 只作日本内部的探索性分析,
+# 不进确证判定、不进合并;执行在 analysis/ja_predictions.py 末段。
+JA_FINAL_SURVEY_EXPLORATORY = (
+    {"id": "FS1", "field": "owned_round",
+     "what": "「一番『自分の作品だ』と感じたラウンド」的强制选择,按条件计数(C / D / E / F)",
+     "test": "χ² 拟合优度(各条件等概率),只作描述;另报与 closest_round 选同一条件的比例"},
+    {"id": "FS2", "field": "pref_reason",
+     "what": "「一番好き」の理由(选填自由文本)",
+     "test": "不编码、不检验;只报填写率,考察里按条件引用原话"},
+)
 # 日本的停止规则(与结果无关):满 16 人时只按招募速度与截止日决定开不开第二轮;满 32 停;
 # 采集截止 = 修论提交日前 4 周(日期向指導教員确认后填进 JA_COLLECTION_DEADLINE)。到截止日不满 16 人 →
 # F 的检验与合并都降为探索性。采集期间只看流程健康指标(完成人数、退回率、未完成调用),不看任何因变量。
@@ -453,6 +463,7 @@ def as_dict() -> dict:
                                       for p in JA_DIRECTION_PREDICTIONS],
             "descriptive_checks": [dict(x) for x in JA_DESCRIPTIVE_CHECKS],
             "sensitivity": list(JA_SENSITIVITY),
+            "final_survey_exploratory": [dict(x) for x in JA_FINAL_SURVEY_EXPLORATORY],
             "stop_rule": JA_STOP_RULE,
             "collection_deadline": JA_COLLECTION_DEADLINE,
         },

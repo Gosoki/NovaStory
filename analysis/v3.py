@@ -144,6 +144,7 @@ def load(db_path: Path) -> pd.DataFrame:
     fs = pmeta["final_survey_json"].map(lambda x: _loads(x, {}))
     for src, dst in (("pref_round", "fs_pref_round"), ("reuse_round", "fs_reuse_round"),
                      ("closest_round", "fs_closest_round"), ("effort_round", "fs_effort_round"),
+                     ("owned_round", "fs_owned_round"), ("pref_reason", "fs_pref_reason"),   # 2026-11-02 加,ja 探索性
                      ("overall_sat", "fs_overall_sat"), ("noticed_idx", "fs_noticed_idx"),
                      ("comment", "fs_comment")):
         pmeta[dst] = fs.map(lambda d, _k=src: d.get(_k))
@@ -152,7 +153,7 @@ def load(db_path: Path) -> pd.DataFrame:
     keep = ["participant_id", "lang", "seq", "status", "novice", "script_confidence",
             "attention_ok", "attention_raw",
             "fs_pref_round", "fs_reuse_round", "fs_closest_round", "fs_effort_round",
-            "fs_overall_sat", "fs_noticed_idx", "fs_comment"] + \
+            "fs_owned_round", "fs_pref_reason", "fs_overall_sat", "fs_noticed_idx", "fs_comment"] + \
            [f"nv_{k}" for k in prereg.NOVICE_CRITERION_FIELDS]
     df = df.merge(pmeta[keep], on="participant_id", how="left")
     df["lang"] = df["lang"].fillna("ja")
@@ -163,7 +164,8 @@ def load(db_path: Path) -> pd.DataFrame:
     cond_by = {(int(r.participant_id), int(r.round_idx)): r.condition
                for r in df.itertuples() if pd.notna(r.condition)}
     for src, dst in (("fs_pref_round", "fs_pref_cond"), ("fs_reuse_round", "fs_reuse_cond"),
-                     ("fs_closest_round", "fs_closest_cond"), ("fs_effort_round", "fs_effort_cond")):
+                     ("fs_closest_round", "fs_closest_cond"), ("fs_effort_round", "fs_effort_cond"),
+                     ("fs_owned_round", "fs_owned_cond")):
         df[dst] = [cond_by.get((int(pid), int(rd))) if pd.notna(rd) else None
                    for pid, rd in zip(df["participant_id"], df[src])]
     return df
@@ -402,8 +404,9 @@ def per_trial(df: pd.DataFrame) -> pd.DataFrame:
             "q_trial_mismatch": bool(r.get("q_trial_mismatch")),
             **{k: r.get(k) for k in ("fs_pref_round", "fs_reuse_round", "fs_closest_round",
                                      "fs_effort_round", "fs_overall_sat", "fs_noticed_idx", "fs_comment",
+                                     "fs_owned_round", "fs_pref_reason",
                                      "fs_pref_cond", "fs_reuse_cond", "fs_closest_cond",
-                                     "fs_effort_cond")},
+                                     "fs_effort_cond", "fs_owned_cond")},
         }
         m.update(structural_legs(r.get("final_output"),
                                  _topic_seconds(r.get("topic_json")),

@@ -460,12 +460,13 @@ def _answer_guidance(at, rnd: int, n: int, custom_idx: int = -1, ai_idx: int = -
 
 
 def _answer_final_survey(at) -> None:
-    # 4 个跨轮单选:最喜欢 / 以后想用 / 最接近一开始想的 / 最费劲
-    for i in (0, 1, 2, 3):
+    # 5 个跨轮单选:最喜欢 / 以后想用 / 最接近一开始想的 / 最费劲 / 最像自己的作品(2026-11-02 加)
+    for i in (0, 1, 2, 3, 4):
         bg = at.radio[i]
         bg.set_value(bg.options[2])           # 都选第 3 轮,便于断言
+    at.text_area(key="_fs_pref_reason").set_value("smoke-reason")   # 选填,填了要能落库
     set_sc(at, "_fs_sat", 6)
-    at.radio[4].set_value(at.radio[4].options[2])   # 操纵察觉:第 3 档「注意到 AI 参与方式不同」
+    at.radio[5].set_value(at.radio[5].options[2])   # 操纵察觉:第 3 档「注意到 AI 参与方式不同」
     btn_click(at, "提交并完成")
 
 
@@ -507,6 +508,7 @@ def _assert_db() -> None:
     assert fs["pref_round"] == 3 and fs["reuse_round"] == 3 and fs["overall_sat"] == 6, fs
     # 2026-09-02 新增的三条(跨轮保真 / 跨轮努力 / 操纵察觉开放题)
     assert fs["closest_round"] == 3 and fs["effort_round"] == 3, fs
+    assert fs["owned_round"] == 3 and fs["pref_reason"] == "smoke-reason", fs   # 2026-11-02 加(06 ㉙)
     assert fs["noticed_idx"] == 2, f"操纵察觉选项没落库：{fs.get('noticed_idx')}"
     scr = json.loads(p.iloc[0]["screening_json"])
     assert scr.get("script_confidence") == 2, scr.get("script_confidence")

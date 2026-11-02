@@ -191,6 +191,8 @@ def build(db: Path) -> dict:
             "novice": {"n": sum(bool(v) for v in crit.values()), "is": prereg.is_novice(scr)},
             "fs": {"最喜欢": fs_round("pref_round"), "最接近心里想的": fs_round("closest_round"),
                    "以后还想用": fs_round("reuse_round"), "最费劲": fs_round("effort_round"),
+                   "最像自己的作品": fs_round("owned_round"),
+                   "最喜欢的理由": (fs.get("pref_reason") or "").strip() or None,
                    "整体满意": fs.get("overall_sat"),
                    "察觉": _opt(lab, "fs", "q_noticed", fs.get("noticed_idx")),
                    "评论": (fs.get("comment") or "").strip() or None} if fs else None,

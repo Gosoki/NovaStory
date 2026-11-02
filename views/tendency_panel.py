@@ -19,7 +19,7 @@ ITEMS = ("own_mean", "own1", "own2", "own3", "soa1", "soa2",
          "imagine", "violation", "satisfaction", "tlx1")
 E_ITEMS = ("ai_q_quality", "ai_q_amount")
 BEHAVIOR = ("t_total", "pre_investment", "post_investment", "n_ai_rounds")
-FS = ("fs_pref_cond", "fs_reuse_cond", "fs_closest_cond", "fs_effort_cond")
+FS = ("fs_pref_cond", "fs_reuse_cond", "fs_closest_cond", "fs_effort_cond", "fs_owned_cond")
 EXP = ("published_idx", "bg_yes", "written_yes", "self_low", "quiz1_ok", "quiz2_ok", "quiz_both")
 # 7 点色阶(PuOr):橙 = 低分、紫 = 高分,不带好坏含义(violation / tlx1 高 = 更违背 / 更累)
 PALETTE = ("#b35806", "#f1a340", "#fee0b6", "#e4e4e4", "#d8daeb", "#998ec3", "#542788")   # 4 用浅灰,白色在分布条里看着像断开
