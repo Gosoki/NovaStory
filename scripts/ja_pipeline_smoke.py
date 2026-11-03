@@ -4,9 +4,10 @@ dev_smoke_e2e 只走 1 名被试、只查入库;analysis_smoke 用合成 CSV、�
 **app 真实写进库的日本数据,整条分析管线能不能取出来** —— 以前没人测过。这里:
 
   1. 8 名 ja 被试(两个完整 4×4 方阵)走真实界面:C / D / E / F 各一轮 + 每轮问卷(随机答案)+ 总问卷;
-     F 轮三种行为轮流 —— mixed(dev_smoke_e2e 的原流程)/ reveal_all(每题真点「表示する」再点选)/
-     self_all(每题真点「自分で書く」再写)。
-  2. 查库:被试、trial、问卷、总问卷新题、F 每题的 first_choice / revealed / n_reveal_clicks / fixed_q、事件、同意书指纹。
+     F 轮三种行为轮流 —— mixed(dev_smoke_e2e 的原流程)/ hint_pick(每题点「💡 ヒント」→「表示する」再点选)/
+     hint_decline(每题点「💡 ヒント」→「自分で書く」再写)。
+  2. 查库:被试、trial、问卷、总问卷新题、F 每题的 n_hint_clicks / revealed / n_reveal_clicks / n_hint_declines /
+     fixed_q 及其相互一致、事件、同意书指纹。
   3. 跑管线:v3 → events → stats --lang ja → f_analysis → ja_predictions → question_value → route → audit_db,
      再渲染一次研究员后台(F 的统计 caption 必须出现)。
 
@@ -63,27 +64,34 @@ E._answer_questionnaire = _answer_questionnaire   # E 的步骤函数按模块�
 
 def _f_round(at, ridx: int, mode: str) -> None:
     """F 的一轮,和真实被试一样逐题操作、点「次の質問」翻页(每翻一页就核对上一题的答案存下来了):
-    reveal_all = 每题点「表示する」(等 2 秒)再在选项控件上点选;
-    self_all   = 每题点「自分で書く」再写;其中第 2 题写到一半又点「選択肢を表示する」(字必须还在)。"""
+    hint_pick    = 每题点「💡 ヒント」→「表示する」(等 2 秒)再在选项控件上点选;
+    hint_decline = 每题点「💡 ヒント」→「自分で書く」再写;其中第 2 题先写完再点开(字必须还在,答案仍是自己写的)。"""
     at.text_area(key="_intent_input").set_value(E._INPUT["intents"][ridx - 1])
     E.btn_click(at, "确定，开始创作")
     assert at.session_state["r_phase"] == "guidance", at.session_state["r_phase"]
     qs = at.session_state["r_g_questions"]
     for i, q in enumerate(qs):
         assert at.session_state["r_g_idx"] == i, (at.session_state["r_g_idx"], i)
-        if mode == "reveal_all":
+        assert not at.segmented_control, f"第 {i} 题没点ヒント就出了选项"
+        if mode == "hint_pick":
+            E.btn_click(at, "💡 提示")
             E.btn_click(at, "显示")
             assert at.session_state["r_g_reveal"][i]["shown"], i
             want = {"opt": q["options"][rng.randrange(len(q["options"]))], "custom": ""}
             E.set_sc(at, f"_g_opt_1_{i}", want["opt"])
         else:
-            E.btn_click(at, "自己写")
             want = {"opt": None, "custom": f"自分で：案{i}-{rng.randint(1, 99)}"}
-            at.text_input(key=f"_g_custom_1_{i}").set_value(want["custom"])
-            if i == 1:   # 写到一半又点开选项:等待那一轮不渲染输入框,字必须保住(2026-11-03 修)
-                E.btn_click(at, "显示选项")
-                assert at.text_input(key=f"_g_custom_1_{i}").value == want["custom"], "点开选项后自己写的字丢了"
+            if i == 1:   # 先写完再点开ヒント:字必须保住
+                at.text_input(key=f"_g_custom_1_{i}").set_value(want["custom"])
+                E.btn_click(at, "💡 提示")
+                E.btn_click(at, "显示")
+                assert at.text_input(key=f"_g_custom_1_{i}").value == want["custom"], "点开ヒント后自己写的字丢了"
                 assert at.session_state["r_g_reveal"][i]["shown"], "点开后选项没出来"
+            else:
+                E.btn_click(at, "💡 提示")
+                E.btn_click(at, "自己写")
+                assert not at.session_state["r_g_reveal"][i]["asking"] and not at.segmented_control, i
+                at.text_input(key=f"_g_custom_1_{i}").set_value(want["custom"])
         if i < len(qs) - 1:
             E.btn_click(at, "下一问")
             got = at.session_state["r_g_answers"].get(i) or {}
@@ -127,7 +135,7 @@ def _participant(k: int) -> tuple[int, list[str], str]:
     E.btn_click(at, "提交并继续")
     E.btn_click(at, "开始")
     plan = [r["condition"] for r in at.session_state["round_plan"]]
-    mode = ("mixed", "reveal_all", "self_all")[k % 3]
+    mode = ("mixed", "hint_pick", "hint_decline")[k % 3]
     for ridx, cond in enumerate(plan, start=1):
         if cond == "F" and mode != "mixed":
             _f_round(at, ridx, mode)
@@ -179,22 +187,27 @@ def _check_db(db_path: Path) -> None:
                for rd in json.loads(g)["rounds"] for it in rd["items"]]
     e_items = [it for g in T.loc[T["condition"] == "E", "guidance_json"]
                for rd in json.loads(g)["rounds"] for it in rd["items"]]
-    with_opts = [it for it in f_items if it["options"]]
-    assert with_opts and all(it["first_choice"] in ("reveal", "self") for it in with_opts), "F 有题没记下先选什么"
-    assert all(k in it for it in f_items for k in ("revealed", "n_reveal_clicks", "fixed_q")), "F 的专有字段缺失"
+    assert all(k in it for it in f_items
+               for k in ("n_hint_clicks", "revealed", "n_reveal_clicks", "n_hint_declines", "fixed_q")), "F 的专有字段缺失"
     assert not any(it["ai_decided"] for it in f_items), "F 不该有「交给 AI」"
     assert all((it["chosen"] or "").strip() for it in f_items), "F 有题的答案是空的(翻页时没存下来?)"
-    assert not any(k in it for it in e_items for k in ("first_choice", "revealed")), "E 的 item 混进了 F 的字段"
-    n_click = sum(int(it["n_reveal_clicks"]) for it in f_items)
-    rc = EV[EV["type"] == "f_reveal_click"]
-    assert len(rc) == n_click > 0, f"f_reveal_click 事件 {len(rc)} ≠ 各题点开次数之和 {n_click}"
-    assert (EV["type"] == "f_self_click").sum() > 0, "没有 f_self_click 事件"
-    revealed = [it for it in with_opts if it["revealed"]]
+    assert not any(k in it for it in e_items for k in ("n_hint_clicks", "revealed")), "E 的 item 混进了 F 的字段"
+    bad = [it for it in f_items
+           if it["revealed"] != (it["n_reveal_clicks"] > 0) or (it["picked_option"] and not it["revealed"])
+           or (it["n_reveal_clicks"] + it["n_hint_declines"] > it["n_hint_clicks"])]
+    assert not bad, f"F 提示记录不一致:{bad[:2]}"
+    revealed = [it for it in f_items if it["revealed"]]
     assert all((not it["is_custom"]) == bool(it["picked_option"]) for it in revealed), "点开后点选的题没记 picked_option"
+    n_ev = EV["type"].value_counts()
+    for etype, field in (("f_hint_click", "n_hint_clicks"), ("f_reveal_click", "n_reveal_clicks"),
+                         ("f_hint_decline", "n_hint_declines")):
+        n_item = sum(int(it[field]) for it in f_items)
+        assert n_ev.get(etype, 0) == n_item > 0, f"{etype} 事件 {n_ev.get(etype, 0)} ≠ 各题 {field} 之和 {n_item}"
     groups = EV.loc[EV["type"] == "llm_start", "payload_json"].map(lambda s: json.loads(s).get("group"))
     assert {"F-guidance-r1", "F-final"} <= set(groups), set(groups)
-    print(f"  ✅ 库:8 人 / 32 trial / 32 份问卷;F {len(f_items)} 题(点开 {len(revealed)}、"
-          f"先选自己写 {sum(it['first_choice'] == 'self' for it in with_opts)});事件 f_reveal_click {len(rc)} 次")
+    print(f"  ✅ 库:8 人 / 32 trial / 32 份问卷;F {len(f_items)} 题(点ヒント {sum(it['n_hint_clicks'] > 0 for it in f_items)}、"
+          f"显示了选项 {len(revealed)}、点开后退回自己写 {sum(it['n_hint_declines'] > 0 for it in f_items)});"
+          f"事件 f_hint_click {n_ev.get('f_hint_click', 0)} 次")
 
 
 def main() -> int:
@@ -231,7 +244,7 @@ def main() -> int:
         ("ja_predictions", A_jp.main, ["--lang", "ja", "--csv", str(csv), "--db", str(db_path)], "[P3]"),
         ("question_value", A_qv.main, ["--db", str(db_path), "--lang", "ja"], "F(trial"),
         ("route", A_rt.main, ["--csv", str(csv), "--db", str(db_path)], "路线:**主推"),
-        ("audit_db", A_audit.main, ["--db", str(db_path)], "没记下先选什么 0(应为 0)"),
+        ("audit_db", A_audit.main, ["--db", str(db_path)], "提示记录不一致 0(应为 0)"),
     ]
     for name, fn, argv, marker in checks:
         rc, out = _cli(fn, argv)

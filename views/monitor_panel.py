@@ -287,14 +287,15 @@ def _data_health(trials: pd.DataFrame, dev_ids: set[int] = frozenset(), scope: s
                      detail=" · ".join(f"{c} {max(int(s_.get(c, 0)) - int(d_.get(c, 0)) - int(e_.get(c, 0)), 0)}"
                                        f"/{int(s_.get(c, 0))}" for c in conds),
                      re=" · ".join(f"{c} {int(r_.get(c, 0))}" for c in conds)))
-    # F(06 ㉜):点开选项的题数、一开始就选「自分で書く」的题数、题面换成固定题的题数 —— 流程健康,不是因变量
+    # F(06 ㉜):点开提示的题数、显示了选项的题数、点开后又选「自分で書く」的次数、题面换成固定题的题数 —— 流程健康,不是因变量
     if "condition" in trials and "guidance_json" in trials and (trials["condition"] == "F").any():
         items = [it for g in trials.loc[trials["condition"] == "F", "guidance_json"]
                  for rnd in _loads(g).get("rounds", []) if isinstance(rnd, dict)
                  for it in rnd.get("items", []) if isinstance(it, dict) and it.get("options")]
         if items:
-            st.caption(t("monitor.f_stats", rev=sum(bool(it.get("revealed")) for it in items),
-                         self=sum(it.get("first_choice") == "self" for it in items),
+            st.caption(t("monitor.f_stats", hint=sum(int(it.get("n_hint_clicks") or 0) > 0 for it in items),
+                         rev=sum(bool(it.get("revealed")) for it in items),
+                         decl=sum(int(it.get("n_hint_declines") or 0) for it in items),
                          fixed=sum(bool(it.get("fixed_q")) for it in items), n=len(items)))
     if len(fps) > 1:
         # B7:服务端 build 在采数中途换了 —— 输出本身不可逐字复现,这是唯一能报告的漂移证据

@@ -396,8 +396,9 @@ def _round_e(at, ridx: int) -> None:
 
 
 def _round_f(at, ridx: int) -> None:
-    """F(06 ㉜)— 与 E 同一出题,但选项默认藏起来:每题先问「要显示选项吗？［显示］［自己写］」,
-    点「显示」等 F_REVEAL_DELAY_S 才出选项;没有「交给 AI」;生成后同样可「让 AI 继续引导」。"""
+    """F(06 ㉜)— 与 E 同一出题;默认就是自己写,AI 的选项是「ヒント」:点「💡 提示」→「要显示提示吗？［显示］［自己写］」
+    → 选「显示」等 F_REVEAL_DELAY_S 才出选项;没有「交给 AI」;生成后同样可「让 AI 继续引导」。
+    和真实被试一样逐题操作、点「下一问」翻页(每翻一页核对上一题的答案存下来了)。"""
     at.text_area(key="_intent_input").set_value(_INPUT["intents"][ridx - 1])
     btn_click(at, "确定，开始创作")
     assert at.session_state["r_phase"] == "guidance", at.session_state["r_phase"]
@@ -405,57 +406,59 @@ def _round_f(at, ridx: int) -> None:
     # 桩让 key_shot / tone 的题面夹带 2 个选项:key_shot → 固定开放题面(选项保留),tone → 不问
     assert [q["dimension"] for q in qs] == ["psychology", "turning_point", "key_shot", "ending", "sound"], qs
     assert qs[2]["question"] == L("这个故事最关键的看点，你想用怎样的一格画面来呈现？") and qs[2]["fixed_q"], qs[2]
+    # 默认:输入框在,选项不在,只有「💡 提示」按钮(没有询问)
     labels = [b.label for b in at.button]
-    assert L("显示") in labels and L("自己写") in labels, labels
-    assert not at.segmented_control, "F 的选项一开始就显示出来了"
-    assert L("交给 AI 决定") not in str([w.options for w in at.segmented_control]), "F 不该有「交给 AI」"
-    btn_click(at, "下一问")                   # 两个都没选就想翻页 → 拦下
-    assert at.session_state["r_g_idx"] == 0 and any(L("请先选「显示」或「自己写」，再作答。") in e.value
-                                                     for e in at.error), [e.value for e in at.error]
+    assert at.text_input(key="_g_custom_1_0") is not None and not at.segmented_control, "F 默认应只有输入框"
+    assert L("💡 提示") in labels and L("显示") not in labels, labels
+    btn_click(at, "下一问")                   # 空着翻页 → 拦下
+    assert at.session_state["r_g_idx"] == 0 and any(_TGT_TEXT["errors.answer_open"] in e.value for e in at.error), \
+        [e.value for e in at.error]
+    # 第 0 题:提示 → 显示(等 2 秒)→ 点选 → 下一问
+    btn_click(at, "💡 提示")
+    labels = [b.label for b in at.button]
+    assert L("显示") in labels and L("自己写") in labels, "点「提示」后应出现询问"
     t0 = time.time()
-    btn_click(at, "显示")                     # 等 F_REVEAL_DELAY_S 秒才出选项
+    btn_click(at, "显示")
     waited = time.time() - t0
     rv0 = at.session_state["r_g_reveal"][0]
-    assert rv0["shown"] and rv0["first"] == "reveal" and rv0["n"] == 1, rv0
+    assert rv0["shown"] and rv0["n_hint"] == 1 and rv0["n_reveal"] == 1, rv0
     assert waited >= config.F_REVEAL_DELAY_S - 0.05, f"点开后只等了 {waited:.2f}s"
     seg = at.segmented_control
     assert seg and list(seg[0].options) == qs[0]["options"], "点开后选项没出来,或混进了「交给 AI」"
-    # 第 0 题点选、第 1 题点「自己写」,其余自己写(注入 + 跳到最后一题,同 _answer_guidance 的做法)
-    at.session_state["r_g_answers"] = {0: {"opt": qs[0]["options"][0], "custom": "", "ai_decided": False}}
-    at.session_state["r_g_idx"] = 1
-    safe_run(at)
+    set_sc(at, "_g_opt_1_0", qs[0]["options"][0])
+    btn_click(at, "下一问")
+    assert at.session_state["r_g_answers"][0]["opt"] == qs[0]["options"][0]
+    # 第 1 题:写到一半 → 提示 →「自己写」收起 → 字还在 → 写完 → 下一问
+    at.text_input(key="_g_custom_1_1").set_value("途中まで")
+    btn_click(at, "💡 提示")
     btn_click(at, "自己写")
-    assert at.session_state["r_g_reveal"][1]["first"] == "self" and not at.session_state["r_g_reveal"][1]["shown"]
-    assert not at.segmented_control and at.text_input(key="_g_custom_1_1") is not None
-    _answer_guidance_f(at, n=len(qs), skip=(0,))
+    rv1 = at.session_state["r_g_reveal"][1]
+    assert rv1["n_hint"] == 1 and rv1["n_decline"] == 1 and not rv1["shown"], rv1
+    assert at.text_input(key="_g_custom_1_1").value == "途中まで" and not at.segmented_control
+    at.text_input(key="_g_custom_1_1").set_value(_INPUT["f_custom"])
+    btn_click(at, "下一问")
+    assert at.session_state["r_g_answers"][1]["custom"] == _INPUT["f_custom"]
+    # 第 2 题:写完再点开提示 → 字还在(等待那一轮也渲染输入框)→ 答案仍是自己写的
+    at.text_input(key="_g_custom_1_2").set_value(_INPUT["f_custom"])
+    btn_click(at, "💡 提示")
+    btn_click(at, "显示")
+    assert at.text_input(key="_g_custom_1_2").value == _INPUT["f_custom"] and at.segmented_control, "点开后自己写的字丢了"
+    btn_click(at, "下一问")
+    for i in range(3, len(qs)):                # 其余题直接写
+        at.text_input(key=f"_g_custom_1_{i}").set_value(_INPUT["f_custom"])
+        btn_click(at, "完成作答，生成脚本" if i == len(qs) - 1 else "下一问")
     assert at.session_state["r_phase"] == "postgen", at.session_state["r_phase"]
     assert not [b for b in at.button if b.label == L("告诉 AI")], "F 不该出现 D 的自由描述修改入口"
-    btn_click(at, "让 AI 继续引导")          # F 生成后同 E:继续引导(题同样默认藏选项)
-    _answer_guidance_f(at, n=2)
+    btn_click(at, "让 AI 继续引导")          # F 生成后同 E:继续引导(题同样默认自己写)
+    n_fu = len(at.session_state["r_g_questions"])
+    for i in range(n_fu):
+        at.text_input(key=f"_g_custom_2_{i}").set_value(_INPUT["f_custom"])
+        btn_click(at, "完成作答，生成脚本" if i == n_fu - 1 else "下一问")
     assert at.session_state["r_n_ai_rounds"] == 1
     inject(at, "_script_edit", _SCRIPT_REV + EDIT_MARK)
     btn_click(at, "满意了，提交这一版")
     _answer_questionnaire(at, round_idx=ridx, ai_q=True,
                           attention=ridx == _q._ATTENTION_ROUND)
-
-
-def _answer_guidance_f(at, n: int, skip: tuple = ()) -> None:
-    """F:没点开过的题都按「自己写」作答(注入答案 + 显示状态,跳到最后一题再交卷)。"""
-    qs = at.session_state["r_g_questions"]
-    assert len(qs) == n, f"expected {n} questions, got {len(qs)}"
-    answers = dict(at.session_state["r_g_answers"])
-    reveal = dict(at.session_state["r_g_reveal"])
-    for i in range(n):
-        if i in skip:
-            continue
-        answers[i] = {"opt": None, "custom": _INPUT["f_custom"], "ai_decided": False}
-        if (reveal.get(i) or {}).get("first") is None:   # 渲染时建的空状态也要覆盖(真实被试先点按钮才能作答)
-            reveal[i] = {"first": "self", "n": 0, "t0": None, "shown": False}
-    at.session_state["r_g_answers"] = answers
-    at.session_state["r_g_reveal"] = reveal
-    at.session_state["r_g_idx"] = n - 1
-    safe_run(at)
-    btn_click(at, "完成作答，生成脚本")
 
 
 _ROUND_STEPS = {"C": _round_c, "D": _round_d, "E": _round_e, "F": _round_f}
@@ -590,28 +593,29 @@ def _assert_db() -> None:
     assert e["n_ai_rounds"] == 1 and e["n_hand_edits"] == 1
     assert e["t_pregen"] is not None and e["t_postgen"] is not None
 
-    if "F" in by:   # 4 条件设计(ja):F = 与 E 同一出题,选项默认藏起来(06 ㉜)
+    if "F" in by:   # 4 条件设计(ja):F = 与 E 同一出题,默认自己写、选项是要点开的「ヒント」(06 ㉜)
         f = by["F"]
         gf = json.loads(f["guidance_json"])["rounds"]
         assert [r["source"] for r in gf] == ["fixed3+ai_supplement", "ai_from_draft"], gf
         items = gf[0]["items"]
         assert [it["dimension"] for it in items] == ["psychology", "turning_point", "key_shot", "ending", "sound"]
         assert not any(it["ai_decided"] for r in gf for it in r["items"]), "F 不该有「交给 AI」"
-        assert all(it["first_choice"] in ("reveal", "self") for r in gf for it in r["items"] if it["options"]), \
-            "F 里有选项的题必须记下先点的是「表示する」还是「自分で書く」"
-        i0, i1 = items[0], items[1]
-        assert i0["revealed"] and i0["first_choice"] == "reveal" and i0["n_reveal_clicks"] == 1, i0
+        assert all((it["chosen"] or "").strip() for r in gf for it in r["items"]), "F 有题的答案是空的"
+        i0, i1, i2 = items[0], items[1], items[2]
+        assert (i0["n_hint_clicks"], i0["n_reveal_clicks"], i0["n_hint_declines"], i0["revealed"]) == (1, 1, 0, True), i0
         assert not i0["is_custom"] and i0["picked_option"] == i0["chosen"] == i0["options"][0], i0
-        assert i1["first_choice"] == "self" and not i1["revealed"] and i1["is_custom"], i1
-        assert i1["chosen"] == _INPUT["f_custom"], i1
-        assert items[2]["fixed_q"] and items[2]["options"], items[2]
+        assert (i1["n_hint_clicks"], i1["n_reveal_clicks"], i1["n_hint_declines"], i1["revealed"]) == (1, 0, 1, False), i1
+        assert i1["is_custom"] and i1["chosen"] == _INPUT["f_custom"], i1
+        assert i2["revealed"] and i2["is_custom"] and i2["chosen"] == _INPUT["f_custom"] and i2["fixed_q"], i2
+        assert all(it["n_hint_clicks"] == 0 and not it["revealed"] for it in items[3:] + gf[1]["items"])
         assert [x["author"] for x in json.loads(f["script_versions"])] == ["ai", "ai", "user_edit"]
         assert f["n_ai_rounds"] == 1 and f["n_hand_edits"] == 1
         assert f["t_pregen"] is not None and f["t_postgen"] is not None
         fev = ev[(ev["participant_id"] == f["participant_id"]) & (ev["round_idx"] == f["round_idx"])]
-        rc = fev[fev["type"] == "f_reveal_click"]
-        assert len(rc) == 1 and json.loads(rc["payload_json"].iloc[0])["wait_s"] == config.F_REVEAL_DELAY_S, rc
-        assert (fev["type"] == "f_self_click").sum() == 1, fev["type"].value_counts()
+        n_ev = fev["type"].value_counts()
+        assert (n_ev.get("f_hint_click", 0), n_ev.get("f_reveal_click", 0), n_ev.get("f_hint_decline", 0)) == (3, 2, 1), n_ev
+        rc = fev[fev["type"] == "f_reveal_click"]["payload_json"].map(json.loads)
+        assert all(x["wait_s"] == config.F_REVEAL_DELAY_S for x in rc), list(rc)
 
     assert (tr["parse_ok"] == 1).all(), "两行排版没能 100% 解析"
     assert len(q) == len(_EXPECTED_PLAN) and q["imagine_match"].notna().all()

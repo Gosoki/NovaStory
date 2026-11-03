@@ -149,7 +149,8 @@ ROUND_PAYLOAD_DEFAULTS: dict[str, Any] = {
                                   # pagination (Streamlit clears unmounted widgets)
     "r_g_idx": 0,
     "r_g_fallback": False,
-    # condition F(2026-11-03 06 ㉜):选项默认藏起来。{q_idx: {"first": "reveal"|"self", "n": 点开次数,
+    # condition F(2026-11-03 06 ㉜):默认自己写,AI 的选项是「ヒント」。{q_idx: {"asking": 询问是否显示中,
+    #   "n_hint": 点「ヒント」次数, "n_reveal": 点「表示する」次数, "n_decline": 点「自分で書く」次数,
     #   "t0": 点「表示する」的时刻(epoch 秒,等 config.F_REVEAL_DELAY_S 后显示), "shown": bool}}
     "r_g_reveal": {},
     "r_llm_wait": 0.0,

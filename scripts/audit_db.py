@@ -123,10 +123,15 @@ def main(argv: list[str] | None = None) -> int:
                 n = len(its)
                 rev = sum(bool(it.get("revealed")) for it in its)
                 own = sum(bool(it.get("is_custom")) for it in its)
-                print(f"  {lg} F: {n} 题 · 点开选项 {rev / n:.0%} · 一开始选「自分で書く」"
-                      f"{sum(it.get('first_choice') == 'self' for it in its) / n:.0%} · 最终自己写 {own / n:.0%}"
-                      f" · 题面换成固定题 {sum(bool(it.get('fixed_q')) for it in its)}"
-                      f" · 没记下先选什么 {sum(it.get('first_choice') not in ('reveal', 'self') for it in its)}(应为 0)")
+                # 一致性:显示了选项却没点过「表示する」、没显示却记了点选的选项、没点过「ヒント」却有后续 —— 都应为 0
+                bad = sum((bool(it.get("revealed")) != (int(it.get("n_reveal_clicks") or 0) > 0))
+                          or (bool(it.get("picked_option")) and not it.get("revealed"))
+                          or (int(it.get("n_hint_clicks") or 0) == 0
+                              and int(it.get("n_reveal_clicks") or 0) + int(it.get("n_hint_declines") or 0) > 0)
+                          for it in its)
+                print(f"  {lg} F: {n} 题 · 点开提示 {sum(int(it.get('n_hint_clicks') or 0) > 0 for it in its) / n:.0%}"
+                      f" · 显示了选项 {rev / n:.0%} · 最终自己写 {own / n:.0%}"
+                      f" · 题面换成固定题 {sum(bool(it.get('fixed_q')) for it in its)} · 提示记录不一致 {bad}(应为 0)")
 
     try:
         pt = v3.per_trial(v3.load(db))

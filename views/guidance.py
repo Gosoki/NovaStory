@@ -16,8 +16,8 @@ from views._streaming import _BUSY, RETRY, call_llm_json, stream_llm
 # time (AskUserQuestion-style); answers are submitted together at the end.
 #
 # Condition F(2026-11-03,docs/paper/06 ㉜)走同一个组件,只差三处:① 出题提示词多一条「题面里不写候补」;
-# ② AI 的选项默认藏起来,每题先问「選択肢を表示しますか？［表示する］［自分で書く］」,点「表示する」后
-#    等 config.F_REVEAL_DELAY_S 秒才显示;③ 没有「AI に任せる」,必须作答。E 的路径一行不变(中国可比)。
+# ② 默认就是自己写;AI 的选项是「ヒント」,点「💡 ヒント」→「ヒントを表示しますか？［表示する］［自分で書く］」,
+#    选「表示する」后等 config.F_REVEAL_DELAY_S 秒才显示;③ 没有「AI に任せる」,必须作答。E 的路径一行不变(中国可比)。
 
 _FIXED_DIMS = ("psychology", "turning_point", "key_shot")
 
@@ -89,7 +89,16 @@ def render(topic: dict) -> None:
     saved = st.session_state["r_g_answers"].get(idx, {})
     options = list(q.get("options") or [])
     f_mode = _is_f()
-    shown = bool(options) and (not f_mode or _f_reveal_gate(card, g_round, idx))
+    cust_key = f"_g_custom_{g_round}_{idx}"
+    if cust_key not in st.session_state and saved.get("custom"):
+        st.session_state[cust_key] = saved["custom"]
+    if f_mode:
+        # F(06 ㉜):默认就是自己写 —— 输入框在前;AI 的选项是「ヒント」,点按钮并确认「表示する」、等
+        # F_REVEAL_DELAY_S 才显示。输入框排在提示控件之前,等待那一轮也渲染它,写了一半的字不会被清掉。
+        card.text_input(t("guidance.f_custom_label"), key=cust_key, max_chars=300)
+        shown = bool(options) and _f_hint(card, g_round, idx)
+    else:
+        shown = bool(options)
     if shown:
         # The "leave it to the AI" choice is a real localized option (not a
         # format_func sentinel): segmented_control + format_func is not reliably
@@ -107,21 +116,8 @@ def render(topic: dict) -> None:
             key=opt_key,
             label_visibility="collapsed",
         )
-    cust_key = f"_g_custom_{g_round}_{idx}"
-    if cust_key not in st.session_state and saved.get("custom"):
-        st.session_state[cust_key] = saved["custom"]
-    if not f_mode or shown or not options:
+    if not f_mode:
         card.text_input(t("guidance.custom_label"), key=cust_key, max_chars=300)
-    elif _f_rv(idx)["first"] == "self":
-        # F 选了「自分で書く」:只有输入框;写的途中仍可点开选项(同样等 F_REVEAL_DELAY_S)
-        card.text_input(t("guidance.f_custom_label"), key=cust_key, max_chars=300)
-        if card.button(t("guidance.f_show_later"), key=f"_g_fshow2_{g_round}_{idx}"):
-            # 先把已写的字存进非 widget 存储:点开后的等待那一轮不渲染输入框,Streamlit 会在那一轮结束时
-            # 清掉它的值(2026-11-03 端到端走查发现:写了一半再点开,字就没了、也翻不了页)。
-            # 下一次渲染由上面的「saved.get('custom') → 还原」接回;不走 _save_current,免得多记一条计时事件。
-            ans = st.session_state["r_g_answers"].setdefault(idx, {"opt": None, "custom": "", "ai_decided": False})
-            ans["custom"] = st.session_state[cust_key] if cust_key in st.session_state else ""
-            _f_click_reveal(g_round, idx)
 
     cols = card.columns(2)
     # 按题加 key(2026-10-29 审计):没有 key 的按钮 id 只由标签决定、各题相同,双击「次の質問」时第二下
@@ -139,9 +135,8 @@ def render(topic: dict) -> None:
                 st.error(t("errors.answer_open"))
             elif not f_mode:
                 st.error(t("errors.answer_or_skip"))
-            else:   # F:还没选「表示する / 自分で書く」→ 先选;选了之后空着 → 写或点选
-                st.error(t("errors.answer_f" if _f_rv(idx)["first"] is None else
-                           "errors.answer_pick_or_write" if shown else "errors.answer_open"))
+            else:   # F:提示没显示 → 叫被试写;显示了 → 写或点选
+                st.error(t("errors.answer_pick_or_write" if shown else "errors.answer_open"))
             return
         _save_current(g_round, idx)
         if last:
@@ -167,27 +162,19 @@ def render(topic: dict) -> None:
 
 
 def _f_rv(idx: int) -> dict:
-    """F 这一题的选项显示状态(非 widget 存储:翻页卸载 widget 也不丢)。"""
-    return st.session_state["r_g_reveal"].setdefault(idx, {"first": None, "n": 0, "t0": None, "shown": False})
+    """F 这一题的提示状态(非 widget 存储:翻页卸载 widget 也不丢)。"""
+    return st.session_state["r_g_reveal"].setdefault(
+        idx, {"asking": False, "n_hint": 0, "n_reveal": 0, "n_decline": 0, "t0": None, "shown": False})
 
 
-def _f_click_reveal(g_round: int, idx: int) -> None:
-    rv = _f_rv(idx)
-    after_self = rv["first"] == "self"
-    rv["first"] = rv["first"] or "reveal"
-    rv["n"] += 1
-    rv["t0"] = time.time()
-    state.log_event("f_reveal_click", {"round": g_round, "q": idx, "after_self": after_self,
-                                       "wait_s": config.F_REVEAL_DELAY_S})
-    st.rerun()
-
-
-def _f_reveal_gate(card, g_round: int, idx: int) -> bool:
-    """F:这一屏要不要显示选项。还没选 → 画「選択肢を表示しますか？［表示する］［自分で書く］」;
-    点了「表示する」→ 等到 t0 + F_REVEAL_DELAY_S 再显示。按时刻算剩余时间:等待中被 rerun 打断,
-    下一次渲染接着等剩下的,不会重新计时、也不会卡住。"""
+def _f_hint(card, g_round: int, idx: int) -> bool:
+    """F 的提示(= AI 为这一题生成的选项)。返回这一屏要不要显示选项:
+    默认只有「💡 ヒント」按钮 → 点了出现「ヒントを表示しますか？［表示する］［自分で書く］」→
+    「表示する」后等到 t0 + F_REVEAL_DELAY_S 再显示(按时刻算剩余:等待中被 rerun 打断,下一次接着等);
+    「自分で書く」收起询问,之后还能再点「ヒント」。"""
     rv = _f_rv(idx)
     if rv["shown"]:
+        card.markdown(f'<div class="ns-why">{html.escape(t("guidance.f_hint"))}</div>', unsafe_allow_html=True)
         return True
     if rv["t0"] is not None:
         left = config.F_REVEAL_DELAY_S - (time.time() - rv["t0"])
@@ -197,15 +184,21 @@ def _f_reveal_gate(card, g_round: int, idx: int) -> bool:
                 time.sleep(left)
         rv["shown"] = True
         st.rerun()
-    if rv["first"] is None:
+    if rv["asking"]:
         card.markdown(f'<div class="ns-why">{html.escape(t("guidance.f_ask"))}</div>', unsafe_allow_html=True)
         c1, c2 = card.columns(2)
         if c1.button(t("guidance.f_show"), width="stretch", key=f"_g_fshow_{g_round}_{idx}"):
-            _f_click_reveal(g_round, idx)
-        if c2.button(t("guidance.f_self"), width="stretch", key=f"_g_fself_{g_round}_{idx}"):
-            rv["first"] = "self"
-            state.log_event("f_self_click", {"round": g_round, "q": idx})
+            rv.update(asking=False, n_reveal=rv["n_reveal"] + 1, t0=time.time())
+            state.log_event("f_reveal_click", {"round": g_round, "q": idx, "wait_s": config.F_REVEAL_DELAY_S})
             st.rerun()
+        if c2.button(t("guidance.f_self"), width="stretch", key=f"_g_fself_{g_round}_{idx}"):
+            rv.update(asking=False, n_decline=rv["n_decline"] + 1)
+            state.log_event("f_hint_decline", {"round": g_round, "q": idx})
+            st.rerun()
+    elif card.button(t("guidance.f_hint"), key=f"_g_fhint_{g_round}_{idx}"):
+        rv.update(asking=True, n_hint=rv["n_hint"] + 1)
+        state.log_event("f_hint_click", {"round": g_round, "q": idx})
+        st.rerun()
     return False
 
 
@@ -364,8 +357,9 @@ def _finish_round(topic: dict, g_round: int) -> None:
         })
         if f_mode:   # F 每题另记选项是怎么被看到的(06 ㉜);E 的 item 形状不变
             rv = st.session_state["r_g_reveal"].get(i, {})
-            items[-1].update(first_choice=rv.get("first"), revealed=bool(rv.get("shown")),
-                             n_reveal_clicks=int(rv.get("n", 0)), fixed_q=bool(q.get("fixed_q")))
+            items[-1].update(n_hint_clicks=int(rv.get("n_hint", 0)), revealed=bool(rv.get("shown")),
+                             n_reveal_clicks=int(rv.get("n_reveal", 0)),
+                             n_hint_declines=int(rv.get("n_decline", 0)), fixed_q=bool(q.get("fixed_q")))
 
     source = st.session_state["r_g_source"]
     intent = st.session_state["r_intent"]
