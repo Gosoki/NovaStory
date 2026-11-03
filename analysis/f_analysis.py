@@ -87,14 +87,20 @@ def _fmt(r: dict | None) -> str:
 
 def manipulation_check(db_path: Path, ids: set[int]) -> str:
     """F 的操纵检查(prereg.F_MANIPULATION_CHECK,06 ㉜):有选项的题里点开提示 / 显示了选项的多少、点开后又选自己写的次数、
-    最终自己写 vs 点选、自写字数、题面换成固定题的题数、点开造成的等待。点开率 > F_REVEAL_NEAR_E 时提示「F 接近 E」。"""
+    最终自己写 vs 点选、自写字数、题面换成固定题的题数、点开造成的等待、第一轮题数 F vs E 与丢掉的 AI 补题。
+    点开率 > F_REVEAL_NEAR_E 时提示「F 接近 E」。"""
     if not db_path.exists():
         return f"(没有 {db_path},跳过)"
     con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     try:
         rows = con.execute("SELECT participant_id, guidance_json FROM trials WHERE condition='F'").fetchall()
+        e_rows = con.execute("SELECT participant_id, guidance_json FROM trials WHERE condition='E'").fetchall()
+        shown = con.execute("SELECT participant_id, payload_json FROM events WHERE type='guidance_shown'").fetchall()
     finally:
         con.close()
+    n1 = {c: [len(json.loads(g)["rounds"][0]["items"]) for pid, g in rs
+              if int(pid) in ids and g and json.loads(g).get("rounds")] for c, rs in (("E", e_rows), ("F", rows))}
+    dropped = sum(int(json.loads(p or "{}").get("f_dropped") or 0) for pid, p in shown if pid is not None and int(pid) in ids)
     items = [it for pid, g in rows if int(pid) in ids and g
              for rnd in json.loads(g).get("rounds", []) for it in rnd.get("items", [])
              if isinstance(it, dict) and it.get("options")]
@@ -112,7 +118,9 @@ def manipulation_check(db_path: Path, ids: set[int]) -> str:
            f" · 点开后又选「自分で書く」{decl} 次"
            f" · 最终自己写 {own}({own / n:.0%})/ 点选 {picked}"
            + (f" · 自写字数 中位 {chars.median():.0f}" if len(chars) else "")
-           + f" · 题面换成固定题 {sum(bool(it.get('fixed_q')) for it in items)} · 点开等待合计 {wait:.0f} 秒")
+           + f" · 题面换成固定题 {sum(bool(it.get('fixed_q')) for it in items)} · 点开等待合计 {wait:.0f} 秒"
+           + "\n  第一轮平均题数 " + " / ".join(f"{c} {sum(v) / len(v):.1f}" for c, v in n1.items() if v)
+           + f" · 因题面夹带候补丢掉的 AI 补题 {dropped}(F−E 题数差也是整包差别的一部分,06 ㉜)")
     if rev / n > prereg.F_REVEAL_NEAR_E:
         out += f"\n  ⚠️ 点开率 > {prereg.F_REVEAL_NEAR_E:.0%}:按 06 ㉜ 写「F 在行为上接近 E」—— 零结果优先读作「选项一旦可得多数人仍会用」"
     return out

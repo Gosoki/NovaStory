@@ -240,7 +240,8 @@ def main() -> int:
 
     checks = [
         ("stats --lang ja", A_st.main, ["--lang", "ja", "--csv", str(csv)], "LMM 计划对比"),
-        ("f_analysis", A_f.main, ["--csv", str(csv), "--db", str(db_path)], "[操纵检查]"),
+        # 桩让每个 F 第一轮的 tone 题面夹带候补 → 8 人各丢 1 道 AI 补题
+        ("f_analysis", A_f.main, ["--csv", str(csv), "--db", str(db_path)], "丢掉的 AI 补题 8("),
         ("ja_predictions", A_jp.main, ["--lang", "ja", "--csv", str(csv), "--db", str(db_path)], "[P3]"),
         ("question_value", A_qv.main, ["--db", str(db_path), "--lang", "ja"], "F(trial"),
         ("route", A_rt.main, ["--csv", str(csv), "--db", str(db_path)], "路线:**主推"),

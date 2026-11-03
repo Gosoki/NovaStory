@@ -394,7 +394,8 @@ F_NOT_COMPARED = (("F", "D"), "只有生成后的指标不比(" + " / ".join(F_N
 # F 也不进中国与合并分析。
 F_MANIPULATION_CHECK = ("F 里有选项的题中:点开「ヒント」的比例(n_hint_clicks > 0)、显示了选项的比例(revealed)、"
                         "点开后又选「自分で書く」的次数(n_hint_declines)、最终自己写 vs 点选的比例(is_custom / picked_option)、"
-                        "自写回答的字数、题面换成固定题的题数(fixed_q)、点开造成的等待总秒数(n_reveal_clicks × F_REVEAL_DELAY_S);"
+                        "自写回答的字数、题面换成固定题的题数(fixed_q)、点开造成的等待总秒数(n_reveal_clicks × F_REVEAL_DELAY_S)、"
+                        "第一轮平均题数 F vs E 与因题面夹带候补丢掉的 AI 补题数(guidance_shown.f_dropped);"
                         "都作描述,不作协变量进主检验")
 # 点开率的解读(06 ㉜,日本数据前写死):F 里有选项的题被点开的比例 > 2/3 时,如实写「F 在行为上接近 E」——
 # 主检验 F−E 照报,但零结果优先读作「选项一旦可得多数人仍会用」,而不是「默认显示与否无关」。

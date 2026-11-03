@@ -132,6 +132,13 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"  {lg} F: {n} 题 · 点开提示 {sum(int(it.get('n_hint_clicks') or 0) > 0 for it in its) / n:.0%}"
                       f" · 显示了选项 {rev / n:.0%} · 最终自己写 {own / n:.0%}"
                       f" · 题面换成固定题 {sum(bool(it.get('fixed_q')) for it in its)} · 提示记录不一致 {bad}(应为 0)")
+                # 题面夹带候补 → AI 补的题不问:丢多了 F 的题就比 E 少(f_leak_probe 是开采前的同一口径)
+                n1 = {c: [len(_j(x, {})["rounds"][0]["items"]) for x in g.loc[g["condition"] == c, "guidance_json"]
+                          if _j(x, {}).get("rounds")] for c in "EF"}
+                drop = sum(int(_j(x, {}).get("f_dropped") or 0) for x in
+                           ev.loc[(ev["lang"] == lg) & (ev["type"] == "guidance_shown"), "payload_json"])
+                avg = {c: f"{sum(v) / len(v):.1f}" if v else "—" for c, v in n1.items()}
+                print(f"  {lg} F: 第一轮平均题数 F {avg['F']} / E {avg['E']} · 因题面夹带候补丢掉的 AI 补题 {drop}")
 
     try:
         pt = v3.per_trial(v3.load(db))
