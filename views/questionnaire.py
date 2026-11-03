@@ -416,7 +416,7 @@ def render() -> None:
     # E / F: rate the quality of the AI's questions (the two conditions where the AI asks).
     # ai_q_amount = did it ask too few / just right / too many; ai_q_best = which questions
     # helped (optional multi-select). Exploratory, stored for E / F only (NULL for C/D).
-    # 2026-10-27 起 F(AI 的采访式提问)也问这三题,用来比较两边对「AI 提问」的感受
+    # 2026-10-27 起 F 也问这三题(F 现为与 E 同一出题、选项按需显示,06 ㉜),用来比较两边对「AI 提问」的感受
     # (检查「AI 亲切所以分高」的可能,docs/paper/06 ㉖)。
     if state.current_round()["condition"] in ("E", "F"):
         likert("ai_q_quality", t("q.ai_q_quality"))

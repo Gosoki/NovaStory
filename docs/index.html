@@ -245,7 +245,7 @@
 <div class="progress" id="prog"></div>
 <div class="hint"><kbd>←</kbd> <kbd>→</kbd> でめくる ・ <kbd>F</kbd> 全画面</div>
 <div class="sb" id="sb" aria-hidden="true"><div class="dsb">
-      <div class="dsb-hd"><span class="dsb-ttl">絵コンテ</span><span class="dsb-sub"><span class="lbl">例</span>朝、目覚ましが鳴らなくて寝坊した（練習用のお題）</span></div>
+      <div class="dsb-hd"><span class="dsb-ttl">絵コンテ</span><span class="dsb-sub"><span class="lbl">例</span>朝、目覚ましが鳴らなくて寝坊した（説明用のお題）</span></div>
       <table class="dsb-tbl">
         <thead><tr><th>No.</th><th>カメラ</th><th>画面</th><th>内容</th><th>セリフ・音</th></tr></thead>
         <tbody>
@@ -455,8 +455,9 @@
       <div>
         <ul>
           <li>問いは <b>E と同じ</b>（固定の3観点 ＋ AI が 2–4 問）</li>
-          <li>選択肢は<b>最初は隠れている</b>：<br>「選択肢を表示しますか？」［表示する］［自分で書く］</li>
-          <li>「表示する」→「選択肢を用意しています…」<b>2秒</b>待って表示</li>
+          <li>各問は<b>まず自分で書く</b>（「✍ 自分の言葉で」）</li>
+          <li>選択肢は<b>隠れている</b>：<br>「💡 ヒント」→「ヒントを表示しますか？」［表示する］［自分で書く］</li>
+          <li>「表示する」→「選択肢を用意しています…」<b>2秒</b>待って表示（書いた字は残る）</li>
           <li><b>AI に任せる</b>はなし ── 選ぶか書くか、必ず自分で答える</li>
           <li>生成も、生成後の追加ガイドも E と同じ</li>
         </ul>
@@ -464,14 +465,14 @@
       <div class="frame" style="aspect-ratio:4/3; flex-direction:column; gap:.7em; padding:1.2em">
         <div class="muted" style="font-size:.8rem;letter-spacing:.2em">GUIDED ELICITATION · F</div>
         <div style="font-size:clamp(1rem,1.6vw,1.3rem);color:#fff;font-weight:700">主人公の心で、<br>いちばん強い思いは？</div>
-        <div class="muted" style="font-size:.85rem">選択肢を表示しますか？</div>
+        <div class="muted" style="font-size:.85rem">✍ 自分の言葉で（一言でもOK）</div>
+        <div style="width:80%;border:1px solid var(--line2);border-radius:6px;padding:.6em .8em;font-size:.85rem;color:#cbc5b9;text-align:left">…</div>
         <div style="display:flex;flex-wrap:wrap;gap:.4em;justify-content:center;font-size:.85rem;color:#cbc5b9">
-          <span style="border:1px solid var(--rose);color:var(--rose);border-radius:6px;padding:.3em .7em">表示する</span>
-          <span style="border:1px solid var(--gold);color:var(--gold);border-radius:6px;padding:.3em .7em">✍ 自分で書く</span>
+          <span style="border:1px solid var(--rose);color:var(--rose);border-radius:6px;padding:.3em .7em">💡 ヒント</span>
         </div>
       </div>
     </div>
-    <div class="note">E と F の違いは<b>選択肢を最初から見せるか</b>だけ ── 「AI の候補から選ぶ」か、「まず自分で考える」か。</div>
+    <div class="note">E と F の違いは<b>選択肢を最初から見せるか</b>と「AI に任せる」の有無 ── 「AI の候補から選ぶ」か、「まず自分で考える」か。</div>
   </section>
 
   <!-- 10 · METHOD (Williams) -->
@@ -482,7 +483,7 @@
       <div>
         <ul>
           <li>参加者内：<br>── <b>実験1（中国）</b>3つのやり方（C・D・E）× 3題 ／ <b>実験2（日本）</b>4つのやり方（C・D・E・F）× 4題</li>
-          <li><b>中国 35名</b>（職業学校での講義後 22名＋その他の成人 13名。研究者のデモ 1 件は除外）＋ <b>日本 16〜32名</b>（大学生）<br>── 中国は 18系列 × 各2人（1系列のみ1人）／日本は 16系列 × 各1〜2人</li>
+          <li><b>中国 35名</b>（職業学校での講義後 22名＋その他の成人 13名。研究者のデモ 1 件は除外）＋ <b>日本 16〜32名</b>（これから）<br>── 中国は 18系列 × 各2人（1系列のみ1人）／日本は 16系列 × 各1〜2人</li>
           <li>条件順は<b>全6並べ替え（Williams）<span class="nw">× 3題ローテーション</span></b>（日本は 4 次の Williams × 4題）</li>
           <li>募集は<b>誰でも可</b>／<b>主解析は全参加者</b><br>── 中国の約9割（32名）は映像の基礎知識のない初心者。経験者 3 名を除いても結論は変わらない（探索的）・所要 約15分（中国の実測中央値 17.5分。日本は 4 本で約20〜30分）</li>
         </ul>
