@@ -119,8 +119,15 @@ def main(argv: list[str] | None = None) -> int:
     from analysis import v3  # noqa: PLC0415
     keep = v3.included_participants(args.db)
     qv = trial_qv(args.db, keep)
+    # --lang 选的是**队列**(06 ㉞:日本招募的人选了中文也是 ja);qv 里的 lang 仍是比基线用的界面语言
+    con = sqlite3.connect(f"file:{args.db}?mode=ro", uri=True)
+    try:
+        coh = v3.read_participants(con, "id, lang").set_index("id")["cohort"]
+    finally:
+        con.close()
+    qv["cohort"] = qv["participant_id"].map(coh)
     if args.lang:
-        qv = qv[qv["lang"] == args.lang]
+        qv = qv[qv["cohort"] == args.lang]
     spec = next(x for x in prereg.QUESTION_VALUE_EXPLORATORY if x["id"] == "QV1")
     print("=" * 78)
     print("提问的价值 QV1「问题产出」(prereg.QUESTION_VALUE_EXPLORATORY,2026-11-03;探索性,只作描述)")
@@ -129,8 +136,8 @@ def main(argv: list[str] | None = None) -> int:
     if qv.empty:
         print("⛔ 没有可算的 E / F trial")
         return 1
-    for lg, g in qv.groupby("lang"):
-        print(f"\n[{lg}] 被试 {g['participant_id'].nunique()} 人")
+    for lg, g in qv.groupby("cohort"):
+        print(f"\n[{lg}] 被试 {g['participant_id'].nunique()} 人(界面语言 {g.drop_duplicates('participant_id')['lang'].value_counts().to_dict()})")
         for ln in describe(g):
             print("  " + ln)
     print("\n  读法:数值是 bigram 个数,不是字数;只说明「问出了模型默认写不出、又进了终稿的内容有多少」,"

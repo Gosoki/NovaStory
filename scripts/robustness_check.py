@@ -236,7 +236,7 @@ def section_a() -> None:
 
     seqs = sorted(s for _, s, _ in got)
     from core import config as _cfg
-    n_seq = _cfg.seq_count_for_lang("ja")   # ja = 4 条件设计的 16 格空间(2026-10-27)
+    n_seq = _cfg.seq_count_for_cohort("ja")   # ja = 4 条件设计的 16 格空间(2026-10-27)
     # 第二轮按交错顺序取(2026-10-28):0, 4, 8, 12, 1, 5, 9, 13, …
     rot = _cfg.N_ROUNDS_F
     second = sorted(range(n_seq), key=lambda k: (k % rot, k // rot))[:n - n_seq]
@@ -249,10 +249,14 @@ def section_a() -> None:
     conc_db, db.DB_PATH = db.DB_PATH, Path(tempfile.mkdtemp()) / "order.db"
     db.init_db()
     ja_order = [db.insert_participant("ja", {"a": 0}, {"is_novice": True}, passed=True)[1] for _ in range(8)]
-    zh_order = [db.insert_participant("zh", {"a": 0}, {"is_novice": True}, passed=True)[1] for _ in range(4)]
+    zh_order = [db.insert_participant("zh", {"a": 0}, {"is_novice": True}, passed=True, cohort="zh")[1]
+                for _ in range(4)]
+    # 06 ㉞:队列按招募地 —— 日本招募的人在同意页选了中文,仍进 ja 的 16 格(接着交错取,下一个是 2)
+    zh_in_ja = db.insert_participant("zh", {"a": 0}, {"is_novice": True}, passed=True)[1]
     db.DB_PATH = conc_db   # 下面的 events 并发写仍在并发库上
     ck(ja_order == [0, 4, 8, 12, 1, 5, 9, 13] and zh_order == [0, 1, 2, 3],
-       "ja 交错取格(每 4 人一个完整方阵)、zh 按编号取", f"ja {ja_order} · zh {zh_order}")
+       "ja 交错取格(每 4 人一个完整方阵)、中国队列按编号取", f"ja {ja_order} · zh {zh_order}")
+    ck(zh_in_ja == 2, "选中文的日本招募被试进 ja 的 16 格,不占中国的格子(06 ㉞)", f"seq {zh_in_ja}")
 
     ev_err: list[str] = []
 
@@ -623,10 +627,10 @@ def section_f() -> None:
            for i in at.info) or len(at.metric) >= 4,
        "空库时给出「还没有数据」而不是空白页", f"{len(at.metric)} 张卡 / {len(at.info)} 条提示")
 
-    # 正常数据:一个 ja 完成者 + 一个 zh 完成者。**两者都是正式队列**(2026-09-06 拍板:
-    # 中国中专生用 zh 正式采数,分析时按 lang 分开),所以 ja+zh 不该告警。
-    for lang, mail in (("ja", None), ("zh", None)):
-        pid, _, _ = db.insert_participant(lang, {"age_idx": 1}, {"is_novice": True}, passed=True)
+    # 正常数据:一个日本队列完成者 + 一个中国队列完成者。**两者都是正式队列**(2026-09-06 拍板;
+    # 2026-11-04 起队列按招募地,06 ㉞),所以 ja+zh 不该告警。
+    for lang, coh in (("ja", "ja"), ("zh", "zh")):
+        pid, _, _ = db.insert_participant(lang, {"age_idx": 1}, {"is_novice": True}, passed=True, cohort=coh)
         db.make_completion_code(pid)
     at = open_panel("有数据 · ja + zh 两个正式队列")
     prog = at.get("progress")
@@ -634,13 +638,13 @@ def section_f() -> None:
        f"{len(prog)} 个 progress")
     warns = " ".join(w.value for w in at.warning)
     ck("zh" not in warns, "ja + zh 不再被当成异常（两个都是正式队列）", warns[:70] or "无告警")
-    # 认 "zh: 1" 这种 mix 片段,不认裸 "zh" —— 后台还有别的 caption,裸串会假阳性。
+    # 认 "zh（zh 1）" 这种「队列（语言 人数）」片段,不认裸 "zh" —— 后台还有别的 caption,裸串会假阳性。
     caps = " ".join(c.value for c in at.caption)
-    hit = next((c.value for c in at.caption if "zh: " in c.value), "")
+    hit = next((c.value for c in at.caption if "zh（zh 1）" in c.value), "")
     ck(bool(hit), "语言构成仍以 caption 呈现（采数期看得见，只是不报警）", hit[:70] or caps[:70])
 
-    # en 才是研究员测试/脱离协议 —— 那条告警必须还在
-    pid, _, _ = db.insert_participant("en", {"age_idx": 1}, {"is_novice": True}, passed=True)
+    # 队列在 ja / zh 之外(06 ㉞ 之前的 en 行 = 研究员测试/脱离协议)—— 那条告警必须还在
+    pid, _, _ = db.insert_participant("en", {"age_idx": 1}, {"is_novice": True}, passed=True, cohort="en")
     db.make_completion_code(pid)
     at = open_panel("混入 en 会话")
     warns = " ".join(w.value for w in at.warning)

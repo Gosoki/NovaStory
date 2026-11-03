@@ -103,7 +103,8 @@ def main() -> None:
     # 走 state.load_topics:与被试同一份归一化(shot_seconds→total_seconds、整数化),
     # 直接 json.loads 会绕过它,旧 schema 下基线的镜数/总秒数会与被试实际跑的题目不同。
     # 题数按语言(2026-10-27):ja 是 4 条件设计,用前 4 题(第 4 题只有日本队列做);zh / en 用前 3 题。
-    topics = state.load_topics()[: config.rounds_for_lang(args.lang)]
+    # 2026-11-04(06 ㉞):任何语言都可能出现在日本队列(4 题)里 → 每种语言都生成 4 题的基线
+    topics = state.load_topics()[: config.N_ROUNDS_F]
     seeds = load_seeds(args.seeds_file)
     client = BatchClient.from_secrets(args.config_index, temperature=args.temperature)
     out_dir = baseline_dir(args.lang)

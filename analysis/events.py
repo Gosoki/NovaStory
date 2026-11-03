@@ -141,7 +141,7 @@ def per_trial_events(ev: pd.DataFrame, keep_ids: set | None = None) -> pd.DataFr
 
 
 from core.config import N_ROUNDS as _N_ROUNDS  # noqa: E402
-from core.config import rounds_for_lang as _rounds_for_lang  # noqa: E402
+from core.config import cohort_of as _cohort_of, rounds_for_cohort as _rounds_for_cohort  # noqa: E402
 
 _PARTICIPANT_TIME_COLS = ["t_consent", "t_intro", "t_screening", "t_intake_total",
                           "t_final_survey", "t_session_total", "completed"]
@@ -181,7 +181,8 @@ def _completed_ids(ev: pd.DataFrame, parts: pd.DataFrame | None = None) -> set:
     n = q.drop_duplicates(["participant_id", "round_idx"]).groupby("participant_id").size()
     need: dict = {}
     if parts is not None and {"id", "lang"} <= set(parts.columns):
-        need = {int(r.id): _rounds_for_lang(r.lang or "") for r in parts.itertuples()}
+        need = {int(r.id): _rounds_for_cohort(_cohort_of(r.lang, getattr(r, "cohort", None)))
+                for r in parts.itertuples()}
     return {int(i) for i, k in n.items() if k >= need.get(int(i), _N_ROUNDS)}
 
 

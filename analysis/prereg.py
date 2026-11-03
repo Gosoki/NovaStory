@@ -50,7 +50,7 @@ NOVICE_DEF = "NOT (written=='yes' AND quiz_correct==2)"
 NOVICE_CRITERION_FIELDS = ("published_idx", "background", "written", "self_rating", "quiz_correct")
 
 
-# 纳入规则:只分析**走完全部轮次**的被试(zh 3 轮、ja 4 轮,core.config.rounds_for_lang;以问卷提交数为准,
+# 纳入规则:只分析**走完全部轮次**的被试(中国队列 3 轮、日本队列 4 轮,core.config.rounds_for_cohort;以问卷提交数为准,
 # 不看 status —— 每轮问卷都交了、只是没点最后那份总问卷的人,任务数据是完整的,不该丢)。
 #
 # 这条以前只存在于 `analysis/v3.py` 的一句注释里(「status 用于纳入规则(离脱者不进
@@ -210,7 +210,9 @@ SECONDARY_ENDPOINTS = ("satisfaction", "effort_composite",
 # 本节在**见到任何日本数据之前**写死合并怎么做;stats 从这里读,不临场决定。
 # ⚠️ lang 与队列 / 采集时间 / 模型版本 / 招募场景完全共线(先中后日,10 · 2026-09-07),
 #    所以 lang 的主效应与交互**只能读作「队列差异」**,不能读作「语言 / 文化效应」。
-COHORT_LANGS = ("zh", "ja")              # 两个正式队列;其余语言(en = 研究员测试)出现即拒绝合并
+# 两个正式队列(值是**队列**,不是界面语言:2026-11-04 起队列 = 招募地,v3 的 cohort 列,06 ㉞ ——
+# 日本招募的人选了中文也是 ja);队列在这两者之外(旧的 en 行 = 研究员测试)出现即拒绝合并
+COHORT_LANGS = ("zh", "ja")
 COHORT_TARGET_N = {"zh": 36, "ja": 32}   # ja = 4 条件设计的两整轮;做不满就停在 16 = 一整轮(10 · 2026-10-27)
 WILLIAMS_ROUND_N = 18                    # = core.config.LATIN_SQUARE_N(本模块不 import 带 streamlit 的 config;
                                          #   analysis_smoke 断言两者相等)
@@ -258,7 +260,7 @@ LANG_GATE_CONTRAST = "E-D"
 # ⛔ 任何情况下都**不为了凑平衡丢弃已完成的被试**(违反纳入规则与同意书承诺)。
 
 # 一整轮 Williams 的序列数按队列分(2026-10-27):zh = 3 条件 18 序列,ja = 4 条件 16 序列
-# (core.config.seq_count_for_lang;analysis_smoke 断言两者一致)。
+# (core.config.seq_count_for_cohort;analysis_smoke 断言两者一致)。
 WILLIAMS_ROUND_N_BY_LANG = {"zh": WILLIAMS_ROUND_N, "ja": 16}
 
 # ---- 合并分析与日本队列的口径 ——【2026-10-28 定:用户授权按 docs/paper/06 ㉒ 的建议拍板(18 §1);

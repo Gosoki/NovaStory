@@ -212,14 +212,14 @@ def mechanism(shots: pd.DataFrame, cond: str) -> str:
     return f"{cond}(信息 trial {d['trial'].nunique()} 个,镜头 {len(d)}):" + ";".join(out)
 
 
-def question_value(df: pd.DataFrame, db_path: Path, ids: set[int], lang: str) -> None:
+def question_value(df: pd.DataFrame, db_path: Path, ids: set[int]) -> None:
     """QV1 问题产出 F−E、QV2 dist_base F−E / F−C、QV3 embed_fidelity_guided F−E。只读库与 embedding 缓存。"""
     if db_path.exists():
         from analysis.question_value import trial_qv  # noqa: PLC0415
         from analysis.ja_predictions import dist_base  # noqa: PLC0415
         qv = trial_qv(db_path, ids)
         print("  QV1 qv_yield             F−E  " + _fmt(paired(qv, "qv_yield", "F", "E") if len(qv) else None))
-        db_, miss = dist_base(df, db_path, lang)
+        db_, miss = dist_base(df, db_path)
         d2 = df.merge(db_, on=["participant_id", "round_idx"], how="left")
         for a, b in (("F", "E"), ("F", "C")):
             print(f"  QV2 dist_base            {a}−{b}  " + _fmt(paired(d2, "dist_base", a, b)))
@@ -239,8 +239,9 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     raw = pd.read_csv(args.csv)
-    langs = sorted(config.FOUR_COND_LANGS)
-    df = raw[raw["lang"].isin(langs)] if "lang" in raw else raw.iloc[0:0]
+    langs = sorted(config.FOUR_COND_COHORTS)   # = 日本队列(变量名沿用;06 ㉞ 起队列按招募地,不按界面语言)
+    coh = raw["cohort"] if "cohort" in raw else raw.get("lang")   # 旧 CSV 没有 cohort 列就用 lang
+    df = raw[coh.isin(langs)] if coh is not None else raw.iloc[0:0]
     f = prereg.F_CONDITION
     have_f = set(df.loc[df["condition"] == f, "participant_id"]) if len(df) else set()
     df = df[df["participant_id"].isin(have_f)]
@@ -290,7 +291,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  (不比较:{prereg.F_NOT_COMPARED[1]})")
 
     print("\n[提问的价值](prereg.QUESTION_VALUE_EXPLORATORY,2026-11-03 06 ㉚-5;探索性,双侧,成败都报)")
-    question_value(df, args.db, have_f, langs[0])
+    question_value(df, args.db, have_f)
 
     print(f"\n[操纵检查] {prereg.F_MANIPULATION_CHECK}")
     print("  " + manipulation_check(args.db, have_f))

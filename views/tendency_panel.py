@@ -94,7 +94,7 @@ def _load():
     order = (long.sort_values("round_idx").groupby("participant_id")["condition"]
                  .agg(lambda s: "→".join(s)).rename("order"))
     first = long.drop_duplicates("participant_id").set_index("participant_id")
-    pp = (first[["lang", "seq", "attention_ok", "novice", "fs_overall_sat", *FS]]
+    pp = (first[["cohort", "seq", "attention_ok", "novice", "fs_overall_sat", *FS]]
           .join(order).join(meta.set_index("participant_id")[["age_idx", "date", *EXP]]).reset_index()
           .sort_values("participant_id", ignore_index=True))
     return long, pp
@@ -121,7 +121,8 @@ def render() -> None:
     # ---- 筛选 ----
     # 选项用语言代码 / 年龄档序号,不用译文 —— 译文作选项时一切换界面语言,已选值就对不上、全被清空
     f1, f2, f3 = st.columns(3)
-    all_langs = sorted(pp["lang"].dropna().unique())
+    # 按队列筛(06 ㉞:日本招募的人选了中文也是 ja 队列),不按界面语言
+    all_langs = sorted(pp["cohort"].dropna().unique())
     langs = f1.multiselect(t("tendency.f_lang"), all_langs, key="_td_lang",
                            default=[x for x in all_langs if x != "ja"])   # ja 默认不显示(防偷看)
     drop_ages = f2.multiselect(t("tendency.f_age"), sorted(pp["age_key"].unique()), default=[],
@@ -130,7 +131,7 @@ def render() -> None:
     drop_attn = f3.checkbox(t("tendency.f_drop_attn"), key="_td_attn")
     blank_sl = f3.checkbox(t("tendency.f_blank_straight"), key="_td_sl")
     novice_only = f3.checkbox(t("tendency.f_novice_only"), key="_td_nov")
-    keep = pp["lang"].isin(langs) & ~pp["age_key"].isin(drop_ages)
+    keep = pp["cohort"].isin(langs) & ~pp["age_key"].isin(drop_ages)
     if drop_attn:
         keep &= pp["attention_ok"] != 0
     if novice_only:

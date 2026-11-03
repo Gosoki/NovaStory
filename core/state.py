@@ -258,9 +258,9 @@ def _attempt_resume() -> None:
     # Need the round plan from here on; bail (don't half-restore) if topics.json
     # has been edited below this participant's round count — same guard as enter_intro.
     topics = load_topics()
-    # 空 lang 按「非 ja」处理,与 db.insert_participant 的序列空间同口径
-    p_lang = p.get("lang") or ""
-    n_rounds = config.rounds_for_lang(p_lang)
+    # 按队列(cohort,旧行为空则按 lang),与 db.insert_participant 的序列空间同口径(06 ㉞)
+    p_cohort = config.cohort_of(p.get("lang"), p.get("cohort"))
+    n_rounds = config.rounds_for_cohort(p_cohort)
     if len(topics) < n_rounds:
         # 以前直接 return:已入组、已消耗 seq 的被试会被丢回同意页,重填问卷后才撞错 —— 还可能
         # 再入组一次。恢复身份、停在一个明确的错误页上等研究员修题库。
@@ -269,7 +269,7 @@ def _attempt_resume() -> None:
         return
     _restore_identity()
     try:
-        st.session_state["round_plan"] = plan_for_seq(p["seq"], topics, p_lang)
+        st.session_state["round_plan"] = plan_for_seq(p["seq"], topics, p_cohort)
     except ValueError:
         # seq 不在这一设计的范围里(例:4 条件设计之前用 3 条件 18 序列入组的旧 ja 行,seq 16/17)。
         # 以前会在 init_state 里抛,这个 token 的页面每次打开都崩;改为停在明确的错误页。
@@ -469,12 +469,12 @@ def forget_resume_url() -> None:
 
 # ---------------- assignment & round flow ----------------
 
-def plan_for_seq(seq: int, topics: list[dict], lang: str = "zh") -> list[dict]:
-    """seq → 本场的轮次计划。ja 走 4 条件 16 序列,其余语言走原来的 3 条件 18 序列。
-    默认值是 zh(不是 DEFAULT_LANG):不带语言调用的旧代码 / 分析脚本拿到的是中国队列的设计。"""
-    four = lang in config.FOUR_COND_LANGS
+def plan_for_seq(seq: int, topics: list[dict], cohort: str = "zh") -> list[dict]:
+    """seq → 本场的轮次计划。ja 队列走 4 条件 16 序列,其余走原来的 3 条件 18 序列(按队列,
+    不按界面语言,06 ㉞)。默认值是 zh:不带队列调用的旧代码 / 分析脚本拿到的是中国队列的设计。"""
+    four = cohort in config.FOUR_COND_COHORTS
     cond_orders, topic_orders = (_COND_ORDERS_F, _TOPIC_ORDERS_F) if four else (_COND_ORDERS, _TOPIC_ORDERS)
-    n_seq = config.seq_count_for_lang(lang)
+    n_seq = config.seq_count_for_cohort(cohort)
     if not 0 <= seq < n_seq:
         # 负数会走 Python 负索引静默返回别的排列,越界才抛 —— 两种都不该静默。
         raise ValueError(f"seq {seq} out of range [0, {n_seq})")
@@ -485,9 +485,9 @@ def plan_for_seq(seq: int, topics: list[dict], lang: str = "zh") -> list[dict]:
 
 
 def rounds_total() -> int:
-    """本场被试一共几轮:有计划就按计划,没有(还在入组前)就按会话语言。"""
+    """本场被试一共几轮:有计划就按计划,没有(还在入组前)就按新入组的队列(06 ㉞)。"""
     plan = st.session_state.get("round_plan") or []
-    return len(plan) if plan else config.rounds_for_lang(st.session_state.get("lang", DEFAULT_LANG))
+    return len(plan) if plan else config.rounds_for_cohort(config.ACTIVE_COHORT)
 
 
 def enter_intro(participant_id: int, seq: int, token: str = "") -> None:
@@ -500,15 +500,16 @@ def enter_intro(participant_id: int, seq: int, token: str = "") -> None:
     before the briefing would fold the whole briefing into round 1's reading
     time. start_rounds (called by the intro page's button) starts it."""
     topics = load_topics()
-    lang = st.session_state.get("lang", DEFAULT_LANG)
-    n_rounds = config.rounds_for_lang(lang)
+    p = db.get_participant(participant_id) or {}   # 队列以入组时写进库的为准(06 ㉞)
+    cohort = config.cohort_of(p.get("lang"), p.get("cohort"))
+    n_rounds = config.rounds_for_cohort(cohort)
     if len(topics) < n_rounds:
         raise RuntimeError(f"topics.json needs >= {n_rounds} topics")
     st.session_state["participant_id"] = participant_id
     st.session_state["seq"] = seq
     st.session_state["stage"] = "intro"
     st.session_state["round_idx"] = 1
-    st.session_state["round_plan"] = plan_for_seq(seq, topics, lang)
+    st.session_state["round_plan"] = plan_for_seq(seq, topics, cohort)
     if token:
         try:
             st.query_params["t"] = token

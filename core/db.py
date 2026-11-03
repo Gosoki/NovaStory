@@ -32,7 +32,8 @@ CREATE TABLE IF NOT EXISTS participants (
   final_survey_json TEXT,     -- whole-study survey, shown after all rounds
   finished_at TEXT,           -- set when the completion code is issued; created_at→here = whole-session time
   contact_json TEXT,          -- OPT-IN contact left on the done page: {email, want_video, note, at}
-  status TEXT NOT NULL DEFAULT 'in_progress'
+  status TEXT NOT NULL DEFAULT 'in_progress',
+  cohort TEXT                 -- 招募地队列(ja / zh);空 = 06 ㉞ 之前的行,按 lang 算(config.cohort_of)
 );
 CREATE TABLE IF NOT EXISTS trials (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -136,6 +137,8 @@ _MIGRATIONS = [
     "ALTER TABLE questionnaires ADD COLUMN attempt TEXT",
     # 采数期间改代码是被预期的(冻结允许偏差记录),可数据里没有一列说「这一行是哪个版本产生的」
     "ALTER TABLE trials ADD COLUMN app_rev TEXT",
+    # 2026-11-04(06 ㉞):队列 = 招募地,不再等于界面语言。旧行为空 → 按 lang 算(config.cohort_of)
+    "ALTER TABLE participants ADD COLUMN cohort TEXT",
 ]
 
 
@@ -205,16 +208,19 @@ def insert_participant(
     demographics: dict,
     screening: dict,
     passed: bool,
+    cohort: str | None = None,
 ) -> tuple[int, Optional[int], str]:
     """Insert a participant; returns (id, seq, token).
 
-    seq (a Williams-design sequence: 0-17 for zh/en, 0-15 for ja — see
-    config.seq_count_for_lang) is assigned at insert time as the least-used cell among
-    passed non-dev participants of the same sequence space, None when screened out.
+    cohort defaults to config.ACTIVE_COHORT — the recruitment site, independent of the
+    UI language `lang` (06 ㉞). seq (a Williams-design sequence: 0-15 for the ja cohort,
+    0-17 otherwise — see config.seq_count_for_cohort) is assigned at insert time as the
+    least-used cell among passed non-dev participants of the same cohort, None when screened out.
     token is an opaque resume handle put in the URL (?t=) so a refresh/reconnect
     restores the session instead of re-screening (which would consume a 2nd seq).
     """
     token = secrets.token_urlsafe(9)
+    cohort = cohort or config.ACTIVE_COHORT
     with _conn() as conn:
         seq: Optional[int] = None
         if passed:
@@ -233,20 +239,21 @@ def insert_participant(
             #     已经有人了,于是重复,而 5 的空缺永远没人补。
             #   · 现在:5 是唯一还空着的格子,下一个人正好补上。
             # 也因此,释放中途退出的被试不再破坏 Williams 平衡。
-            # 两个序列空间分开计数(2026-10-27):ja = 4 条件 16 序列,其余语言 = 原来的 3 条件
+            # 两个序列空间分开计数(2026-10-27):ja 队列 = 4 条件 16 序列,其余 = 原来的 3 条件
             # 18 序列。只在同一空间里挑格子 —— 否则日本行会占掉中国的格子号(补中国被试时落不进
-            # seq 0),中国行也会挤歪日本的平衡。库里还没有 ja 行时,与改之前逐个等价。
-            four = lang in config.FOUR_COND_LANGS
-            placeholders = ",".join("?" * len(config.FOUR_COND_LANGS))
-            same_space = (f"lang IN ({placeholders})" if four
-                          else f"(lang IS NULL OR lang NOT IN ({placeholders}))")
+            # seq 0),中国行也会挤歪日本的平衡。2026-11-04 起按队列(cohort,空则 lang)分,
+            # 不按界面语言:日本招募的人选了中文也进 ja 的 16 格(06 ㉞)。
+            four = cohort in config.FOUR_COND_COHORTS
+            placeholders = ",".join("?" * len(config.FOUR_COND_COHORTS))
+            same_space = (f"COALESCE(cohort, lang) IN ({placeholders})" if four
+                          else f"(COALESCE(cohort, lang) IS NULL OR COALESCE(cohort, lang) NOT IN ({placeholders}))")
             rows = conn.execute(
                 "SELECT seq, COUNT(*) FROM participants WHERE passed=1 AND seq IS NOT NULL"
                 f" AND {same_space}"
                 " AND (json_valid(screening_json) = 0"
                 "      OR COALESCE(json_extract(screening_json, '$.dev'), 0) != 1)"
                 " GROUP BY seq",
-                tuple(sorted(config.FOUR_COND_LANGS)),
+                tuple(sorted(config.FOUR_COND_COHORTS)),
             ).fetchall()
             used = {int(r[0]): int(r[1]) for r in rows if r[0] is not None}
             if four:
@@ -255,16 +262,16 @@ def insert_participant(
                 # 每 4 人就是一个完整的 4×4 Williams 方阵,停在 16 / 32 以外的人数时条件 × 轮次、
                 # 条件 × 题目、一阶残留仍平衡。按编号取的话前 4 人全是 C→D→F→E,要到 16 才平衡。
                 n_rot = config.N_ROUNDS_F   # = 题目轮转数(state 里有断言)
-                seq = min(range(config.seq_count_for_lang(lang)),
+                seq = min(range(config.seq_count_for_cohort(cohort)),
                           key=lambda k: (used.get(k, 0), k % n_rot, k // n_rot))
             else:
-                seq = min(range(config.seq_count_for_lang(lang)), key=lambda k: (used.get(k, 0), k))
+                seq = min(range(config.seq_count_for_cohort(cohort)), key=lambda k: (used.get(k, 0), k))
         cur = conn.execute(
             "INSERT INTO participants"
-            " (created_at, lang, seq, demographics_json, screening_json, passed, token, status)"
-            " VALUES (?,?,?,?,?,?,?,?)",
+            " (created_at, lang, seq, demographics_json, screening_json, passed, token, status, cohort)"
+            " VALUES (?,?,?,?,?,?,?,?,?)",
             (_now(), lang, seq, _dumps(demographics), _dumps(screening),
-             int(passed), token, "in_progress" if passed else "screened_out"),
+             int(passed), token, "in_progress" if passed else "screened_out", cohort),
         )
         return int(cur.lastrowid), seq, token
 

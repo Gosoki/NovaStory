@@ -139,7 +139,8 @@ def collect_knobs() -> dict:
         "config.N_ROUNDS": C.N_ROUNDS,
         "config.LATIN_SQUARE_N": C.LATIN_SQUARE_N,
         # 日本队列的 4 条件设计(2026-10-27,06 ㉖)
-        "config.FOUR_COND_LANGS": sorted(C.FOUR_COND_LANGS),
+        "config.FOUR_COND_COHORTS": sorted(C.FOUR_COND_COHORTS),
+        "config.ACTIVE_COHORT": C.ACTIVE_COHORT,
         "config.N_ROUNDS_F": C.N_ROUNDS_F,
         "config.LATIN_SQUARE_N_F": C.LATIN_SQUARE_N_F,
         "config.F_REVEAL_DELAY_S": C.F_REVEAL_DELAY_S,   # F 点开选项前的等待(06 ㉜)

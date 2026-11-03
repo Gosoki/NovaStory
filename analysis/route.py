@@ -38,11 +38,11 @@ def decide_route(prim: dict | None, own: dict | None, n_replicated: int,
     return "E", tier, why
 
 
-def replications(df: pd.DataFrame, db_path: Path, lang: str) -> list[tuple[str, bool | None]]:
+def replications(df: pd.DataFrame, db_path: Path) -> list[tuple[str, bool | None]]:
     """P1–P3 各自复核成功与否(None = 数据不足)。定义同 analysis/ja_predictions.py。"""
     cde = df[df["condition"].isin(prereg.CONFIRMATORY_CONDITIONS)]
     if db_path.exists():
-        d, _ = dist_base(cde, db_path, lang)
+        d, _ = dist_base(cde, db_path)
         cde = cde.merge(d, on=["participant_id", "round_idx"], how="left")
     out = []
     for p in prereg.JA_DIRECTION_PREDICTIONS:
@@ -65,8 +65,9 @@ def main(argv: list[str] | None = None) -> int:
     print("=" * 78)
 
     raw = pd.read_csv(args.csv)
-    langs = sorted(config.FOUR_COND_LANGS)
-    df = raw[raw["lang"].isin(langs)] if "lang" in raw else raw.iloc[0:0]
+    langs = sorted(config.FOUR_COND_COHORTS)   # = 日本队列(变量名沿用;06 ㉞ 起队列按招募地,不按界面语言)
+    coh = raw["cohort"] if "cohort" in raw else raw.get("lang")   # 旧 CSV 没有 cohort 列就用 lang
+    df = raw[coh.isin(langs)] if coh is not None else raw.iloc[0:0]
     have_f = set(df.loc[df["condition"] == prereg.F_CONDITION, "participant_id"])
     df = df[df["participant_id"].isin(have_f)]
     if not have_f:
@@ -79,7 +80,7 @@ def main(argv: list[str] | None = None) -> int:
     explor = covered < n_round
     prim = paired(df, prereg.F_PRIMARY["dv"], "F", "E")
     own = paired(df, "own_mean", "F", "E")
-    reps = replications(df, args.db, langs[0])
+    reps = replications(df, args.db)
     n_rep = sum(ok is True for _, ok in reps)
     route, tier, why = decide_route(prim, own, n_rep)
 

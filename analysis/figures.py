@@ -169,9 +169,10 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit(f"未找到 {CSV} —— 先跑 make v3(或用 --demo 看合成图)。不再静默退回合成数据。")
     # 复合终点只在 stats.py 内存里构建、从不写回 CSV,故这里自己算(否则主 DV 图永远出不来)
     raw = pd.read_csv(CSV)
-    if args.lang != "all" and "lang" in raw:
-        raw = raw[raw["lang"] == args.lang]
-    langs = sorted(raw["lang"].dropna().unique()) if "lang" in raw else []
+    coh = "cohort" if "cohort" in raw else "lang"   # --lang 选的是队列(06 ㉞);旧 CSV 无 cohort 列就用 lang
+    if args.lang != "all" and coh in raw:
+        raw = raw[raw[coh] == args.lang]
+    langs = sorted(raw[coh].dropna().unique()) if coh in raw else []
     if len(langs) > 1:
         print(f"⚠️ 图里混有多个队列 {langs}(不分队列、无 lang 项);分国图用 --lang zh / --lang ja")
     raw, _ = drop_non_confirmatory(raw)   # 第 4 条件 F 不进 C/D/E 的图(与 make stats 同口径)
@@ -197,8 +198,8 @@ def main(argv: list[str] | None = None) -> None:
         df = v3.load(args.db)
         if args.population == "novice" and "novice" in df.columns:
             df = df[df["novice"].astype(bool)]
-        if args.lang != "all" and "lang" in df.columns:
-            df = df[df["lang"] == args.lang]
+        if args.lang != "all" and "cohort" in df.columns:
+            df = df[df["cohort"] == args.lang]
         # 压缩比 / distinct-2 跨语言不可比(字节级、字符级),中日稿混成一组算没有意义
         mixed = "lang" in df.columns and df["lang"].nunique() > 1
         div = v3.diversity_by_group(df) if not mixed else []

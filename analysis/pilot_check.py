@@ -104,10 +104,10 @@ def check_novice(con: sqlite3.Connection, db_path: Path, lang: str | None = None
     # 此前这里单独用 `status == "done"`,于是同一份报告里 ③ 的分母与其余三项不同。
     # ③ 2026-09-07 起已不是决策闸门(见文件头),但分母仍须与其余三项同源,
     # 否则同一份报告里两个「N(纳入)」对不上,读的人会以为数据有问题。
-    p = pd.read_sql("SELECT id, lang, screening_json FROM participants", con)
+    p = v3.read_participants(con, "id, lang, screening_json")
     p = p[p["id"].isin(v3.included_participants(db_path))]
     if lang:
-        p = p[p["lang"] == lang]
+        p = p[p["cohort"] == lang]   # lang 参数 = 队列(06 ㉞)
     print(f"\n③ novice 占比  N(纳入)={len(p)}")
     if not len(p):
         print(f"   {Y} 无完成被试"); return
@@ -157,7 +157,7 @@ def run(db_path: Path = DEFAULT_DB, lang: str | None = None) -> None:
     研究员面板默认 zh —— 日本采集期间不看因变量,prereg.JA_STOP_RULE)。"""
     df = v3.load(db_path)
     if lang:
-        df = df[df["lang"] == lang]
+        df = df[df["cohort"] == lang]   # lang 参数 = 队列(06 ㉞)
     con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     try:
         n = df.groupby("condition").size().to_dict() if len(df) else {}

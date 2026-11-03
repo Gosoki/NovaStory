@@ -29,7 +29,7 @@
   },
   "consent": {
     "title": "Study Information and Informed Consent",
-    "body": "Thank you for taking part in this study!\n\n**What you will do**:  \nCreate 3 short-video storyboards on given topics, each with a different form of AI assistance, answering a few short questions after each one (about **10-15 minutes** in total).\n\n**Data**:  \nWe record the text you enter, your interactions, and your questionnaire answers, used **for academic research only** and analyzed anonymously. Nothing that could identify you will be published.\n\n**External AI service**:  \nThe text you enter (your idea, revision instructions, free-text answers) is sent to the **OpenAI API (United States)** both to **generate** the storyboard and for **analysis** (automatic evaluation and semantic-similarity computation).  \nData sent via the API is not used to train models by default and is deleted after at most 30 days. **Please do not write names, school names, or anything identifying a real person into the idea and storyboard fields.**\n\n**Publication**:  \nYour storyboards and the text you write may be quoted, anonymized, in the paper, conference presentations and slides.\n\n**Voluntary participation**:  \nParticipation is entirely voluntary. You may stop at any time by closing the page, with no negative consequences.\n\n**Contact**:  \ng2550005@stu.musashino-u.ac.jp\n\nIf you agree, please tick the box below and begin.",
+    "body": "Thank you for taking part in this study!\n\n**What you will do**:  \nCreate 4 short-video storyboards on given topics, each with a different form of AI assistance, answering a few short questions after each one (about **20-30 minutes** in total).\n\n**Data**:  \nWe record the text you enter, your interactions, and your questionnaire answers, used **for academic research only** and analyzed anonymously. Nothing that could identify you will be published. On the completion page you may optionally leave your email address; it is used only to contact you, never for analysis or publication.\n\n**External AI service**:  \nThe text you enter (your idea, revision instructions, free-text answers) is sent to the **OpenAI API (United States)** both to **generate** the storyboard and for **analysis** (automatic evaluation and semantic-similarity computation).  \nData sent via the API is not used to train models by default and is deleted after at most 30 days.  \nIn addition, when the researcher analyses the data, the text you enter and your questionnaire answers may be processed by **Anthropic's AI (Claude, United States)**.  \n**Please do not write names, school names, or anything identifying a real person into the idea and storyboard fields.**\n\n**Publication**:  \nYour storyboards and the text you write may be quoted, anonymized, in the paper, conference presentations and slides.\n\n**Voluntary participation**:  \nParticipation is entirely voluntary. You may stop at any time by closing the page, with no negative consequences.\n\n**Contact**:  \ng2550005@stu.musashino-u.ac.jp\n\nIf you agree, please tick the box below and begin.",
     "agree": "I have read the above and agree to take part in this study",
     "start": "Agree and begin",
     "no_refresh": "⚠️ Please try not to refresh or use the browser's Back button. If you refresh, the current round has to be redone (scripts you already submitted and earlier rounds are kept). Staying in the same tab resumes automatically where you left off.",
@@ -38,7 +38,7 @@
   },
   "intro": {
     "title": "Before you begin",
-    "flow": "This study has 3 rounds. Each round follows this flow:\n\n**Write your idea　→　the AI drafts a script　→ (if needed) tweak it　→　a few short questions**\n\nThe way the AI is involved changes a little each round.",
+    "flow": "This study has 4 rounds. Each round follows this flow:\n\n**Write your idea　→　the AI drafts a script　→ (if needed) tweak it　→　a few short questions**\n\nThe way the AI is involved changes a little each round.",
     "freedom": "Just put down whatever you already have in mind. A polished mini-script, a rough idea, or just the direction or mood is all fine — write it however you like, as much or as little as you want.",
     "ex_lead": "Example: if the topic were \"You overslept because your alarm didn't go off\" — for the same topic, you can write as much or as little as you like.",
     "ex_no": "Example {n}",
@@ -201,7 +201,7 @@
   },
   "final_survey": {
     "title": "Finally: looking back",
-    "hint": "Now that you've finished all three rounds, please share your overall impressions.",
+    "hint": "Now that you've finished all four rounds, please share your overall impressions.",
     "q_pref": "Which round's way of creating did you like best?",
     "q_reuse": "If you use AI to create something in the future, which round's approach would you want to use?",
     "q_closest": "Which round's result came closest to **what you first pictured**?",
@@ -209,7 +209,7 @@
     "q_owned": "In which round did the finished storyboard feel most like **your own work**?",
     "q_pref_reason": "Why did you like the round you picked as your favourite? (optional)",
     "q_overall": "Overall, how satisfied are you with this creative experience?",
-    "q_noticed": "Did you notice differences between the three rounds?",
+    "q_noticed": "Did you notice differences between the four rounds?",
     "round_n": "Round {i}",
     "comment": "Anything else you'd like to add (optional)",
     "submit": "Submit and finish",
@@ -351,7 +351,7 @@
     "health_fallback": "E/F fallback rate",
     "health_latency": "Gen latency med/p95",
     "health_none": "No events yet",
-    "lang_mix": "Language mix — {mix} (ja = Japan cohort, zh = China cohort — both are study data, analysed separately by language; en means a researcher test or an off-protocol session)",
+    "lang_mix": "Cohort (language) mix — {mix} (ja = Japan cohort [from 2026-11-04 everyone recruited in Japan, whatever language they pick] / zh = China cohort — both are study data; any other cohort [old en rows] means a researcher test or an off-protocol session)",
     "sessions_title": "Sessions in progress",
     "sessions_hint": "Sequence numbers are never reclaimed automatically — release only someone you are sure will not return.",
     "active_ws": "Browser sessions currently connected: {n}",
@@ -383,7 +383,7 @@
     "usage_by_group": "By call type: {detail}",
     "usage_note": "Token counts cover text calls only; illustrations go through a separate path that records no tokens, so they are counted per image (~$0.0022 each as measured during model selection). Convert to cost using OpenAI's current price list.",
     "seq_cohort": "Cohort: {cohort} ({n} sequences) · target: {per} completers per seq",
-    "lang_mix_ok": "Language mix — {mix}",
+    "lang_mix_ok": "Cohort (language) mix — {mix}",
     "balance_help": "Williams-sequence balance: cells should be roughly equal"
   },
   "analysis": {
@@ -429,7 +429,7 @@
     "caption": "⚠️ Do not look at ja data while the Japan cohort is being collected (that is peeking at results).",
     "open": "Show",
     "empty": "No participant has finished all rounds yet.",
-    "f_lang": "Language (cohort; ja hidden by default)",
+    "f_lang": "Cohort (ja hidden by default)",
     "f_age": "Exclude age bands",
     "f_age_none": "None excluded",
     "f_drop_attn": "Drop attention-check failures",

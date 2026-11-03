@@ -76,7 +76,7 @@ def main() -> None:
                          f"先跑: make baseline BASELINE_LANG={lang}")
     rows = []
     # 与被试同一份归一化后的题库;题数按语言(ja 4 条件设计用前 4 题,2026-10-27)
-    topics = _state.load_topics()[: config.rounds_for_lang(lang)]
+    topics = _state.load_topics()[: config.rounds_for_cohort(lang)]   # 这一语言的「主」队列做几题(ja 4、zh 3)
     for i, topic in enumerate(topics):
         texts = _load_texts(i, lang)
         title = _state.topic_text(topic, "title", lang) or f"topic{i}"

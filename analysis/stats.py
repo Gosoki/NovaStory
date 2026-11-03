@@ -721,6 +721,11 @@ def main() -> None:
         return
 
     raw = pd.read_csv(args.csv)
+    # stats 里的 "lang" 一律表示**队列**(z 参照、is_ja、topic_c、分国估计,没有一处跟文字语言有关)。
+    # 2026-11-04 起队列 = 招募地(v3 的 cohort 列,06 ㉞):日本招募的人选了中文也算 ja。旧 CSV 没有
+    # cohort 列时原样用 lang(中国 36 人 cohort = lang = zh,make stats-zh 的数字不变)。
+    if "cohort" in raw:
+        raw = raw.assign(lang=raw["cohort"])
     # ---- 队列(lang)筛选 —— 必须在 build_composites 之前:z 复合的参照样本随之而定 ----
     if args.lang != "all":
         raw = raw[raw["lang"] == args.lang]

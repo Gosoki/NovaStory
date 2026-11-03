@@ -216,7 +216,12 @@ def check_baseline(sec: dict) -> None:
     blank = {k: v for k, v in empties.items() if v}
 
     # data/baseline/ 根目录 = ja 基线;日本队列(4 条件设计)用前 4 题(2026-10-27)。
-    need = _cfg.rounds_for_lang("ja")
+    need = _cfg.rounds_for_cohort("ja")
+    # 2026-11-04(06 ㉞):日本招募的人选了中文也做 4 题 → embed 要 zh 的 4 题基线(中国只做过 3 题)
+    zh_miss = [f"topic{i}.jsonl" for i in range(need) if not (ROOT / "data" / "baseline" / "zh" / f"topic{i}.jsonl").exists()]
+    if zh_miss:
+        add(Y, "机器基线(zh)", f"日本队列里选中文的被试要用 zh 基线,缺 {zh_miss} —— 缺着时 make embed 会整体报错;"
+                              "用采数快照补(make baseline BASELINE_LANG=zh,须授权调 API)")
     have = {f.name for f in files}
     if any(f"topic{i}.jsonl" not in have for i in range(need)):
         # 只生成了一部分题:embed 会对缺题的被试整轮拿不到 Δ,而绿灯会让人以为已经齐了。

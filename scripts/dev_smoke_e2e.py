@@ -357,7 +357,8 @@ def run() -> None:
     print(f"E2E SMOKE PASSED（{E2E_LANG}）")
 
 
-_EXPECTED_PLAN = ["C", "D", "F", "E"] if E2E_LANG in config.FOUR_COND_LANGS else ["C", "D", "E"]
+# 2026-11-04 起队列按招募地(06 ㉞):不论选 zh 还是 ja,新入组都是 ACTIVE_COHORT = ja 的 4 条件设计
+_EXPECTED_PLAN = ["C", "D", "F", "E"] if config.ACTIVE_COHORT in config.FOUR_COND_COHORTS else ["C", "D", "E"]
 
 
 def _round_c(at, ridx: int) -> None:
@@ -725,7 +726,7 @@ def _resume_check() -> None:
     ss = at.session_state
     assert ss["participant_id"] == pid, ss["participant_id"]
     assert ss["stage"] == "rounds" and ss["round_idx"] == 2, (ss["stage"], ss["round_idx"])
-    assert ss["seq"] == seq and len(ss["round_plan"]) == config.rounds_for_lang("ja")
+    assert ss["seq"] == seq and len(ss["round_plan"]) == config.rounds_for_cohort("ja")
     assert len(db.load_table("participants")) == before, "resume inserted a duplicate row"
     print("resume ok: refresh restored round 2, no duplicate participant / seq")
 

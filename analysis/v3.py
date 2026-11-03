@@ -39,6 +39,16 @@ _TAGS = prereg.SHOT_TAGS   # 与 views/questionnaire 同源,别各写一份
 
 # ---------------- load ----------------
 
+def read_participants(con, cols: str) -> pd.DataFrame:
+    """participants 的指定列(须含 lang)+ `cohort` 队列列。队列 = 招募地,2026-11-04 起入组时写进
+    cohort 列(06 ㉞);旧库 / 旧行没有 → 按 lang 算(config.cohort_of),中国 36 人 = zh。"""
+    has = any(r[1] == "cohort" for r in con.execute("PRAGMA table_info(participants)"))
+    parts = pd.read_sql(f"SELECT {cols}{', cohort' if has else ''} FROM participants", con)
+    raw = parts["cohort"] if has else [None] * len(parts)
+    parts["cohort"] = [config.cohort_of(lg, c) for lg, c in zip(parts["lang"], raw)]
+    return parts
+
+
 def included_participants(db_path) -> set[int]:
     """分析纳入的被试 id —— **每一个取数口都必须用它**,不能各写各的。
 
@@ -56,7 +66,7 @@ def included_participants(db_path) -> set[int]:
     (`pilot_check` 更是用了第三种口径 `status=='done'`,同一份报告里两个分母。)"""
     con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     try:
-        parts = pd.read_sql("SELECT id, created_at, lang, screening_json FROM participants", con)
+        parts = read_participants(con, "id, created_at, lang, screening_json")
         quest = pd.read_sql("SELECT participant_id, round_idx FROM questionnaires", con)
     finally:
         con.close()
@@ -67,8 +77,8 @@ def included_participants(db_path) -> set[int]:
         if len(quest):
             n = (quest.drop_duplicates(["participant_id", "round_idx"])
                       .groupby("participant_id").size())
-            # 轮数按被试语言(2026-10-27):ja 是 4 条件设计,要交满 4 份;其余 3 份。
-            need = {int(r.id): config.rounds_for_lang(r.lang or "") for r in parts.itertuples()}
+            # 轮数按队列(2026-10-27;11-04 起按 cohort 不按语言):ja 是 4 条件设计,要交满 4 份;其余 3 份。
+            need = {int(r.id): config.rounds_for_cohort(r.cohort) for r in parts.itertuples()}
             ids &= {int(i) for i, k in n.items() if k >= need.get(int(i), config.N_ROUNDS)}
         else:
             ids = set()
@@ -86,9 +96,9 @@ def load(db_path: Path) -> pd.DataFrame:
     try:
         trials = pd.read_sql("SELECT * FROM trials", con)
         quest = pd.read_sql("SELECT * FROM questionnaires", con)
-        parts = pd.read_sql(
-            "SELECT id, created_at, lang, seq, status, screening_json, final_survey_json,"
-            " attention_ok, attention_raw FROM participants", con)
+        parts = read_participants(
+            con, "id, created_at, lang, seq, status, screening_json, final_survey_json,"
+                 " attention_ok, attention_raw")
     finally:
         con.close()
     keep_ids = included_participants(db_path)
@@ -150,13 +160,14 @@ def load(db_path: Path) -> pd.DataFrame:
         pmeta[dst] = fs.map(lambda d, _k=src: d.get(_k))
     # attention_ok / attention_raw:docs/paper/04 §敏感性分析写着「剔除 attention 失败」,但此前
     # 全库没有任何代码读这两列 —— 先让它们进 CSV;剔不剔、怎么剔是冻结口径,不在这里悄悄做。
-    keep = ["participant_id", "lang", "seq", "status", "novice", "script_confidence",
+    keep = ["participant_id", "lang", "cohort", "seq", "status", "novice", "script_confidence",
             "attention_ok", "attention_raw",
             "fs_pref_round", "fs_reuse_round", "fs_closest_round", "fs_effort_round",
             "fs_owned_round", "fs_pref_reason", "fs_overall_sat", "fs_noticed_idx", "fs_comment"] + \
            [f"nv_{k}" for k in prereg.NOVICE_CRITERION_FIELDS]
     df = df.merge(pmeta[keep], on="participant_id", how="left")
     df["lang"] = df["lang"].fillna("ja")
+    df["cohort"] = df["cohort"].replace("", None).fillna(df["lang"])
     df["novice"] = df["novice"].fillna(False).astype(bool)
 
     # 跨轮强制选择问的是「哪一轮」,但分析要的是「哪个条件」—— 轮次↔条件的映射
@@ -384,6 +395,9 @@ def per_trial(df: pd.DataFrame) -> pd.DataFrame:
             # 被试在同意页选的语言(ja/zh/en)。prompt / 题目情境 / 分镜解析 / 量表 /
             # embedding 保真Δ 全都随语言变,故必须能按它切分或过滤,且报告要写明语言构成。
             "lang": r.get("lang") or "ja",
+            # 队列 = 招募地(06 ㉞):所有「按队列」的分析(stats / f_analysis / route / ja_predictions …)
+            # 筛这一列;lang 只管跟语言有关的(基线、embedding、文本统计)。
+            "cohort": r.get("cohort") or r.get("lang") or "ja",
             # 主分析人群与纳入/平衡列(2026-09-01 拍板 2.1)。novice 由 load() 从
             # screening_json 的原始 5 项重算;nv_* 是 5 个子项,用来分报「哪一项筛掉了人」
             # (试测时若 novice 占比不足,要靠它判断该收紧招募还是放宽到 4-of-5)。
@@ -525,11 +539,12 @@ def main() -> None:
     fails = {k: int((sub[f"nv_{k}"] == False).sum())  # noqa: E712 — NaN 安全,不能改 `not`
              for k in prereg.NOVICE_CRITERION_FIELDS}
     print(f"    未满足人数(按子项): {fails}\n")
-    if "lang" in pt.columns:
-        mix = pt.groupby("lang")["participant_id"].nunique().to_dict()
-        # ja=日本队列 / zh=中国队列,都是正式数据(2026-09-06);只有 en 才要确认剔除。
-        note = "" if set(mix) <= {"ja", "zh"} else "   ⚠️ 出现 en 会话(研究员测试/脱离协议)——分析前确认是否剔除"
-        print(f"=== 被试语言构成(人数)=== {mix}{note}\n")
+    if "cohort" in pt.columns:
+        sub = pt.drop_duplicates("participant_id")
+        mix = {c: g["lang"].value_counts().to_dict() for c, g in sub.groupby("cohort")}
+        # ja=日本队列(11-04 起含选了中文 / 英文的人)/ zh=中国队列,都是正式数据;队列在这两者之外才要确认剔除。
+        note = "" if set(mix) <= {"ja", "zh"} else "   ⚠️ 出现正式队列以外的会话(旧 en = 研究员测试/脱离协议)——分析前确认是否剔除"
+        print(f"=== 被试构成(队列 → 界面语言:人数)=== {mix}{note}\n")
     have = [c for c in _SUMMARY_COLS if c in pt.columns]
     print("=== 按条件均值(核心对比 C/D/E;日本另有 F,只在日本内部比)===")
     with pd.option_context("display.width", 200, "display.max_columns", 40,

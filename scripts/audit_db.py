@@ -48,7 +48,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     try:
-        parts = pd.read_sql("SELECT id, lang, seq, status, created_at, screening_json FROM participants", con)
+        parts = v3.read_participants(con, "id, lang, seq, status, created_at, screening_json")
         trials = pd.read_sql("SELECT participant_id, round_idx, condition, final_output, guidance_json, script_versions,"
                              " revision_requests, n_ai_rounds, app_rev, model FROM trials", con)
         ev = pd.read_sql("SELECT participant_id, round_idx, type, payload_json, ts FROM events", con)
@@ -56,18 +56,21 @@ def main(argv: list[str] | None = None) -> int:
         con.close()
     parts["dev"] = parts["screening_json"].map(lambda x: bool(_j(x, {}).get("dev")))
     parts["lang"] = parts["lang"].fillna("?")
+    parts["cohort"] = parts["cohort"].replace("", "?")
     keep = v3.included_participants(db)
-    lang_of = dict(zip(parts["id"], parts["lang"]))
+    # 下面各段的分组标签都是**队列**(06 ㉞:日本招募的人选了中文也是 ja),变量名沿用 lang
+    lang_of = dict(zip(parts["id"], parts["cohort"]))
     real = parts[~parts["dev"]]
 
     print("=" * 78)
     print(f"数据层审计 · {db}  (只读;只输出汇总)  最新入组 {parts['created_at'].max()}")
     print("=" * 78)
     print("\n[入组](非测试行)")
-    for lg, g in real.groupby("lang"):
+    for lg, g in real.groupby("cohort"):
         n_keep = len(set(g["id"]) & keep)
         st = g["status"].value_counts().to_dict()
-        print(f"  {lg}: {len(g)} 行 {st};纳入分析 {n_keep} 人(交满 {config.rounds_for_lang(lg)} 份问卷)")
+        print(f"  {lg}: {len(g)} 行 {st};纳入分析 {n_keep} 人(交满 {config.rounds_for_cohort(lg)} 份问卷)"
+              f" · 界面语言 {g['lang'].value_counts().to_dict()}")
     print(f"  测试 / 已释放行:{int(parts['dev'].sum())}")
 
     ev = ev[ev["participant_id"].isin(set(real["id"]))].copy()
@@ -147,7 +150,7 @@ def main(argv: list[str] | None = None) -> int:
         pt = None
     if pt is not None and len(pt):
         print("\n[作答质量](纳入被试)")
-        for lg, g in pt.groupby("lang"):
+        for lg, g in pt.groupby("cohort"):
             att = g.drop_duplicates("participant_id")["attention_ok"]
             sl = g.groupby("round_idx")["straightline"].mean() if "straightline" in g else pd.Series(dtype=float)
             print(f"  {lg}: 注意力题失败 {int((att == 0).sum())}/{int(att.notna().sum())} 人 · straightline 按轮次 "

@@ -40,8 +40,10 @@ def _vec(cache: dict, text: str) -> np.ndarray | None:
     return None if v is None else np.asarray(v, dtype=float)
 
 
-def dist_base(csv_df: pd.DataFrame, db_path: Path, lang: str) -> tuple[pd.DataFrame, int]:
-    """P1 的 DV:1 − cos(终稿, 同语言同题机器基线质心)。返回 (participant_id, round_idx, dist_base) 与缓存缺失数。"""
+def dist_base(csv_df: pd.DataFrame, db_path: Path) -> tuple[pd.DataFrame, int]:
+    """P1 的 DV:1 − cos(终稿, 同语言同题机器基线质心)。返回 (participant_id, round_idx, dist_base) 与缓存缺失数。
+    基线语言按**每个 trial 的界面语言**(csv 的 lang 列)取 —— 日本队列里有选中文的人(06 ㉞),整批用一种
+    语言的基线会把中文终稿拿去比日语质心。"""
     from core import state  # noqa: PLC0415 —— 与 embed.compute 同一份题库归一化
     cache = json.loads(embed.CACHE.read_text()) if embed.CACHE.exists() else {}
     topics = state.load_topics()
@@ -51,7 +53,7 @@ def dist_base(csv_df: pd.DataFrame, db_path: Path, lang: str) -> tuple[pd.DataFr
         tr = pd.read_sql("SELECT participant_id, round_idx, topic_json, final_output FROM trials", con)
     finally:
         con.close()
-    keys = csv_df[["participant_id", "round_idx"]].drop_duplicates()
+    keys = csv_df[["participant_id", "round_idx", "lang"]].drop_duplicates(["participant_id", "round_idx"])
     tr = tr.merge(keys, on=["participant_id", "round_idx"])
     cents, rows, missing = {}, [], 0
     for r in tr.itertuples():
@@ -59,17 +61,18 @@ def dist_base(csv_df: pd.DataFrame, db_path: Path, lang: str) -> tuple[pd.DataFr
                                             embed.BASELINE_LANG))
         if ti is None:
             continue
-        if ti not in cents:
-            vs = [_vec(cache, t) for t in embed._baseline_texts(ti, topics, lang)]
+        key = (ti, r.lang)
+        if key not in cents:
+            vs = [_vec(cache, t) for t in embed._baseline_texts(ti, topics, r.lang)]
             missing += sum(v is None for v in vs)
             vs = [v for v in vs if v is not None]
-            cents[ti] = np.mean(vs, axis=0) if vs else None
+            cents[key] = np.mean(vs, axis=0) if vs else None
         f = _vec(cache, r.final_output)
-        if f is None or cents[ti] is None:
+        if f is None or cents[key] is None:
             missing += f is None
             continue
         rows.append({"participant_id": r.participant_id, "round_idx": r.round_idx,
-                     "dist_base": 1.0 - embed.cosine(f, cents[ti])})
+                     "dist_base": 1.0 - embed.cosine(f, cents[key])})
     return pd.DataFrame(rows, columns=["participant_id", "round_idx", "dist_base"]), missing
 
 
@@ -94,7 +97,9 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     raw = pd.read_csv(args.csv)
-    df = raw[(raw["lang"] == args.lang) & raw["condition"].isin(prereg.CONFIRMATORY_CONDITIONS)]
+    # --lang 选的是**队列**(06 ㉞:日本招募的人选了中文也是 ja);旧 CSV 没有 cohort 列就用 lang
+    raw = raw.assign(cohort=raw["cohort"] if "cohort" in raw else raw["lang"])
+    df = raw[(raw["cohort"] == args.lang) & raw["condition"].isin(prereg.CONFIRMATORY_CONDITIONS)]
     n = df["participant_id"].nunique()
     print("=" * 78)
     print(f"方向复核预测(prereg.JA_DIRECTION_PREDICTIONS,2026-10-28)· 队列 {args.lang} · 被试 {n} 人"
@@ -105,7 +110,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     if args.db.exists():
-        db_, miss = dist_base(df, args.db, args.lang)
+        db_, miss = dist_base(df, args.db)
         df = df.merge(db_, on=["participant_id", "round_idx"], how="left")
         if miss:
             print(f"  ⚠️ embedding 缓存缺 {miss} 条向量(终稿或基线)→ P1 只用到有向量的 trial;"
@@ -144,7 +149,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # prereg.JA_SENSITIVITY 的变量读数(2026-10-29):「加 / 不加」的模型版本在日本数据进库后按这些变量跑,
     # 这里先把它们算出来、按条件 / 轮次摆开(描述性,不是检验;不替换任何主估计)
-    allc = raw[raw["lang"] == args.lang]
+    allc = raw[raw["cohort"] == args.lang]
     print("\n[预先声明敏感性的变量读数](prereg.JA_SENSITIVITY;描述性)")
     for item in prereg.JA_SENSITIVITY:
         print(f"  · {item}")

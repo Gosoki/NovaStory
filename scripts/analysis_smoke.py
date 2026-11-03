@@ -232,10 +232,10 @@ def run(tmp: Path) -> None:
     # 门控必须拦下(只测「放行」的话,一个永远放行的门控也是绿的)。
     from core import config as C_cfg  # noqa: PLC0415
     assert prereg.WILLIAMS_ROUND_N == C_cfg.LATIN_SQUARE_N, "prereg.WILLIAMS_ROUND_N ≠ config.LATIN_SQUARE_N"
-    assert prereg.WILLIAMS_ROUND_N_BY_LANG["ja"] == C_cfg.seq_count_for_lang("ja"), \
+    assert prereg.WILLIAMS_ROUND_N_BY_LANG["ja"] == C_cfg.seq_count_for_cohort("ja"), \
         "prereg 的日本一整轮 ≠ config 的 ja 序列数(4 条件设计,2026-10-27)"
-    zh_part = merged.assign(lang="zh")
-    ja_part = merged.assign(lang="ja", participant_id=merged["participant_id"] + 100000)
+    zh_part = merged.assign(lang="zh", cohort="zh")   # 队列看 cohort 列(06 ㉞),两列一起设
+    ja_part = merged.assign(lang="ja", cohort="ja", participant_id=merged["participant_id"] + 100000)
     zh_csv, mix_csv = tmp / "zh_only.csv", tmp / "mixed.csv"
     zh_part.to_csv(zh_csv, index=False)
     pd.concat([zh_part, ja_part]).to_csv(mix_csv, index=False)
@@ -323,7 +323,7 @@ def run(tmp: Path) -> None:
     _, out_ref = quiet(lambda: _cli(A_stats.main, ["--csv", str(zh_csv)]))
     assert out_zh.split("=" * 78)[-1] == out_ref.split("=" * 78)[-1], \
         "--lang zh 的结果随另一队列进库而变了(z 没有先筛语言?)"
-    pd.concat([zh_part, ja_part.assign(lang="en")]).to_csv(mix_csv, index=False)   # 混进研究员测试会话
+    pd.concat([zh_part, ja_part.assign(lang="en", cohort="en")]).to_csv(mix_csv, index=False)   # 混进研究员测试会话
     try:
         quiet(lambda: _cli(A_stats.main, ["--csv", str(mix_csv)]))
         raise AssertionError("混进 en 会话竟然照常合并")

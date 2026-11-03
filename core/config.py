@@ -47,13 +47,16 @@ MIN_INTENT_CHARS = 8
 LATIN_SQUARE_N = 18
 
 # ---- 日本队列:4 条件设计(2026-10-27,docs/paper/06 ㉖)----
-# ja 被试做 C / D / E / F 四个条件;zh / en 保持上面的 3 条件 18 序列 —— 中国队列是已采完的
+# 日本队列做 C / D / E / F 四个条件;中国队列保持上面的 3 条件 18 序列 —— 中国队列是已采完的
 # 数据,它的轮数、序列表、序列计数一个都不能变。F = 与 E 相同的出题流程,只是 AI 的选项默认藏起来
 # (views/guidance.py 的 F 模式;2026-11-03 06 ㉜ 取代 ㉖ 的「想いを聞く」采访)。
 # 4 条件 Williams 方阵 4 个序列 × 4 个题目轮换 = 16(state._COND_ORDERS_F / _TOPIC_ORDERS_F)。
-# ⚠️ 轮数写死在各语言的文案里(ja「4 つのお題 / 全 4 ラウンド / 約15〜20分」,zh / en 是 3):
-#    改这个集合时要同步改 i18n/locales 的 consent.body、intro.flow、final_survey.hint / q_noticed。
-FOUR_COND_LANGS = frozenset({"ja"})
+# 队列 = 招募地,不是界面语言(2026-11-04,06 ㉞):新入组的被试一律记 ACTIVE_COHORT,不论在同意页选
+# ja / zh / en;库里 cohort 为空的旧行按原来的 lang 算(cohort_of)—— 中国 36 人 = zh。
+# ⚠️ 轮数写死在三语文案里(「4 つのお題 / 全 4 ラウンド / 約20〜30分」等):改 ACTIVE_COHORT 时要同步改
+#    i18n/locales 的 consent.body、intro.flow、final_survey.hint / q_noticed。
+FOUR_COND_COHORTS = frozenset({"ja"})
+ACTIVE_COHORT = "ja"
 N_ROUNDS_F = 4
 LATIN_SQUARE_N_F = 16
 # F 点「表示する」之后,等这么久才显示 AI 的选项(2026-11-03 用户:「不能是一点开就显示,而是要假装等一会」→ 2 秒)。
@@ -61,14 +64,19 @@ LATIN_SQUARE_N_F = 16
 F_REVEAL_DELAY_S = 2.0
 
 
-def rounds_for_lang(lang: str) -> int:
-    """这一语言的被试做几轮(ja 4、其余 3)。"""
-    return N_ROUNDS_F if lang in FOUR_COND_LANGS else N_ROUNDS
+def cohort_of(lang: str | None, cohort: str | None = None) -> str:
+    """一位被试属于哪个队列:有 cohort 就用它,旧行(cohort 为空)按原来的 lang(06 ㉞)。"""
+    return cohort or lang or ""
 
 
-def seq_count_for_lang(lang: str) -> int:
-    """这一语言的序列空间大小(ja 16、其余 18)。两个空间分开计数,见 db.insert_participant。"""
-    return LATIN_SQUARE_N_F if lang in FOUR_COND_LANGS else LATIN_SQUARE_N
+def rounds_for_cohort(cohort: str) -> int:
+    """这一队列的被试做几轮(ja 4、其余 3)。"""
+    return N_ROUNDS_F if cohort in FOUR_COND_COHORTS else N_ROUNDS
+
+
+def seq_count_for_cohort(cohort: str) -> int:
+    """这一队列的序列空间大小(ja 16、其余 18)。两个空间分开计数,见 db.insert_participant。"""
+    return LATIN_SQUARE_N_F if cohort in FOUR_COND_COHORTS else LATIN_SQUARE_N
 
 # ---- guided elicitation (condition E) ----
 # Round 1 = 3 fixed expert dimensions + 2-4 AI-chosen supplements (5-7 total);

@@ -63,12 +63,15 @@ def render() -> None:
     if parts.empty:
         st.info(t("monitor.empty"))
         return
+    # 队列 = 招募地(cohort;旧行为空则按 lang),不是界面语言 —— 日本招募的人选了中文也算 ja(06 ㉞)
+    parts = parts.assign(cohort=[config.cohort_of(lg, c) for lg, c in
+                                 zip(parts.get("lang", [None] * len(parts)), parts.get("cohort", [None] * len(parts)))])
 
     # 库里一有 ja 行(2026-10-29 审计):健康 / 用量 / 平衡只统计日本队列 —— 混着中国的数据,「未完成调用」
     # 一开采就是 54%,07 §3.6 第 8 步「超过 25% 就暂停放人」从第一天起就误触发;采集期间也不显示因变量。
     scope = None
-    if "lang" in parts and parts["lang"].isin(config.FOUR_COND_LANGS).any():
-        scope = {int(i) for i in parts.loc[parts["lang"].isin(config.FOUR_COND_LANGS), "id"]}
+    if parts["cohort"].isin(config.FOUR_COND_COHORTS).any():
+        scope = {int(i) for i in parts.loc[parts["cohort"].isin(config.FOUR_COND_COHORTS), "id"]}
 
     _overview(parts)
     _sessions(parts, trials)
@@ -99,20 +102,20 @@ def _overview(parts: pd.DataFrame) -> None:
         c[2].metric(t("monitor.novice_share"), "—" if pd.isna(nov) else f"{nov:.0%}",
                     help=t("monitor.novice_done", n=int(nov_flags.sum())))
     # 库里一有 ja 行,进度条就只数日本队列(中国 36 人早已满,混在一起这条线永远是 100%)
-    is_ja = parts["lang"].isin(config.FOUR_COND_LANGS) if "lang" in parts else None
-    if is_ja is not None and is_ja.any():
+    is_ja = parts["cohort"].isin(config.FOUR_COND_COHORTS)
+    if is_ja.any():
         target, n_done = _TARGET_N_JA, int(((parts["status"] == "done") & is_ja).sum())
     else:
         target, n_done = _TARGET_N, done
     st.progress(min(n_done / target, 1.0),
                 text=t("monitor.progress", n=target, done=n_done,
                        remain=max(target - n_done, 0)))
-    # 语言构成:ja=日本队列、zh=中国队列,两者都是正式数据(2026-09-06 拍板,分析时按
-    # lang 分开即可);只有 en 才是研究员测试或脱离协议的会话 —— 采数期就要看见,
-    # 不能等到分析时才发现(那时已无法补救)。
-    if "lang" in parts and len(parts):
-        mix = parts["lang"].fillna("ja").value_counts().to_dict()
-        line = " / ".join(f"{k}: {v}" for k, v in mix.items())
+    # 队列 / 语言构成:ja=日本队列(2026-11-04 起含选了中文 / 英文的人,06 ㉞)、zh=中国队列,两者都是
+    # 正式数据;队列落在这两个之外(旧的 en 行)才是研究员测试或脱离协议的会话 —— 采数期就要看见。
+    if len(parts):
+        lg = parts["lang"].fillna("?") if "lang" in parts else pd.Series("?", index=parts.index)
+        mix = {c: g.value_counts().to_dict() for c, g in lg.groupby(parts["cohort"].replace("", "?"))}
+        line = " / ".join(f"{c}（" + ", ".join(f"{k} {v}" for k, v in m.items()) + "）" for c, m in mix.items())
         if set(mix) <= {"ja", "zh"}:
             st.caption(t("monitor.lang_mix_ok", mix=line))
         else:   # 告警保留完整说明:它正是要在采数期就被看懂的那一条
@@ -173,7 +176,7 @@ def _sessions(parts: pd.DataFrame, trials: pd.DataFrame) -> None:
         # 否则研究员看到的「最后活动」会比实际早 9 小时,判断人走没走时会误判。
         c[2].write(_jst(r.get("created_at")))
         c[3].write(_jst(last_seen.get(pid)))
-        n_total = config.rounds_for_lang(r.get("lang") or "")
+        n_total = config.rounds_for_cohort(r.get("cohort") or "")
         n_q = int(n_rounds.get(pid, 0))
         c[4].write(f"{n_q}/{n_total}")
         if n_q >= n_total:
@@ -389,13 +392,12 @@ def _progress(parts: pd.DataFrame) -> None:
             # recruiting until each hits target (over-recruit absorbs dropouts, #21).
             done = parts[parts["status"] == "done"]
             # 两个序列空间分开看(db.insert_participant):库里一有 ja 行,就看日本的 16 格。
-            is_ja = parts["lang"].isin(config.FOUR_COND_LANGS) if "lang" in parts else None
-            if is_ja is not None and is_ja.any():
-                done = done[done["lang"].isin(config.FOUR_COND_LANGS)]
+            is_ja = parts["cohort"].isin(config.FOUR_COND_COHORTS)
+            if is_ja.any():
+                done = done[done["cohort"].isin(config.FOUR_COND_COHORTS)]
                 n_cells, per, cohort = config.LATIN_SQUARE_N_F, _TARGET_N_JA // config.LATIN_SQUARE_N_F, "ja"
             else:
-                if "lang" in done:
-                    done = done[~done["lang"].isin(config.FOUR_COND_LANGS)]
+                done = done[~done["cohort"].isin(config.FOUR_COND_COHORTS)]
                 n_cells, per, cohort = config.LATIN_SQUARE_N, _TARGET_N // config.LATIN_SQUARE_N, "zh"
             seqc = done["seq"].dropna().astype(int).value_counts()
             seqc = seqc.reindex(range(n_cells), fill_value=0)

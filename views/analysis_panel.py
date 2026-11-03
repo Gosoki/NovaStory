@@ -102,9 +102,9 @@ def _body() -> None:
     include_ja = st.checkbox(t("analysis.include_ja"), key="_an_include_ja", help=t("analysis.include_ja_help"))
 
     def _cohort(pt):
-        if include_ja or "lang" not in pt:
+        if include_ja or "cohort" not in pt:
             return pt
-        return pt[~pt["lang"].isin(config.FOUR_COND_LANGS)]
+        return pt[~pt["cohort"].isin(config.FOUR_COND_COHORTS)]   # 按队列,不按界面语言(06 ㉞)
 
     def _drop_attn(pt):
         if not drop_attn:
