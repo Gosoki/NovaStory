@@ -349,7 +349,7 @@
     "health_title": "数据健康",
     "health_parse": "解析失败率",
     "health_llm_err": "LLM 报错率",
-    "health_fallback": "E 引导降级率",
+    "health_fallback": "E/F 引导降级率",
     "health_latency": "生成延迟 中位/95%",
     "health_none": "暂无事件",
     "lang_mix": "语言构成 — {mix}（ja=日本队列 / zh=中国队列，都是正式数据，分析时按语言分开；出现 en 说明是研究员测试或脱离协议的会话）",

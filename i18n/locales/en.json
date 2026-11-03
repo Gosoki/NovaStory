@@ -349,7 +349,7 @@
     "health_title": "Data health",
     "health_parse": "Parse-fail rate",
     "health_llm_err": "LLM error rate",
-    "health_fallback": "E fallback rate",
+    "health_fallback": "E/F fallback rate",
     "health_latency": "Gen latency med/p95",
     "health_none": "No events yet",
     "lang_mix": "Language mix — {mix} (ja = Japan cohort, zh = China cohort — both are study data, analysed separately by language; en means a researcher test or an off-protocol session)",

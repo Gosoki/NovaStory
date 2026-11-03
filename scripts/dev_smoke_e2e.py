@@ -449,7 +449,8 @@ def _answer_guidance_f(at, n: int, skip: tuple = ()) -> None:
         if i in skip:
             continue
         answers[i] = {"opt": None, "custom": _INPUT["f_custom"], "ai_decided": False}
-        reveal.setdefault(i, {"first": "self", "n": 0, "t0": None, "shown": False})
+        if (reveal.get(i) or {}).get("first") is None:   # 渲染时建的空状态也要覆盖(真实被试先点按钮才能作答)
+            reveal[i] = {"first": "self", "n": 0, "t0": None, "shown": False}
     at.session_state["r_g_answers"] = answers
     at.session_state["r_g_reveal"] = reveal
     at.session_state["r_g_idx"] = n - 1
@@ -596,6 +597,8 @@ def _assert_db() -> None:
         items = gf[0]["items"]
         assert [it["dimension"] for it in items] == ["psychology", "turning_point", "key_shot", "ending", "sound"]
         assert not any(it["ai_decided"] for r in gf for it in r["items"]), "F 不该有「交给 AI」"
+        assert all(it["first_choice"] in ("reveal", "self") for r in gf for it in r["items"] if it["options"]), \
+            "F 里有选项的题必须记下先点的是「表示する」还是「自分で書く」"
         i0, i1 = items[0], items[1]
         assert i0["revealed"] and i0["first_choice"] == "reveal" and i0["n_reveal_clicks"] == 1, i0
         assert not i0["is_custom"] and i0["picked_option"] == i0["chosen"] == i0["options"][0], i0

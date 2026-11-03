@@ -125,7 +125,8 @@ def main(argv: list[str] | None = None) -> int:
                 own = sum(bool(it.get("is_custom")) for it in its)
                 print(f"  {lg} F: {n} 题 · 点开选项 {rev / n:.0%} · 一开始选「自分で書く」"
                       f"{sum(it.get('first_choice') == 'self' for it in its) / n:.0%} · 最终自己写 {own / n:.0%}"
-                      f" · 题面换成固定题 {sum(bool(it.get('fixed_q')) for it in its)}")
+                      f" · 题面换成固定题 {sum(bool(it.get('fixed_q')) for it in its)}"
+                      f" · 没记下先选什么 {sum(it.get('first_choice') not in ('reveal', 'self') for it in its)}(应为 0)")
 
     try:
         pt = v3.per_trial(v3.load(db))

@@ -10,7 +10,7 @@ BASELINE_LANG ?= ja
 # 若 v3 刚把它们清空,embed 会拒绝执行 —— 这时不带 EMBED_LANG 重跑,已缓存的不计费)
 EMBED_LANG ?=
 
-.PHONY: help dev preview baseline norming v3 events pilot embed judge stats stats-zh stats-ja stats-novice stats-f stats-ja-pred stats-qv route audit-db power figures analysis smoke robust smoke-e2e i18n freeze freeze-check precompress serve
+.PHONY: help dev preview baseline norming v3 events pilot embed judge stats stats-zh stats-ja stats-novice stats-f stats-ja-pred stats-qv route audit-db power figures analysis smoke robust smoke-e2e smoke-ja i18n freeze freeze-check precompress serve
 
 dev:        ## 本地开发起服务(热重载;生产 config.toml 默认关)
 	.venv/bin/streamlit run app.py --server.runOnSave true --server.fileWatcherType auto
@@ -89,6 +89,9 @@ smoke:      ## 分析链路回归自测(合成 N=36 跑完整条链并断言;临
 smoke-e2e:  ## 被试全流程 E2E(正常路径:consent→3轮→完成码 + intake埋点/?lang=/续接/重做;zh、ja 各跑一遍,ja 另查界面与提示词有无简体中文)
 	NOVASTORY_NO_IMAGES=1 $(PY) scripts/dev_smoke_e2e.py
 	NOVASTORY_NO_IMAGES=1 NOVASTORY_E2E_LANG=ja $(PY) scripts/dev_smoke_e2e.py
+
+smoke-ja:   ## 日本 4 条件「采集 → 入库 → 分析」端到端(8 名被试走真实界面、F 三种点开行为 → 查库 → 跑全部分析脚本 + 后台;桩 LLM、临时库)
+	NOVASTORY_NO_IMAGES=1 $(PY) scripts/ja_pipeline_smoke.py
 
 robust:     ## 实测就绪性验收(出事时扛不扛得住:并发/断网/刷新/脏数据/后台线程)→ docs/paper/12
 	NOVASTORY_NO_IMAGES=1 $(PY) scripts/robustness_check.py

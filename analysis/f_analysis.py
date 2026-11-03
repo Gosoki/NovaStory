@@ -256,7 +256,8 @@ def main(argv: list[str] | None = None) -> int:
     print("  " + _fmt(prim))
     print("  → " + ("[探索性] " if explor else "") + "判定:"
           + verdict(prim, prereg.F_PRIMARY["sesoi"], prereg.F_PRIMARY["alpha"]))
-    print("  ⚠️ F 的回答按生成 prompt 必须写进脚本 → F>E 有一部分按构造会出现;关于所有权只看下面的 own_mean")
+    print("  ⚠️ E 与 F 的回答都经同一生成 prompt 写进脚本;F 默认自己写 → F>E 的一部分正是「答案出自本人」这条路径;"
+          "按分配比较,点开与否是被试自选;关于所有权只看下面的 own_mean")
 
     try:
         from analysis.stats import build_composites  # noqa: PLC0415
