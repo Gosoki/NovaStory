@@ -62,30 +62,34 @@ E._answer_questionnaire = _answer_questionnaire   # E 的步骤函数按模块�
 
 
 def _f_round(at, ridx: int, mode: str) -> None:
-    """F 的一轮:每题真点「表示する」(等 2 秒,在选项控件上点选)或「自分で書く」(在输入框里写)。"""
+    """F 的一轮,和真实被试一样逐题操作、点「次の質問」翻页(每翻一页就核对上一题的答案存下来了):
+    reveal_all = 每题点「表示する」(等 2 秒)再在选项控件上点选;
+    self_all   = 每题点「自分で書く」再写;其中第 2 题写到一半又点「選択肢を表示する」(字必须还在)。"""
     at.text_area(key="_intent_input").set_value(E._INPUT["intents"][ridx - 1])
     E.btn_click(at, "确定，开始创作")
     assert at.session_state["r_phase"] == "guidance", at.session_state["r_phase"]
     qs = at.session_state["r_g_questions"]
-    answers = {}
     for i, q in enumerate(qs):
-        at.session_state["r_g_idx"] = i
-        E.safe_run(at)
+        assert at.session_state["r_g_idx"] == i, (at.session_state["r_g_idx"], i)
         if mode == "reveal_all":
             E.btn_click(at, "显示")
             assert at.session_state["r_g_reveal"][i]["shown"], i
-            pick = q["options"][rng.randrange(len(q["options"]))]
-            E.set_sc(at, f"_g_opt_1_{i}", pick)
-            answers[i] = {"opt": pick, "custom": "", "ai_decided": False}
+            want = {"opt": q["options"][rng.randrange(len(q["options"]))], "custom": ""}
+            E.set_sc(at, f"_g_opt_1_{i}", want["opt"])
         else:
             E.btn_click(at, "自己写")
-            text = f"自分で：案{i}-{rng.randint(1, 99)}"
-            at.text_input(key=f"_g_custom_1_{i}").set_value(text)
-            answers[i] = {"opt": None, "custom": text, "ai_decided": False}
-        at.session_state["r_g_answers"] = dict(answers)
-    at.session_state["r_g_idx"] = len(qs) - 1
-    E.safe_run(at)
-    E.btn_click(at, "完成作答，生成脚本")
+            want = {"opt": None, "custom": f"自分で：案{i}-{rng.randint(1, 99)}"}
+            at.text_input(key=f"_g_custom_1_{i}").set_value(want["custom"])
+            if i == 1:   # 写到一半又点开选项:等待那一轮不渲染输入框,字必须保住(2026-11-03 修)
+                E.btn_click(at, "显示选项")
+                assert at.text_input(key=f"_g_custom_1_{i}").value == want["custom"], "点开选项后自己写的字丢了"
+                assert at.session_state["r_g_reveal"][i]["shown"], "点开后选项没出来"
+        if i < len(qs) - 1:
+            E.btn_click(at, "下一问")
+            got = at.session_state["r_g_answers"].get(i) or {}
+            assert {k: got.get(k) for k in ("opt", "custom")} == want, f"第 {i} 题翻页后答案没存对:{got} ≠ {want}"
+        else:
+            E.btn_click(at, "完成作答，生成脚本")
     assert at.session_state["r_phase"] == "postgen", at.session_state["r_phase"]
     E.inject(at, "_script_edit", E._SCRIPT + E.EDIT_MARK)
     E.btn_click(at, "满意了，提交这一版")
@@ -179,6 +183,7 @@ def _check_db(db_path: Path) -> None:
     assert with_opts and all(it["first_choice"] in ("reveal", "self") for it in with_opts), "F 有题没记下先选什么"
     assert all(k in it for it in f_items for k in ("revealed", "n_reveal_clicks", "fixed_q")), "F 的专有字段缺失"
     assert not any(it["ai_decided"] for it in f_items), "F 不该有「交给 AI」"
+    assert all((it["chosen"] or "").strip() for it in f_items), "F 有题的答案是空的(翻页时没存下来?)"
     assert not any(k in it for it in e_items for k in ("first_choice", "revealed")), "E 的 item 混进了 F 的字段"
     n_click = sum(int(it["n_reveal_clicks"]) for it in f_items)
     rc = EV[EV["type"] == "f_reveal_click"]

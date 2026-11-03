@@ -116,6 +116,11 @@ def render(topic: dict) -> None:
         # F 选了「自分で書く」:只有输入框;写的途中仍可点开选项(同样等 F_REVEAL_DELAY_S)
         card.text_input(t("guidance.f_custom_label"), key=cust_key, max_chars=300)
         if card.button(t("guidance.f_show_later"), key=f"_g_fshow2_{g_round}_{idx}"):
+            # 先把已写的字存进非 widget 存储:点开后的等待那一轮不渲染输入框,Streamlit 会在那一轮结束时
+            # 清掉它的值(2026-11-03 端到端走查发现:写了一半再点开,字就没了、也翻不了页)。
+            # 下一次渲染由上面的「saved.get('custom') → 还原」接回;不走 _save_current,免得多记一条计时事件。
+            ans = st.session_state["r_g_answers"].setdefault(idx, {"opt": None, "custom": "", "ai_decided": False})
+            ans["custom"] = st.session_state[cust_key] if cust_key in st.session_state else ""
             _f_click_reveal(g_round, idx)
 
     cols = card.columns(2)
