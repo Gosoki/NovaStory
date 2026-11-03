@@ -17,6 +17,7 @@ import os
 import re
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -140,20 +141,14 @@ _INPUT = {
                        "告白的话写在毕业帽内侧被风吹走", "躲雨时和陌生人分享了一把伞"),
            "request": "更搞笑一点", "edit": "\n（我手改的：结尾加一个彩蛋镜头）",
            "custom": "我自己写的：荒诞但温柔",
-           "interview": ("梦里的题目全中了这种荒诞感", "先是不敢相信，最后忍不住笑", "交卷时手在发抖的那一下",
-                         "想让人觉得自己也有过这种运气"),
-           "iv_question": "那你希望观众在那一刻有什么感受？",
-           "iv_more_q": "交卷时手发抖的那一下，你最想让观众注意到什么？"},
+           "f_custom": "我自己写的：先不敢相信，然后笑出来"},
     "ja": {"intents": ("答案用紙の問題を、ゆうべ全部夢で見ていたと気づく",
                        "終電を逃した彼は、夜のランニング集団について帰る",
                        "卒業帽の内側に書いた告白が風で飛ばされる",
                        "雨やどり中、知らない人と一本の傘を分け合う"),
            "request": "もっと笑える感じにして", "edit": "\n（自分で手直し：最後におまけのカットを追加）",
            "custom": "自分で書いた：ばかばかしいけど優しい",
-           "interview": ("知らない人なのに、ふっと気持ちが通じるところ", "あたたかくて、少し照れくさい気持ち",
-                         "傘を差し出して目が合う瞬間", "照れくさいけど、うれしい気持ちが残ってほしい"),
-           "iv_question": "その場面で、観る人にはどんな気持ちになってほしいですか？",
-           "iv_more_q": "目が合う瞬間で、いちばん大事にしたい気持ちは何ですか？"},
+           "f_custom": "自分で書いた：あたたかくて、少し照れくさい気持ち"},
 }[E2E_LANG if E2E_LANG == "ja" else "zh"]
 if E2E_LANG == "ja":
     _SCRIPT = _JA["script"]
@@ -168,13 +163,20 @@ def _stub_stream(system, user, *, group, user_id="", temperature=None):
     yield _SCRIPT_REV if "revise" in group else _SCRIPT
 
 
+def _f_leaky(data: dict) -> dict:
+    qs = json.loads(json.dumps(data))["questions"]
+    for q in qs:
+        if q["dimension"] in ("key_shot", "tone"):
+            q["question"] += f"（{q['options'][0]}／{q['options'][1]}）"
+    return {"questions": qs}
+
+
 def _stub_json(system, user, *, group, user_id="", retries=None, temperature=None):
     _PROMPTS.append((group, system, user))
-    if group.startswith("F-interview-more"):   # F 第 3 题之后:第 4 题追问一次,第 5 题停
-        return ({"more": True, "question": _INPUT["iv_more_q"]} if group.endswith("more4")
-                else {"more": False, "question": ""})
-    if group.startswith("F-interview"):   # F:模型只给下一题的题面
-        return {"question": _INPUT["iv_question"]}
+    if group == "F-guidance-r1":   # F(06 ㉜):同 E 的题,但 key_shot 与 tone 两题故意把 2 个选项写进题面
+        return _f_leaky(_R1_QUESTIONS)    # → key_shot 换成固定开放题面(选项保留),tone 不问
+    if group == "F-guidance-fu":
+        return _FU_QUESTIONS
     return _R1_QUESTIONS if group == "E-guidance-r1" else _FU_QUESTIONS
 
 
@@ -394,26 +396,65 @@ def _round_e(at, ridx: int) -> None:
 
 
 def _round_f(at, ridx: int) -> None:
-    """F — 3-5 道采访题(只能自己写;第 3 题后 AI 追问一次、第 4 题后停)→ 生成 → 只能手改。"""
+    """F(06 ㉜)— 与 E 同一出题,但选项默认藏起来:每题先问「要显示选项吗？［显示］［自己写］」,
+    点「显示」等 F_REVEAL_DELAY_S 才出选项;没有「交给 AI」;生成后同样可「让 AI 继续引导」。"""
     at.text_area(key="_intent_input").set_value(_INPUT["intents"][ridx - 1])
     btn_click(at, "确定，开始创作")
-    assert at.session_state["r_phase"] == "interview", at.session_state["r_phase"]
-    # 空答案不能送出
-    btn_click(at, "发送")
-    assert at.session_state["r_iv_turns"][0]["answer"] is None, "空答案被收下了"
-    for i, ans in enumerate(_INPUT["interview"]):
-        at.text_area(key=f"_iv_answer_{i}").set_value(ans)
-        btn_click(at, "发送")
-    assert at.session_state["r_iv_done"] and len(at.session_state["r_iv_turns"]) == 4, \
-        "第 3 题后应追问 1 题、第 4 题后停"
-    btn_click(at, "完成作答，生成脚本")
+    assert at.session_state["r_phase"] == "guidance", at.session_state["r_phase"]
+    qs = at.session_state["r_g_questions"]
+    # 桩让 key_shot / tone 的题面夹带 2 个选项:key_shot → 固定开放题面(选项保留),tone → 不问
+    assert [q["dimension"] for q in qs] == ["psychology", "turning_point", "key_shot", "ending", "sound"], qs
+    assert qs[2]["question"] == L("这个故事最关键的看点，你想用怎样的一格画面来呈现？") and qs[2]["fixed_q"], qs[2]
+    labels = [b.label for b in at.button]
+    assert L("显示") in labels and L("自己写") in labels, labels
+    assert not at.segmented_control, "F 的选项一开始就显示出来了"
+    assert L("交给 AI 决定") not in str([w.options for w in at.segmented_control]), "F 不该有「交给 AI」"
+    btn_click(at, "下一问")                   # 两个都没选就想翻页 → 拦下
+    assert at.session_state["r_g_idx"] == 0 and any(L("请先选「显示」或「自己写」，再作答。") in e.value
+                                                     for e in at.error), [e.value for e in at.error]
+    t0 = time.time()
+    btn_click(at, "显示")                     # 等 F_REVEAL_DELAY_S 秒才出选项
+    waited = time.time() - t0
+    rv0 = at.session_state["r_g_reveal"][0]
+    assert rv0["shown"] and rv0["first"] == "reveal" and rv0["n"] == 1, rv0
+    assert waited >= config.F_REVEAL_DELAY_S - 0.05, f"点开后只等了 {waited:.2f}s"
+    seg = at.segmented_control
+    assert seg and list(seg[0].options) == qs[0]["options"], "点开后选项没出来,或混进了「交给 AI」"
+    # 第 0 题点选、第 1 题点「自己写」,其余自己写(注入 + 跳到最后一题,同 _answer_guidance 的做法)
+    at.session_state["r_g_answers"] = {0: {"opt": qs[0]["options"][0], "custom": "", "ai_decided": False}}
+    at.session_state["r_g_idx"] = 1
+    safe_run(at)
+    btn_click(at, "自己写")
+    assert at.session_state["r_g_reveal"][1]["first"] == "self" and not at.session_state["r_g_reveal"][1]["shown"]
+    assert not at.segmented_control and at.text_input(key="_g_custom_1_1") is not None
+    _answer_guidance_f(at, n=len(qs), skip=(0,))
     assert at.session_state["r_phase"] == "postgen", at.session_state["r_phase"]
-    assert not [b for b in at.button if b.label in (L("告诉 AI"), L("让 AI 继续引导"))], \
-        "F 生成后只能手改,不该出现 D / E 的 AI 修改入口"
-    inject(at, "_script_edit", _SCRIPT + EDIT_MARK)
+    assert not [b for b in at.button if b.label == L("告诉 AI")], "F 不该出现 D 的自由描述修改入口"
+    btn_click(at, "让 AI 继续引导")          # F 生成后同 E:继续引导(题同样默认藏选项)
+    _answer_guidance_f(at, n=2)
+    assert at.session_state["r_n_ai_rounds"] == 1
+    inject(at, "_script_edit", _SCRIPT_REV + EDIT_MARK)
     btn_click(at, "满意了，提交这一版")
     _answer_questionnaire(at, round_idx=ridx, ai_q=True,
                           attention=ridx == _q._ATTENTION_ROUND)
+
+
+def _answer_guidance_f(at, n: int, skip: tuple = ()) -> None:
+    """F:没点开过的题都按「自己写」作答(注入答案 + 显示状态,跳到最后一题再交卷)。"""
+    qs = at.session_state["r_g_questions"]
+    assert len(qs) == n, f"expected {n} questions, got {len(qs)}"
+    answers = dict(at.session_state["r_g_answers"])
+    reveal = dict(at.session_state["r_g_reveal"])
+    for i in range(n):
+        if i in skip:
+            continue
+        answers[i] = {"opt": None, "custom": _INPUT["f_custom"], "ai_decided": False}
+        reveal.setdefault(i, {"first": "self", "n": 0, "t0": None, "shown": False})
+    at.session_state["r_g_answers"] = answers
+    at.session_state["r_g_reveal"] = reveal
+    at.session_state["r_g_idx"] = n - 1
+    safe_run(at)
+    btn_click(at, "完成作答，生成脚本")
 
 
 _ROUND_STEPS = {"C": _round_c, "D": _round_d, "E": _round_e, "F": _round_f}
@@ -431,7 +472,7 @@ def _assert_no_zh_leak() -> None:
             bad = sorted({ch for ch in txt if ch in _ZH_ONLY})
             if bad:
                 _LEAKS.append(f"[prompt {group}/{part}] 含简体字 {''.join(bad)}")
-    script_sys = [s for g, s, _ in _PROMPTS if "guidance" not in g and "interview" not in g]
+    script_sys = [s for g, s, _ in _PROMPTS if "guidance" not in g]
     assert script_sys and all("【画面】" in s and "【秒数】" in s for s in script_sys), \
         "ja 会话的分镜提示词里没有 ja 字段标记(【画面】/【秒数】)"
     assert not _LEAKS, "ja 会话里混进了简体中文:\n  " + "\n  ".join(dict.fromkeys(_LEAKS))
@@ -548,24 +589,26 @@ def _assert_db() -> None:
     assert e["n_ai_rounds"] == 1 and e["n_hand_edits"] == 1
     assert e["t_pregen"] is not None and e["t_postgen"] is not None
 
-    if "F" in by:   # 4 条件设计(ja):F = 3 道采访题,只能自己写,生成后只手改
+    if "F" in by:   # 4 条件设计(ja):F = 与 E 同一出题,选项默认藏起来(06 ㉜)
         f = by["F"]
         gf = json.loads(f["guidance_json"])["rounds"]
-        assert len(gf) == 1 and gf[0]["source"] == "interview", gf
+        assert [r["source"] for r in gf] == ["fixed3+ai_supplement", "ai_from_draft"], gf
         items = gf[0]["items"]
-        assert [it["dimension"] for it in items] == ["liked", "audience_feeling", "moment", "follow_up"], items
-        assert items[3]["question"] == _INPUT["iv_more_q"], items[3]
-        assert [it["chosen"] for it in items] == list(_INPUT["interview"]), items
-        assert all(it["is_custom"] and not it["ai_decided"] and not it["options"] for it in items)
-        assert items[0]["question"] == L("这个创意里，你最喜欢的是哪一部分？"), items[0]["question"]
-        assert items[1]["question"] == _INPUT["iv_question"] and not items[1]["fallback"]
-        # 桩对第 2、3 问回同一句题面 → 第 3 问必须退回固定题面,不能把同一个问题问两遍(2026-11-03)
-        assert items[2]["fallback"] and items[2]["question"] == L("你觉得这份感受在 15 秒里的哪一瞬间最能传达出来？"), \
-            items[2]
-        assert all(it["echo"] for it in items), "复述句没落库"
-        assert [x["author"] for x in json.loads(f["script_versions"])] == ["ai", "user_edit"]
-        assert f["n_ai_rounds"] == 0 and f["n_hand_edits"] == 1
+        assert [it["dimension"] for it in items] == ["psychology", "turning_point", "key_shot", "ending", "sound"]
+        assert not any(it["ai_decided"] for r in gf for it in r["items"]), "F 不该有「交给 AI」"
+        i0, i1 = items[0], items[1]
+        assert i0["revealed"] and i0["first_choice"] == "reveal" and i0["n_reveal_clicks"] == 1, i0
+        assert not i0["is_custom"] and i0["picked_option"] == i0["chosen"] == i0["options"][0], i0
+        assert i1["first_choice"] == "self" and not i1["revealed"] and i1["is_custom"], i1
+        assert i1["chosen"] == _INPUT["f_custom"], i1
+        assert items[2]["fixed_q"] and items[2]["options"], items[2]
+        assert [x["author"] for x in json.loads(f["script_versions"])] == ["ai", "ai", "user_edit"]
+        assert f["n_ai_rounds"] == 1 and f["n_hand_edits"] == 1
         assert f["t_pregen"] is not None and f["t_postgen"] is not None
+        fev = ev[(ev["participant_id"] == f["participant_id"]) & (ev["round_idx"] == f["round_idx"])]
+        rc = fev[fev["type"] == "f_reveal_click"]
+        assert len(rc) == 1 and json.loads(rc["payload_json"].iloc[0])["wait_s"] == config.F_REVEAL_DELAY_S, rc
+        assert (fev["type"] == "f_self_click").sum() == 1, fev["type"].value_counts()
 
     assert (tr["parse_ok"] == 1).all(), "两行排版没能 100% 解析"
     assert len(q) == len(_EXPECTED_PLAN) and q["imagine_match"].notna().all()

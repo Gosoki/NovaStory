@@ -249,9 +249,8 @@ def _data_health(trials: pd.DataFrame, dev_ids: set[int] = frozenset(), scope: s
     n_shot_tot = sum(int(p.get("n_shots") or 0) for p in img)
     n_shot_ok = sum(int(p.get("n_ok") or 0) for p in img)
     img_rate = (n_shot_ok / n_shot_tot) if n_shot_tot else float("nan")
-    # 只看 E 的出题:F 的 guidance_shown 永远 fallback=False(F 的退回是逐题记在 guidance_json 里的)
+    # E 与 F 的出题(2026-11-03 起 F 用同一个出题组件,06 ㉜):整轮退化成一道开放题的比例
     gs = pj[typ == "guidance_shown"]
-    gs = gs[gs.map(lambda x: _loads(x).get("source") != "interview")]
     fb_rate = gs.map(lambda x: bool(_loads(x).get("fallback"))).mean() if len(gs) else float("nan")
     done_pay = pj[typ == "llm_done"].map(_loads)
     # 与 analysis/events 同口径:正式模型不返回 system_fingerprint,退到 served_model,
@@ -288,20 +287,15 @@ def _data_health(trials: pd.DataFrame, dev_ids: set[int] = frozenset(), scope: s
                      detail=" · ".join(f"{c} {max(int(s_.get(c, 0)) - int(d_.get(c, 0)) - int(e_.get(c, 0)), 0)}"
                                        f"/{int(s_.get(c, 0))}" for c in conds),
                      re=" · ".join(f"{c} {int(r_.get(c, 0))}" for c in conds)))
-    # F 的采访:题数分布与退回固定题面的比例(上面的 fallback 卡只看 E)
+    # F(06 ㉜):点开选项的题数、一开始就选「自分で書く」的题数、题面换成固定题的题数 —— 流程健康,不是因变量
     if "condition" in trials and "guidance_json" in trials and (trials["condition"] == "F").any():
-        nq, n_fb, n_it = [], 0, 0
-        for g in trials.loc[trials["condition"] == "F", "guidance_json"]:
-            for rnd in _loads(g).get("rounds", []):
-                if isinstance(rnd, dict) and rnd.get("source") == "interview":
-                    items = [it for it in rnd.get("items", []) if isinstance(it, dict)]
-                    nq.append(len(items))
-                    n_it += len(items)
-                    n_fb += sum(bool(it.get("fallback")) for it in items)
-        if nq:
-            dist = pd.Series(nq).value_counts().sort_index()
-            st.caption(t("monitor.f_stats", dist=" / ".join(f"{k}:{v}" for k, v in dist.items()),
-                         fb=n_fb, n=n_it))
+        items = [it for g in trials.loc[trials["condition"] == "F", "guidance_json"]
+                 for rnd in _loads(g).get("rounds", []) if isinstance(rnd, dict)
+                 for it in rnd.get("items", []) if isinstance(it, dict) and it.get("options")]
+        if items:
+            st.caption(t("monitor.f_stats", rev=sum(bool(it.get("revealed")) for it in items),
+                         self=sum(it.get("first_choice") == "self" for it in items),
+                         fixed=sum(bool(it.get("fixed_q")) for it in items), n=len(items)))
     if len(fps) > 1:
         # B7:服务端 build 在采数中途换了 —— 输出本身不可逐字复现,这是唯一能报告的漂移证据
         st.warning(t("monitor.fingerprint_drift", n=len(fps)))

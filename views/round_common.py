@@ -7,7 +7,7 @@ import streamlit as st
 
 from core import config, prompts, state
 from i18n import get_lang, t
-from views import _postgen, _scroll, _tour, group_c, group_d, group_e, group_f, guidance, interview, questionnaire
+from views import _postgen, _scroll, _tour, group_c, group_d, group_e, group_f, guidance, questionnaire
 
 
 def render() -> None:
@@ -37,14 +37,12 @@ def render() -> None:
             group_d.render_pipeline(topic)
         elif cond == "F":
             group_f.render_pipeline(topic)
-            st.rerun()  # F: begin switched phase to "interview"
+            st.rerun()  # F: begin_round switched phase to "guidance"(06 ㉜:与 E 同一出题组件)
         else:
             group_e.render_pipeline(topic)
             st.rerun()  # E: begin_round switched phase to "guidance"
     elif phase == "guidance":
         guidance.render(topic)
-    elif phase == "interview":
-        interview.render(topic)
     elif phase == "postgen":
         if cond == "C":
             _postgen.render_readonly(topic)
@@ -118,10 +116,8 @@ def _current_step(cond: str, n_steps: int) -> int:
         return 1  # generate / view
     if cond == "D":
         return 1 if phase == "pipeline" else 2  # generate → polish
-    # E / F(F 的采访只在生成之前,所以进得来就是第 1 步;问完之后那一屏就是在生成 → 第 2 步)
-    if cond == "F" and phase == "interview" and st.session_state.get("r_iv_done"):
-        return 2
-    if phase in ("pipeline", "guidance", "interview"):
+    # E / F(F 与 E 同一出题组件,06 ㉜)
+    if phase in ("pipeline", "guidance"):
         # follow-up guidance rounds happen mid-polish
         return 1 if not st.session_state["r_versions"] else 3
     return 3   # postgen:进得来就一定已有版本(生成成功 / 取消追问都以此为前提)→ polish

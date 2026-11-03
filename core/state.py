@@ -149,9 +149,9 @@ ROUND_PAYLOAD_DEFAULTS: dict[str, Any] = {
                                   # pagination (Streamlit clears unmounted widgets)
     "r_g_idx": 0,
     "r_g_fallback": False,
-    # interview working state (condition F):[{"dimension","echo","question","answer","fallback"}]
-    "r_iv_turns": [],
-    "r_iv_done": False,           # F:采访问完了(3-5 题),等被试按「生成」
+    # condition F(2026-11-03 06 ㉜):选项默认藏起来。{q_idx: {"first": "reveal"|"self", "n": 点开次数,
+    #   "t0": 点「表示する」的时刻(epoch 秒,等 config.F_REVEAL_DELAY_S 后显示), "shown": bool}}
+    "r_g_reveal": {},
     "r_llm_wait": 0.0,
     "r_llm_wait_post": 0.0,       # waits occurring after the first script_shown
     "r_llm_wait_in_guidance": 0.0,  # E round-1: waits inside [guidance_shown, guidance_submit)
@@ -552,7 +552,7 @@ def reset_round_payload() -> None:
         # ⚠️ 别在这里清 _q_*:advance_round 在问卷提交的那次 rerun 里调用本函数,此时问卷 widget
         # 仍挂载,同一 run 内删它的 key 会让 Streamlit 炸;_q_ 键按轮次编号,下一轮天然不冲突。
         if (k in ("_script_edit", "_intent_input", "_revision_input", "_gen_failed")
-                or k.startswith("_g_") or k.startswith("_iv_")):
+                or k.startswith("_g_")):
             st.session_state.pop(k, None)
 
 
@@ -696,7 +696,7 @@ def round_durations(condition: str) -> dict:
         "t_llm_wait": round(st.session_state["r_llm_wait"], 2),
         "t_total": _delta("round_start", "trial_submit"),
     }
-    if condition in ("E", "F"):   # F 的采访沿用 E 的事件对(guidance_shown → guidance_submit)
+    if condition in ("E", "F"):   # F 与 E 同一出题组件、同一事件对(guidance_shown → guidance_submit;06 ㉜)
         pre = _delta("guidance_shown", "guidance_submit")
         if pre is not None:  # net of the final-script generation wait in-window
             out["t_pregen"] = round(max(0.0, pre - st.session_state["r_llm_wait_in_guidance"]), 2)

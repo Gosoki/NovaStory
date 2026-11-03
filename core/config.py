@@ -48,17 +48,17 @@ LATIN_SQUARE_N = 18
 
 # ---- 日本队列:4 条件设计(2026-10-27,docs/paper/06 ㉖)----
 # ja 被试做 C / D / E / F 四个条件;zh / en 保持上面的 3 条件 18 序列 —— 中国队列是已采完的
-# 数据,它的轮数、序列表、序列计数一个都不能变。F =「想いを聞く」インタビュー(views/interview.py)。
+# 数据,它的轮数、序列表、序列计数一个都不能变。F = 与 E 相同的出题流程,只是 AI 的选项默认藏起来
+# (views/guidance.py 的 F 模式;2026-11-03 06 ㉜ 取代 ㉖ 的「想いを聞く」采访)。
 # 4 条件 Williams 方阵 4 个序列 × 4 个题目轮换 = 16(state._COND_ORDERS_F / _TOPIC_ORDERS_F)。
 # ⚠️ 轮数写死在各语言的文案里(ja「4 つのお題 / 全 4 ラウンド / 約15〜20分」,zh / en 是 3):
 #    改这个集合时要同步改 i18n/locales 的 consent.body、intro.flow、final_survey.hint / q_noticed。
 FOUR_COND_LANGS = frozenset({"ja"})
 N_ROUNDS_F = 4
 LATIN_SQUARE_N_F = 16
-# F 的采访题数(2026-10-27 用户:「还是保证在 3-5 问内吧」):前 3 题的观点固定(第 1 题题面也固定,第 2、3 题
-# 的措辞由 AI 按上一个回答调整);第 3 题之后由 AI 判断还要不要追问,最多再问 2 题 —— 与 E 的「3 个固定观点
-# + AI 补 2-4 个」同一思路。
-INTERVIEW_RANGE = (3, 5)
+# F 点「表示する」之后,等这么久才显示 AI 的选项(2026-11-03 用户:「不能是一点开就显示,而是要假装等一会」→ 2 秒)。
+# 选项早已和题目一起生成,等待只是「查看选项」的成本;它计入作業時間,分析时另给扣除版本(06 ㉜)。
+F_REVEAL_DELAY_S = 2.0
 
 
 def rounds_for_lang(lang: str) -> int:

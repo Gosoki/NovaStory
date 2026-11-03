@@ -5,7 +5,7 @@
   次要      prereg.F_SECONDARY  带事先写明的方向,只作描述,不进确证判定
   F−D       prereg.F_VS_D_EXPLORATORY  整包的探索性比较(2026-11-03 06 ㉚-4);生成后的指标仍不比(prereg.F_NOT_COMPARED)
   提问价值  prereg.QUESTION_VALUE_EXPLORATORY  QV1 问题产出 / QV2 离机器基线的距离 / QV3 以回答为锚的保真(06 ㉚-5)
-  操纵检查  prereg.F_MANIPULATION_CHECK  F 里全部回答的总字数与题数分布(3-5 题;从库里的 guidance_json 读)
+  操纵检查  prereg.F_MANIPULATION_CHECK  F 的点开率、先选自己写的比例、自写 vs 点选、字数(从库里的 guidance_json 读;06 ㉜)
   机制      prereg.F_MECHANISM  镜头层条件 logit:本人文字重合 / 所选选项重合 → 标「mine」(复现中国 SPA1 / SPA2)
 
 纳入:CSV 是 v3 的逐 trial 表(已按 v3.included_participants 过滤:ja 要交满 4 份问卷);
@@ -86,7 +86,8 @@ def _fmt(r: dict | None) -> str:
 
 
 def manipulation_check(db_path: Path, ids: set[int]) -> str:
-    """F 里全部回答的总字数 + 题数分布(3-5 题)+ 退回固定题面的题数(题面由 AI 调整失败时)。"""
+    """F 的操纵检查(prereg.F_MANIPULATION_CHECK,06 ㉜):有选项的题里点开了多少、一开始就选「自分で書く」的多少、
+    最终自己写 vs 点选、自写字数、题面换成固定题的题数、点开造成的等待。点开率 > F_REVEAL_NEAR_E 时提示「F 接近 E」。"""
     if not db_path.exists():
         return f"(没有 {db_path},跳过)"
     con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
@@ -94,24 +95,25 @@ def manipulation_check(db_path: Path, ids: set[int]) -> str:
         rows = con.execute("SELECT participant_id, guidance_json FROM trials WHERE condition='F'").fetchall()
     finally:
         con.close()
-    chars, n_q, n_fb, n_items = [], [], 0, 0
-    for pid, g in rows:
-        if int(pid) not in ids or not g:
-            continue
-        for rnd in json.loads(g).get("rounds", []):
-            if rnd.get("source") != "interview":
-                continue
-            items = rnd.get("items", [])
-            chars.append(sum(len(str(it.get("chosen") or "")) for it in items))
-            n_q.append(len(items))
-            n_fb += sum(bool(it.get("fallback")) for it in items)
-            n_items += len(items)
-    if not chars:
-        return "(库里没有可用的 F 采访记录)"
-    c = pd.Series(chars)
-    dist = pd.Series(n_q).value_counts().sort_index().to_dict()
-    return (f"n={len(c)}  回答总字数 中位 {c.median():.0f}(IQR {c.quantile(.25):.0f}–{c.quantile(.75):.0f},"
-            f"最少 {c.min()}、最多 {c.max()});题数分布 {dist};退回固定题面 {n_fb}/{n_items} 题")
+    items = [it for pid, g in rows if int(pid) in ids and g
+             for rnd in json.loads(g).get("rounds", []) for it in rnd.get("items", [])
+             if isinstance(it, dict) and it.get("options")]
+    if not items:
+        return "(库里没有可用的 F 出题记录)"
+    n = len(items)
+    rev = sum(bool(it.get("revealed")) for it in items)
+    self_first = sum(it.get("first_choice") == "self" for it in items)
+    own = sum(bool(it.get("is_custom")) for it in items)
+    picked = n - own
+    chars = pd.Series([len(str(it.get("chosen") or "")) for it in items if it.get("is_custom")])
+    wait = sum(int(it.get("n_reveal_clicks") or 0) for it in items) * config.F_REVEAL_DELAY_S
+    out = (f"有选项的题 {n}:点开 {rev}({rev / n:.0%})· 一开始选「自分で書く」{self_first}({self_first / n:.0%})"
+           f" · 最终自己写 {own}({own / n:.0%})/ 点选 {picked}"
+           + (f" · 自写字数 中位 {chars.median():.0f}" if len(chars) else "")
+           + f" · 题面换成固定题 {sum(bool(it.get('fixed_q')) for it in items)} · 点开等待合计 {wait:.0f} 秒")
+    if rev / n > prereg.F_REVEAL_NEAR_E:
+        out += f"\n  ⚠️ 点开率 > {prereg.F_REVEAL_NEAR_E:.0%}:按 06 ㉜ 写「F 在行为上接近 E」—— 零结果优先读作「选项一旦可得多数人仍会用」"
+    return out
 
 
 # ---------------- 机制:镜头层的想法来源(prereg.F_MECHANISM;定义同中国挖掘报告 SPA1 / SPA2) ----------------

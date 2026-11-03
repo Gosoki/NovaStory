@@ -1,18 +1,29 @@
 from __future__ import annotations
 
 import html
+import time
 
 import streamlit as st
 
-from core import prompts, state
+from core import config, prompts, state
 from i18n import get_lang, t
 from views import _postgen
-from views._streaming import RETRY, call_llm_json, stream_llm
+from views._streaming import _BUSY, RETRY, call_llm_json, stream_llm
 
 # Guided elicitation (condition E): one questionnaire component serves both
 # round 1 (3 fixed dims + 2-4 AI supplements) and user-triggered follow-up
 # rounds (1-3 questions on the current draft). Questions are shown one at a
 # time (AskUserQuestion-style); answers are submitted together at the end.
+#
+# Condition F(2026-11-03,docs/paper/06 ㉜)走同一个组件,只差三处:① 出题提示词多一条「题面里不写候补」;
+# ② AI 的选项默认藏起来,每题先问「選択肢を表示しますか？［表示する］［自分で書く］」,点「表示する」后
+#    等 config.F_REVEAL_DELAY_S 秒才显示;③ 没有「AI に任せる」,必须作答。E 的路径一行不变(中国可比)。
+
+_FIXED_DIMS = ("psychology", "turning_point", "key_shot")
+
+
+def _is_f() -> bool:
+    return state.current_round()["condition"] == "F"
 
 def ai_decide_label() -> str:
     """The localized "leave it to the AI" option label (also its stored value).
@@ -27,6 +38,7 @@ def begin_round(source: str) -> None:
     st.session_state["r_g_answers"] = {}
     st.session_state["r_g_idx"] = 0
     st.session_state["r_g_fallback"] = False
+    st.session_state["r_g_reveal"] = {}
     for k in list(st.session_state.keys()):
         if k.startswith("_g_"):
             st.session_state.pop(k, None)
@@ -44,7 +56,7 @@ def render(topic: dict) -> None:
             st.session_state["_g_gen_failed"] = True
             if st.button(t("round.retry"), type="primary", width="stretch"):
                 st.session_state.pop("_g_gen_failed", None)
-                state.log_event("retry_click", {"group": "E-guidance"})
+                state.log_event("retry_click", {"group": f"{'F' if _is_f() else 'E'}-guidance"})
                 st.rerun()
             # Follow-up rounds have a draft to fall back to — offer the same
             # escape hatch as below, or a persistently busy gateway locks the
@@ -76,12 +88,15 @@ def render(topic: dict) -> None:
 
     saved = st.session_state["r_g_answers"].get(idx, {})
     options = list(q.get("options") or [])
-    if options:
+    f_mode = _is_f()
+    shown = bool(options) and (not f_mode or _f_reveal_gate(card, g_round, idx))
+    if shown:
         # The "leave it to the AI" choice is a real localized option (not a
         # format_func sentinel): segmented_control + format_func is not reliably
         # AppTest-drivable across reruns. ai_decide_label() detects it on read.
+        # F 没有「AI に任せる」(06 ㉜:必须作答)。
         opt_key = f"_g_opt_{g_round}_{idx}"
-        opts = options + [ai_decide_label()]
+        opts = options + ([] if f_mode else [ai_decide_label()])
         # Restore a prior choice when this question is re-mounted (Streamlit
         # cleared its widget key while it was off-screen during pagination).
         if opt_key not in st.session_state and saved.get("opt") in opts:
@@ -95,7 +110,13 @@ def render(topic: dict) -> None:
     cust_key = f"_g_custom_{g_round}_{idx}"
     if cust_key not in st.session_state and saved.get("custom"):
         st.session_state[cust_key] = saved["custom"]
-    card.text_input(t("guidance.custom_label"), key=cust_key, max_chars=300)
+    if not f_mode or shown or not options:
+        card.text_input(t("guidance.custom_label"), key=cust_key, max_chars=300)
+    elif _f_rv(idx)["first"] == "self":
+        # F 选了「自分で書く」:只有输入框;写的途中仍可点开选项(同样等 F_REVEAL_DELAY_S)
+        card.text_input(t("guidance.f_custom_label"), key=cust_key, max_chars=300)
+        if card.button(t("guidance.f_show_later"), key=f"_g_fshow2_{g_round}_{idx}"):
+            _f_click_reveal(g_round, idx)
 
     cols = card.columns(2)
     # 按题加 key(2026-10-29 审计):没有 key 的按钮 id 只由标签决定、各题相同,双击「次の質問」时第二下
@@ -109,7 +130,13 @@ def render(topic: dict) -> None:
     if cols[1].button(label, type="primary", width="stretch", key=f"_g_next_{g_round}_{idx}"):
         if not _answered(g_round, idx, q):
             # 兜底开放题没有选项、也没有「AI に任せる」,提示不能叫被试去选
-            st.error(t("errors.answer_or_skip" if q.get("options") else "errors.answer_open"))
+            if not q.get("options"):
+                st.error(t("errors.answer_open"))
+            elif not f_mode:
+                st.error(t("errors.answer_or_skip"))
+            else:   # F:还没选「表示する / 自分で書く」→ 先选;选了之后空着 → 写或点选
+                st.error(t("errors.answer_f" if _f_rv(idx)["first"] is None else
+                           "errors.answer_pick_or_write" if shown else "errors.answer_open"))
             return
         _save_current(g_round, idx)
         if last:
@@ -132,6 +159,49 @@ def render(topic: dict) -> None:
         })
         st.session_state["r_phase"] = "postgen"
         st.rerun()
+
+
+def _f_rv(idx: int) -> dict:
+    """F 这一题的选项显示状态(非 widget 存储:翻页卸载 widget 也不丢)。"""
+    return st.session_state["r_g_reveal"].setdefault(idx, {"first": None, "n": 0, "t0": None, "shown": False})
+
+
+def _f_click_reveal(g_round: int, idx: int) -> None:
+    rv = _f_rv(idx)
+    after_self = rv["first"] == "self"
+    rv["first"] = rv["first"] or "reveal"
+    rv["n"] += 1
+    rv["t0"] = time.time()
+    state.log_event("f_reveal_click", {"round": g_round, "q": idx, "after_self": after_self,
+                                       "wait_s": config.F_REVEAL_DELAY_S})
+    st.rerun()
+
+
+def _f_reveal_gate(card, g_round: int, idx: int) -> bool:
+    """F:这一屏要不要显示选项。还没选 → 画「選択肢を表示しますか？［表示する］［自分で書く］」;
+    点了「表示する」→ 等到 t0 + F_REVEAL_DELAY_S 再显示。按时刻算剩余时间:等待中被 rerun 打断,
+    下一次渲染接着等剩下的,不会重新计时、也不会卡住。"""
+    rv = _f_rv(idx)
+    if rv["shown"]:
+        return True
+    if rv["t0"] is not None:
+        left = config.F_REVEAL_DELAY_S - (time.time() - rv["t0"])
+        if left > 0:
+            card.markdown(_BUSY, unsafe_allow_html=True)   # 等待时藏起上一屏残留的按钮(app.py 的 .ns-busy 规则)
+            with card, st.spinner(t("guidance.f_preparing")):
+                time.sleep(left)
+        rv["shown"] = True
+        st.rerun()
+    if rv["first"] is None:
+        card.markdown(f'<div class="ns-why">{html.escape(t("guidance.f_ask"))}</div>', unsafe_allow_html=True)
+        c1, c2 = card.columns(2)
+        if c1.button(t("guidance.f_show"), width="stretch", key=f"_g_fshow_{g_round}_{idx}"):
+            _f_click_reveal(g_round, idx)
+        if c2.button(t("guidance.f_self"), width="stretch", key=f"_g_fself_{g_round}_{idx}"):
+            rv["first"] = "self"
+            state.log_event("f_self_click", {"round": g_round, "q": idx})
+            st.rerun()
+    return False
 
 
 def _answered(g_round: int, idx: int, q: dict) -> bool:
@@ -166,14 +236,16 @@ def _generate_questions(topic: dict) -> None:
     source = st.session_state["r_g_source"]
     intent = st.session_state["r_intent"]
     lang = get_lang()
+    f_mode = _is_f()
+    cond = "F" if f_mode else "E"
     if source == "fixed3+ai_supplement":
-        system = prompts.build_system_guidance_round1(lang)
+        system = (prompts.build_system_guidance_round1_f if f_mode else prompts.build_system_guidance_round1)(lang)
         user = prompts.build_user_guidance_round1(topic, intent, lang)
-        group = "E-guidance-r1"
+        group = f"{cond}-guidance-r1"
     else:
-        system = prompts.build_system_guidance_followup(lang)
+        system = (prompts.build_system_guidance_followup_f if f_mode else prompts.build_system_guidance_followup)(lang)
         user = prompts.build_user_guidance_followup(topic, intent, state.current_script(), lang)
-        group = "E-guidance-fu"
+        group = f"{cond}-guidance-fu"
 
     data = call_llm_json(system, user, group=group)
     if data is RETRY:
@@ -182,6 +254,9 @@ def _generate_questions(topic: dict) -> None:
         qs = _normalize_questions(data)
     except Exception:  # noqa: BLE001 — 再畸形的 JSON 也只能降级,不能把堆栈端给被试
         qs = None
+    n_fixed_q = n_dropped = 0
+    if qs and f_mode:
+        qs, n_fixed_q, n_dropped = _f_strip_leaks(qs)
     if qs is None:
         # Degrade: one open question, free text only (paper/7 §2).
         qs = [{
@@ -192,13 +267,34 @@ def _generate_questions(topic: dict) -> None:
         }]
         st.session_state["r_g_fallback"] = True
     st.session_state["r_g_questions"] = qs
-    state.log_event(
-        "guidance_shown",
-        {"round": len(st.session_state["r_guidance_rounds"]) + 1,
-         "source": source, "n_questions": len(qs),
-         "fallback": st.session_state["r_g_fallback"]},
-    )
+    payload = {"round": len(st.session_state["r_guidance_rounds"]) + 1,
+               "source": source, "n_questions": len(qs),
+               "fallback": st.session_state["r_g_fallback"]}
+    if f_mode:
+        payload.update(f_fixed_q=n_fixed_q, f_dropped=n_dropped)
+    state.log_event("guidance_shown", payload)
     st.rerun()
+
+
+def _f_leaks(q: dict) -> bool:
+    """F:题面里出现 ≥ 2 个选项原文 = 候补写进了题面(藏选项等于没藏)。"""
+    text = q["question"]
+    return sum(1 for o in q["options"] if len(o) >= 2 and o.strip("「」『』“”\"' 。.") in text) >= 2
+
+
+def _f_strip_leaks(qs: list[dict]) -> tuple[list[dict] | None, int, int]:
+    """F 的出题后检查(06 ㉜):题面夹带候补 → 3 个固定观点换成固定的开放式题面(选项保留),AI 补的题不问。"""
+    out, n_fixed, n_drop = [], 0, 0
+    for q in qs:
+        if q["options"] and _f_leaks(q):
+            if q["dimension"] in _FIXED_DIMS:
+                q = dict(q, question=t(f"guidance.f_fixed_{q['dimension']}"), fixed_q=True)
+                n_fixed += 1
+            else:
+                n_drop += 1
+                continue
+        out.append(q)
+    return (out or None), n_fixed, n_drop
 
 
 def _normalize_questions(data) -> list[dict] | None:
@@ -241,6 +337,7 @@ def _normalize_questions(data) -> list[dict] | None:
 def _finish_round(topic: dict, g_round: int) -> None:
     qs = st.session_state["r_g_questions"]
     saved = st.session_state["r_g_answers"]
+    f_mode = _is_f()
     items = []
     for i, q in enumerate(qs):
         a = saved.get(i, {})
@@ -260,15 +357,20 @@ def _finish_round(topic: dict, g_round: int) -> None:
             "ai_decided": ai_decided,
             "fallback": st.session_state["r_g_fallback"],
         })
+        if f_mode:   # F 每题另记选项是怎么被看到的(06 ㉜);E 的 item 形状不变
+            rv = st.session_state["r_g_reveal"].get(i, {})
+            items[-1].update(first_choice=rv.get("first"), revealed=bool(rv.get("shown")),
+                             n_reveal_clicks=int(rv.get("n", 0)), fixed_q=bool(q.get("fixed_q")))
 
     source = st.session_state["r_g_source"]
     intent = st.session_state["r_intent"]
     lang = get_lang()
+    cond = "F" if f_mode else "E"
     if source == "fixed3+ai_supplement":
         out = stream_llm(
             prompts.build_system_script(topic, lang),
             prompts.build_user_script_from_answers(topic, intent, items, lang),
-            group="E-final",
+            group=f"{cond}-final",
         )
     else:
         out = stream_llm(
@@ -276,7 +378,7 @@ def _finish_round(topic: dict, g_round: int) -> None:
             prompts.build_user_revision_from_answers(
                 topic, intent, state.current_script(), items, lang
             ),
-            group="E-revise",
+            group=f"{cond}-revise",
         )
     # Only commit the round once generation succeeds, so a failed-then-retried
     # generation never double-appends the round / re-logs answers.

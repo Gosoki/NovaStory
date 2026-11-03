@@ -501,159 +501,98 @@ def build_user_guidance_followup(
     return f"{block}\n\n現在の絵コンテ草案:\n{current_script.strip()}"
 
 
-# ---------------- interview (condition F, 2026-10-27, docs/paper/06 ㉖) ----------------
-# F =「想いを聞く」インタビュー:AI が一問ずつ、作者がこの作品に込めたいことを聞く(選択肢なし、
-# 自分で書く)。第 1 問は固定文(views/interview.py)、第 2・3 問の**言い回し**だけを AI が
-# 直前の答えに合わせて作る。聞く観点そのものは固定(_INTERVIEW_DIMS)。復唱の一文(「〜ということ
-# ですね」)はコード側のテンプレートで作り、AI には書かせない —— 被試の原文だけを返すため(褒め言葉・
-# 共感・言い換えが混ざると「AI が親切だから高評価」という交絡になる)。最終生成は E と同じ
-# build_user_script_from_answers を使う。
+# ---------------- guided elicitation, condition F (2026-11-03, docs/paper/06 ㉜) ----------------
+# F = E と同じ出題(3 つの固定観点 + AI 補完、生成後の追加ガイド)。違いは画面側:AI の選択肢は最初は隠れていて、
+# ユーザーが「表示する」を押したときだけ出る(views/guidance.py)。そのため question の文中に答えの候補を
+# 書かせない —— 中国 E の 224 問のうち 36% が選択肢の原文を 2 つ以上 question に含んでいた(隠しても見えてしまう)。
+# E の build_system_guidance_round1 / _followup は中国コホートと同一のまま一字も変えない。
 
-_INTERVIEW_DIMS = {
-    "audience_feeling": {
-        "zh": "在用户最喜欢的那一部分里,希望观众产生什么样的感受",
-        "en": "how they want viewers to feel in the part they like most",
-        "ja": "いちばん気に入っている部分で、観る人にどんな気持ちになってほしいか",
-    },
-    "moment": {
-        "zh": "这份感受在 15 秒里的哪一瞬间最能传达出来",
-        "en": "at which moment within the 15 seconds that feeling comes across most",
-        "ja": "その気持ちが、15秒のうちどの瞬間にいちばん伝わるか",
-    },
+_F_NO_CANDIDATES = {
+    "zh": "**question 里不要写任何候选答案、选项或例子**(候选只写进 options;用户会先在看不到选项的情况下用自己的话回答,"
+          "想看时才会显示选项)。",
+    "en": "**Do NOT put any candidate answers, options, or examples inside the question text** (put candidates only in "
+          "options; the user first answers in their own words without seeing the options, which are shown only on request). ",
+    "ja": "**question の文中に、答えの候補・選択肢・例を書かないこと**(候補は options にだけ書く。ユーザーはまず選択肢を"
+          "見ずに自分の言葉で答え、見たいときだけ選択肢が表示される)。",
 }
 
 
-def build_system_interview(lang: str = _DEFAULT_LANG) -> str:
+def build_system_guidance_round1_f(lang: str = _DEFAULT_LANG) -> str:
+    lo, hi = config.SUPPLEMENT_RANGE
     if _norm(lang) == "zh":
         return (
-            "你是一名短视频分镜创作的采访者。用户是没有影视经验的新手,会发来故事创意和到目前为止的问答。"
-            "你的任务是只写**下一个问题**。\n"
+            "你是一名短视频分镜创作向导。用户是没有任何影视经验的新手,刚提交了一个故事创意。"
+            "你的任务是生成一组引导问题,帮用户把心中的想法说清楚。\n"
             "要求:\n"
-            "1. 只问指定的方面(见「接下来要问」),不要换方面,也不要一次问两件事。\n"
-            "2. 接住用户上一个回答里的话,写成对这个人说的一句自然的问题。\n"
-            "3. **不要写任何例子、选项、建议或你自己的看法**(不要用「比如」「例如」「……之类」);"
-            "不要夸奖,不要表达共情,不要复述用户的话(复述由系统另行显示)。\n"
-            "4. 一句话,50 字以内,中文。\n"
-            '5. 只输出 JSON:{"question":"..."}'
+            "1. 必须包含三个固定维度,dimension 字段分别为 \"psychology\"(主角此刻最想得到/最想避免的是什么——欲望·动机,不是单纯的心情)、"
+            "\"turning_point\"(这 15 秒里情势/价值发生翻转的一瞬在哪——如 期待→落空)、\"key_shot\"(用哪一格画面·什么构图撑起整段的戏剧核心)。\n"
+            f"2. 再根据这个创意的具体内容,补充 {lo}-{hi} 个你认为对这个故事最重要的其他维度"
+            "(dimension 用简短英文 slug,如 \"tone\"、\"ending\"、\"sound\"、\"detail\")。"
+            "**镜头时长/秒数由你自行分配,不要就时长或秒数如何构成向用户提问。**\n"
+            "3. 每个问题:question 为一句具体问题——**必须点到用户创意里的具体人物/物件/选择,不能是放到任何故事都成立的空话**。"
+            + _F_NO_CANDIDATES["zh"] +
+            "(反例『捡到钱包的主角,心里最强的是哪个念头:“想当好人”/“怕麻烦想装没看见”/“好奇里面有多少钱”?』"
+            "→正例『捡到钱包的那一刻,主角心里最强的念头是什么?』);"
+            "options 必须为 3-4 个(不得少于 3 个)具体、互斥、可直接选用的选项;"
+            "why 用一句大白话说清这问题为什么重要(避免专业术语)。\n"
+            f"4. {_JSON_SPEC_ZH}\n"
+            "5. question / options / why 全部使用中文(dimension 除外)。"
         )
     if _norm(lang) == "en":
         return (
-            "You are an interviewer helping with short-video storyboard creation. The user is a "
-            "novice with no filmmaking experience; you will receive their story idea and the "
-            "Q&A so far. Your only job is to write the **next question**.\n"
+            "You are a guide for short-video storyboard creation. The user is a complete "
+            "novice with no filmmaking experience and has just submitted a story idea. "
+            "Your job is to generate a set of guiding questions that help the user put "
+            "what is in their head into words.\n"
             "Requirements:\n"
-            "1. Ask only about the specified aspect (see 'Ask next'); do not switch aspects or "
-            "ask two things at once.\n"
-            "2. Pick up the words of the user's previous answer and phrase one natural question "
-            "addressed to this person.\n"
-            "3. **Do not write any examples, options, suggestions or opinions of your own** (no "
-            "'for example', 'such as', 'e.g.'); no praise, no expressions of empathy, and do not "
-            "restate the user's words (the system shows that separately).\n"
-            "4. One sentence, at most 25 words, in English.\n"
-            '5. Output JSON only: {"question":"..."}'
+            "1. You must include three fixed dimensions, with the dimension field set to "
+            "\"psychology\" (what the protagonist most wants to get / most wants to avoid "
+            "right now — desire and motivation, not merely a mood), \"turning_point\" "
+            "(where, within these 15 seconds, the situation/value flips — e.g. "
+            "hope→disappointment), \"key_shot\" (which single frame · what composition "
+            "carries the dramatic center of the whole piece).\n"
+            f"2. Then, based on the specifics of this idea, add {lo}-{hi} other dimensions "
+            "you think matter most for this story (use a short English slug for dimension, "
+            "e.g. \"tone\", \"ending\", \"sound\", \"detail\"). "
+            "**You decide each shot's length/seconds yourself — do NOT ask the user about "
+            "timing or how the seconds are split.**\n"
+            "3. For each question: question is one concrete question — **it MUST name the "
+            "specific character/object/choice in the user's idea, never generic wording "
+            "that would fit any story**. " + _F_NO_CANDIDATES["en"] +
+            "(bad: 'When the hero picks up the wallet, which thought is strongest — "
+            "\"wanting to be a good person,\" \"not wanting the hassle,\" or \"curious how much "
+            "money is inside\"?' → good: 'When the hero picks up the wallet, what is the "
+            "strongest thought in their mind?'); "
+            "options MUST be 3-4 (never fewer than 3) concrete, mutually exclusive, "
+            "directly selectable choices; why is one plain-language sentence (no jargon) "
+            "on why it matters.\n"
+            f"4. {_JSON_SPEC_EN}\n"
+            "5. question / options / why must all be in English (except dimension)."
         )
     return (
-        "あなたはショート動画の絵コンテ制作を手伝うインタビュアーです。"
-        "ユーザーは映像経験のない初心者で、物語のアイデアとこれまでの質問と答えが送られてきます。"
-        "あなたの仕事は、**次の質問を一つだけ**書くことです。\n"
+        "あなたはショート動画の絵コンテ制作のガイドです。"
+        "ユーザーは映像経験のまったくない初心者で、物語のアイデアを送ってきたところです。"
+        "あなたの仕事は、ユーザーが頭の中の考えを言葉にできるよう、ガイドとなる質問を作ることです。\n"
         "要件:\n"
-        "1. 指定された観点(「次に聞くこと」)だけを聞くこと。観点を変えたり、二つのことを同時に聞いたりしない。\n"
-        "2. 直前のユーザーの答えの言葉を受けて、その人に向けた自然な一文の質問にすること。\n"
-        "3. **答えの例・選択肢・提案・あなた自身の意見は一切書かないこと**(「例えば」「〜など」も使わない)。"
-        "ほめ言葉や共感の言葉も入れず、ユーザーの言葉の言い直しもしないこと(復唱はシステムが別に表示します)。\n"
-        "4. 敬体(です・ます)の一文、60字以内、日本語で。\n"
-        '5. JSONのみを出力: {"question":"..."}'
+        "1. 必ず3つの固定の観点を含めること。dimension フィールドはそれぞれ "
+        "\"psychology\"(主人公が今、何を一番手に入れたい/避けたいか=欲求・動機。単なる気分ではない)、\"turning_point\"(この15秒の中で流れ・価値がひっくり返る一瞬はどこか。例:期待→がっかり)、"
+        "\"key_shot\"(どの一枚・どんな構図でこの物語の見せ場=ドラマの中心を見せるか)。\n"
+        f"2. さらにこのアイデアの内容に応じて、この物語にとって重要だと思う他の観点を {lo}〜{hi} 個補ってください"
+        "(dimension は短い英語スラッグ、例:\"tone\"、\"ending\"、\"sound\"、\"detail\")。"
+        "**各カットの尺・秒数の配分はあなたが決めます。時間配分や秒数の構成についてユーザーに質問しないこと。**\n"
+        "3. 各質問:question は具体的な一文——**必ずユーザーのアイデアに出てくる具体的な人物・物・選択に触れること。どんな物語にも当てはまる一般論は禁止**。"
+        + _F_NO_CANDIDATES["ja"] +
+        "(悪い例『財布を拾った主人公の心で一番強い思いは?「いい人でいたい」/「面倒だから見なかったことにしたい」/「中にいくら入っているか気になる」』"
+        "→良い例『財布を拾ったその瞬間、主人公の心でいちばん強い思いは何ですか?』);"
+        "options は必ず3〜4個(2個は不可)の具体的で互いに排他的な、そのまま選べる選択肢;"
+        "why は専門用語を避け、この質問がなぜ大事かを初心者に語りかけるやさしい一文で書き、文体は敬体(です・ます)で統一すること。\n"
+        f"4. {_JSON_SPEC_JA}\n"
+        "5. question / options / why はすべて日本語で(dimension を除く)。"
     )
 
 
-def build_user_interview(
-    topic: dict, intent: str, turns: list[dict], next_dim: str, lang: str = _DEFAULT_LANG
-) -> str:
-    """turns: [{"question", "answer"}](已答的轮次);next_dim ∈ _INTERVIEW_DIMS。"""
-    block = _topic_block(topic, intent, lang)
-    key = _norm(lang) if _norm(lang) in ("zh", "en") else "ja"
-    aspect = _INTERVIEW_DIMS[next_dim][key]
-    qa = "\n".join(f"Q: {x['question']}\nA: {x['answer']}" for x in turns if x.get("answer"))
-    if key == "zh":
-        return f"{block}\n\n到目前为止的问答:\n{qa}\n\n接下来要问:{aspect}"
-    if key == "en":
-        return f"{block}\n\nQ&A so far:\n{qa}\n\nAsk next: {aspect}"
-    return f"{block}\n\nこれまでの質問と答え:\n{qa}\n\n次に聞くこと:{aspect}"
-
-
-def build_system_interview_more(lang: str = _DEFAULT_LANG) -> str:
-    """F 第 3 题之后:判断要不要再追问一题(最多到 config.INTERVIEW_RANGE 的上限)。"""
-    if _norm(lang) == "zh":
-        return (
-            "你是一名短视频分镜创作的采访者。用户是没有影视经验的新手,会发来故事创意和到目前为止的问答。"
-            "请判断:为了弄清用户想通过这份分镜表达什么,还需不需要**再问一个问题**。\n"
-            "要求:\n"
-            "1. 到目前为止的回答已经能看清用户想表达的东西(想让观众感受到什么、哪个瞬间最重要)→ 不再问。"
-            "回答太短、太笼统,或者提到了某个画面 / 感受但没说清楚 → 再问一个。\n"
-            "2. 如果要问:只问用户**对作品的想法**(想表达的感受、想让观众体会到什么、提到的那个瞬间里最在意什么),"
-            "可以接着用户提到的具体画面或感受往下问;**不要问镜头、景别、秒数等拍摄技术问题**。\n"
-            "3. **不要写任何例子、选项、建议或你自己的看法**(不要用「比如」「例如」「……之类」);"
-            "不要夸奖,不要表达共情,不要复述用户的话。\n"
-            "4. **已经问过的事不要再问**:上面问答里问过的内容,换个说法也不要再问(已经问过「想让观众有什么感受」,"
-            "「最想让观众感受到什么」就算同一件事)。要问就针对回答里还没说清的那一点,或者用户提到的某个具体画面。\n"
-            "5. 回答完全看不出意思(无意义的字符、与作品无关的内容)→ 不再问。\n"
-            "6. 问题为一句话,50 字以内,中文。\n"
-            '7. 只输出 JSON:{"more": true 或 false, "question": "要问的问题(不问时为空字符串)"}'
-        )
-    if _norm(lang) == "en":
-        return (
-            "You are an interviewer helping with short-video storyboard creation. The user is a "
-            "novice with no filmmaking experience; you will receive their story idea and the Q&A "
-            "so far. Decide whether **one more question** is needed to understand what the user "
-            "wants this storyboard to express.\n"
-            "Requirements:\n"
-            "1. If the answers so far already make clear what the user wants to express (what viewers "
-            "should feel, which moment matters most) → do not ask more. If the answers are very short "
-            "or vague, or mention a scene or feeling without making it clear → ask one more.\n"
-            "2. If you ask: ask only about the user's **thoughts about the work** (the feeling they want "
-            "to convey, what viewers should experience, what matters most to them in a moment they "
-            "mentioned); you may build on a specific scene or feeling they mentioned. **Do not ask "
-            "about camera, shot size, seconds or other filming technicalities.**\n"
-            "3. **Do not write any examples, options, suggestions or opinions of your own** (no 'for "
-            "example', 'such as', 'e.g.'); no praise, no expressions of empathy, and do not restate "
-            "the user's words.\n"
-            "4. **Do not ask again about anything already asked** in the Q&A above, even in different words "
-            "(if 'what should viewers feel' was asked, 'what do you most want viewers to feel' counts as the same). "
-            "If you ask, target the one point an answer left unclear, or a specific scene the user mentioned.\n"
-            "5. If the answers carry no discernible meaning (random characters, content unrelated to the work) → do not ask more.\n"
-            "6. The question is one sentence, at most 25 words, in English.\n"
-            '7. Output JSON only: {"more": true or false, "question": "the question (empty string if not asking)"}'
-        )
-    return (
-        "あなたはショート動画の絵コンテ制作を手伝うインタビュアーです。"
-        "ユーザーは映像経験のない初心者で、物語のアイデアとこれまでの質問と答えが送られてきます。"
-        "ユーザーがこの絵コンテで何を表現したいのかをつかむために、**もう一問聞く必要があるか**を判断してください。\n"
-        "要件:\n"
-        "1. これまでの答えで、ユーザーが表現したいこと(観る人に何を感じてほしいか、どの瞬間がいちばん大事か)が"
-        "はっきりしていれば、もう聞かない。答えがとても短い・ぼんやりしている、場面や気持ちに触れているのに"
-        "はっきりしない、といった場合はもう一問聞く。\n"
-        "2. 聞く場合は、ユーザーの**作品への思い**(伝えたい気持ち、観る人に味わってほしいこと、触れていた瞬間で"
-        "いちばん大事にしたいこと)だけを聞くこと。ユーザーが触れた具体的な場面や気持ちを受けて聞いてよい。"
-        "**カメラ・画面サイズ・秒数などの撮影技術については聞かないこと。**\n"
-        "3. **答えの例・選択肢・提案・あなた自身の意見は一切書かないこと**(「例えば」「〜など」も使わない)。"
-        "ほめ言葉や共感の言葉も入れず、ユーザーの言葉の言い直しもしないこと。\n"
-        "4. **すでに聞いたことは聞き直さないこと**:上の質問と答えで聞いた内容は、言い方を変えても聞かない"
-        "(「観る人にどんな気持ちになってほしいか」をすでに聞いたなら、「観る人にいちばん感じてほしいこと」も同じ内容とみなす)。"
-        "聞くなら、答えの中でまだはっきりしていない一点か、ユーザーが触れた具体的な場面について聞くこと。\n"
-        "5. 答えから意味がまったく読み取れない(意味のない文字の並び、作品と関係のない内容)場合は、もう聞かない。\n"
-        "6. 質問は敬体(です・ます)の一文、60字以内、日本語で。\n"
-        '7. JSONのみを出力: {"more": true または false, "question": "聞く質問(聞かない場合は空文字)"}'
-    )
-
-
-def build_user_interview_more(
-    topic: dict, intent: str, turns: list[dict], lang: str = _DEFAULT_LANG
-) -> str:
-    """turns: [{"question", "answer"}](已答的轮次)。"""
-    block = _topic_block(topic, intent, lang)
-    qa = "\n".join(f"Q: {x['question']}\nA: {x['answer']}" for x in turns if x.get("answer"))
-    if _norm(lang) == "zh":
-        return f"{block}\n\n到目前为止的问答:\n{qa}"
-    if _norm(lang) == "en":
-        return f"{block}\n\nQ&A so far:\n{qa}"
-    return f"{block}\n\nこれまでの質問と答え:\n{qa}"
+def build_system_guidance_followup_f(lang: str = _DEFAULT_LANG) -> str:
+    """F の生成後の追加ガイド:E の build_system_guidance_followup に「question に候補を書かない」を足しただけ。"""
+    base = build_system_guidance_followup(lang)
+    key = _norm(lang) if _norm(lang) in _F_NO_CANDIDATES else "ja"
+    return base + "\n" + _F_NO_CANDIDATES[key]

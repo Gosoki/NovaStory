@@ -79,7 +79,6 @@ HASHED_FILES = [
     "core/state.py",
     "views/_postgen.py",
     "views/guidance.py",
-    "views/interview.py",      # F 的采访:问答 item 形状、复述、计时事件(2026-10-27)
     "views/group_f.py",
     "views/_streaming.py",
     "views/_trial.py",
@@ -143,7 +142,7 @@ def collect_knobs() -> dict:
         "config.FOUR_COND_LANGS": sorted(C.FOUR_COND_LANGS),
         "config.N_ROUNDS_F": C.N_ROUNDS_F,
         "config.LATIN_SQUARE_N_F": C.LATIN_SQUARE_N_F,
-        "config.INTERVIEW_RANGE": list(C.INTERVIEW_RANGE),
+        "config.F_REVEAL_DELAY_S": C.F_REVEAL_DELAY_S,   # F 点开选项前的等待(06 ㉜)
         "config.MIN_INTENT_CHARS": C.MIN_INTENT_CHARS,
         "config.TEMPERATURE": C.TEMPERATURE,
         "config.SUPPLEMENT_RANGE": list(C.SUPPLEMENT_RANGE),

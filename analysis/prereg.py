@@ -328,25 +328,30 @@ JA_STOP_RULE = ("16 → 视招募速度与截止日决定是否开第二轮;32 �
                 "截止时 < 16 → F 与合并降为探索性;采集期间不看因变量")
 JA_COLLECTION_DEADLINE: str | None = None   # "YYYY-MM-DD",确认修论提交日后填
 
-# ---- 日本队列的第 4 条件 F(2026-10-27,docs/paper/06 ㉖;**在任何日本数据进库之前**写死)----
-# F =「想いを聞く」インタビュー:AI 一题一题地问作者对作品的想法(最喜欢哪里 / 想让观众有什么感受 /
-# 哪一瞬间最能传达,之后 AI 视需要追问 0-2 题,共 3-5 题),只能自己写,生成后只能手改。只出现在 ja 被试的 4 条件设计里。
+# ---- 日本队列的第 4 条件 F(2026-10-27,docs/paper/06 ㉖;2026-11-03 按 ㉜ 重新设计;**在任何日本数据进库之前**写死)----
+# F = 与 E 完全相同的出题流程(3 个固定观点 + AI 补 2-4 题、同一生成 prompt、生成后同样可「AI のガイドを続ける」),
+# 只差两点:① AI 的选项默认藏起来,每题先问「選択肢を表示しますか？［表示する］［自分で書く］」,点「表示する」
+# 等 config.F_REVEAL_DELAY_S(2 秒)才显示;② 没有「AI に任せる」,必须作答(点选或自己写)。出题 prompt 多一条
+# 「题面里不写候补」。只出现在 ja 被试的 4 条件设计里。〔10-27 的「想いを聞く」采访已被取代,代码已删〕
 # ⚠️ 中国单队列与中日合并分析一律只用 C / D / E(stats 在建复合 z 之前就去掉 F,z 的参照样本因此
 #    与没有 F 时完全相同);F 只在日本内部与 E(和 C)比。
 CONFIRMATORY_CONDITIONS = ("C", "D", "E")
 F_CONDITION = "F"
-# F 的研究问题(RQ4,2026-10-27 加入:中国结果之后、日本数据之前):生成前由 AI 提问时,「选 AI 给的选项」(E)
-# 与「用自己的话回答对作品的想法」(F),是否改变镜头层面的想法来源归属。F−E 是两套提问风格的**整包**比较
-# (问什么 × 怎么答 × 能否交给 AI × 题数 × 原话复述 × 生成后通道),不归因到单一维度。
+# F 的研究问题(RQ4;2026-10-27 加入,2026-11-03 按 ㉜ 收窄 —— 中国结果之后、日本数据之前):同样的 AI 提问,
+# AI 的选项「默认显示」(E)与「只在想看时才显示、默认自己写」(F),是否改变镜头层面的想法来源归属。
+# F−E 只差「选项的默认显示 + 查看成本」与「能否交给 AI」两处(题目、题数、生成、生成后通道都相同),
+# 比 10-27 的整包(问什么 × 怎么答 × 能否交给 AI × 题数 × 原话复述 × 生成后通道)窄得多。
+# 按**分配**比较(intention-to-treat):不按被试有没有点开选项分组 —— 点开与否是被试自选。
 # 〔2026-11-03 06 ㉛〕原「F 不是新的提案手法」改为:论文主推 E 或 F 之一,按下方 PROMOTION_RULE 二选一。
 F_PRIMARY = {
     "dv": "mine_ratio",               # 逐镜头「主に自分のアイデア」的占比(中国数据里最敏感的指标,E−D dz .48)
-    # 构念 = 镜头层面的「想法来源归属」,**不是**所有权:F 的回答按生成 prompt「必ず脚本に反映」写进脚本,
-    # 三档标签里没有「AI の選択肢を自分で選んだ」—— F>E 有一部分是按构造会出现的方向(docs/paper/18 §1-2)。
-    # 关于所有权的结论只看 F_SECONDARY 的 own_mean。
+    # 构念 = 镜头层面的「想法来源归属」,**不是**所有权:E 与 F 的回答都按同一生成 prompt 写进脚本;
+    # F 默认自己写 → 写进脚本的内容更多出自本人,F>E 一部分正是要检验的这条路径本身。三档标签里没有
+    # 「AI の選択肢を自分で選んだ」(docs/paper/18 §1-2)。关于所有权的结论只看 F_SECONDARY 的 own_mean。
     "construct": "镜头层面的想法来源归属(不是所有权)",
     "contrast": ("F", "E"),
-    "alternative": "two-sided",       # 两种归属感来源方向相反(本人原话 vs 所选选项),不预设方向
+    "alternative": "two-sided",       # 两种归属感来源方向相反(本人原话 vs 所选选项),不预设方向;
+                                      # 且点开率高时 F 行为上接近 E(F_REVEAL_NEAR_E),零结果是可能的读法
     "alpha": 0.05,
     "test": "配对 t(每位 ja 被试一个 F−E 差值),另报 Wilcoxon 与 95% CI",
     "population": "ja 全样本(交满 4 份问卷,纳入规则同主分析)",
@@ -372,27 +377,33 @@ F_SECONDARY = (                       # 次要:不进确证判定,方向写在�
 )
 # F−D(2026-11-03 06 ㉚-4 改,取代 10-28 的「F−D 不比较」;日本数据进库前):研究主旨问的是「生成前引出意图 vs
 # 生成后修正」,F 同样是生成前由 AI 提问 → 按**整包**做探索性比较,只报估计与 95% CI,不进判定、不做校正推断。
-# 10-28 不比的理由(D 有 AI 修改入口、F 只能手改)只影响**生成后**的指标 → 这些仍不比(F_NOT_COMPARED)。
+# 10-28 不比的理由(当时 D 有 AI 修改入口、F 只能手改)只影响**生成后**的指标 → 这些仍不比(F_NOT_COMPARED)。
 F_VS_D_EXPLORATORY = (
     "own_mean",            # 所有感
     "fidelity_composite",  # 忠实性(复合在日本 4 条件全部 trial 上 z,同 F_SECONDARY)
     "imagine",
-    "mine_ratio",          # ⚠️ F 的回答按生成 prompt 必须写进脚本 → F>D 有一部分按构造出现
+    "mine_ratio",          # ⚠️ F 的回答按生成 prompt 写进脚本 → F>D 有一部分按构造出现(E−D 同理)
     "satisfaction",
     "total_investment",    # 制作負担①(整包:F 多的是事前回答,D 多的是事后修改)
     "tlx1",                # 制作負担②
 )
 F_NOT_COMPARED_DVS = ("n_ai_rounds", "post_investment", "effort_composite")
 F_NOT_COMPARED = (("F", "D"), "只有生成后的指标不比(" + " / ".join(F_NOT_COMPARED_DVS) + "):"
-                  "D 有 AI 修改入口而 F 没有,这些差由设计决定;其余按 F_VS_D_EXPLORATORY 作探索性比较")
+                  "D 的生成后入口是自由描述修改、F 是继续引导(同 E),这些差由设计决定;"
+                  "其余按 F_VS_D_EXPLORATORY 作探索性比较")
 # F 也不进中国与合并分析。
-F_MANIPULATION_CHECK = ("F 里全部回答的总字数与题数分布(3-5 题;guidance_json 中 source=interview 的 chosen;"
-                        "题数作描述,不作协变量进主检验)")
+F_MANIPULATION_CHECK = ("F 里有选项的题中:点开选项的比例(revealed)、一开始就选「自分で書く」的比例(first_choice=self)、"
+                        "最终自己写 vs 点选的比例(is_custom / picked_option)、自写回答的字数、题面换成固定题的题数(fixed_q)、"
+                        "点开造成的等待总秒数(n_reveal_clicks × F_REVEAL_DELAY_S);都作描述,不作协变量进主检验")
+# 点开率的解读(06 ㉜,日本数据前写死):F 里有选项的题被点开的比例 > 2/3 时,如实写「F 在行为上接近 E」——
+# 主检验 F−E 照报,但零结果优先读作「选项一旦可得多数人仍会用」,而不是「默认显示与否无关」。
+# F 内部「自己写的题 vs 点选的题」是被试自选,只作探索,不作因果。
+F_REVEAL_NEAR_E = 2 / 3
 # 机制(描述性,复现中国挖掘报告 SPA1 / SPA2 的定义,analysis/f_analysis.py 执行):
 #   镜头层条件 logit(按 trial 分层,只用镜头标签有「mine」也有非 mine 的 trial),
 #   mine ~ z(本人文字重合) + z(所选 AI 选项重合) + 镜头位置;E、F 各拟合一次。
 #   重合 = 镜头文字(画面 + 台词)的字符 bigram 落在该来源的 bigram 集里的比例;来源先去掉题面与分镜格式词的 bigram。
-#   本人文字 = 创意陈述 + 自己写的回答(F 的全部回答 / E 的自写回答);所选选项 = E 里点选的 AI 选项(F 没有)。
+#   本人文字 = 创意陈述 + 自己写的回答(E / F 的自写回答);所选选项 = E / F 里点选的 AI 选项(F 要点开才有)。
 #   预期方向:本人文字重合 OR > 1(复现 SPA1);所选选项重合两侧(中国 OR 0.79,不显著)。
 F_MECHANISM = ("镜头层条件 logit:mine ~ z(本人文字 bigram 重合) + z(所选 AI 选项 bigram 重合) + 镜头位置,"
                "按 trial 分层,E / F 各一次;本人文字重合预期 OR>1,选项重合两侧;描述性")
@@ -416,13 +427,13 @@ SYSTEM_COST = "每轮 token(events 口径,只算最终提交那一轮的调用;�
 QUESTION_VALUE_EXPLORATORY = (
     {"id": "QV1", "dv": "qv_yield",
      "what": "问题产出:回答的字符 bigram 里,同题同语言机器基线(全部稿子)没有、创意陈述没有、题面与分镜格式词也没有,"
-             "而终稿里有的个数(每个 trial 一个值)。E 按「自己写」与「点选 AI 选项」两种来源分开报;F 全是自己写",
+             "而终稿里有的个数(每个 trial 一个值)。E 与 F 都按「自己写」与「点选 AI 选项」两种来源分开报(F 的选项要点开才看得到)",
      "test": "中国 E:描述(自己写 vs 点选的人均值);日本:F−E 配对 t(双侧)+ 95% CI"},
     {"id": "QV2", "dv": "dist_base",
      "what": "终稿离同语言同题机器基线质心的 embedding 距离(定义同 P1);只读缓存,不调 API",
      "test": "日本:F−E、F−C 配对 t(双侧)+ 95% CI"},
     {"id": "QV3", "dv": "embed_fidelity_guided",
-     "what": "以「创意 + 引导 / 采访里被试确定下来的回答」为锚的 embedding 保真(analysis/embed.py 定义②)",
+     "what": "以「创意 + 引导里被试确定下来的回答」为锚的 embedding 保真(analysis/embed.py 定义②)",
      "test": "日本:F−E 配对 t(双侧)+ 95% CI"},
 )
 
@@ -533,6 +544,7 @@ def as_dict() -> dict:
             "not_compared_dvs": list(F_NOT_COMPARED_DVS),
             "vs_d_exploratory": list(F_VS_D_EXPLORATORY),
             "manipulation_check": F_MANIPULATION_CHECK,
+            "reveal_near_e": F_REVEAL_NEAR_E,
             "mechanism": F_MECHANISM,
         },
         # ---- 研究主旨对齐(2026-11-03,06 ㉚ ㉛)----

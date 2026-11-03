@@ -336,7 +336,7 @@
       <div class="rq"><div class="n">RQ 1</div><div class="t">意図への忠実性</div></div>
       <div class="rq"><div class="n">RQ 2</div><div class="t">所有感</div></div>
       <div class="rq"><div class="n">RQ 3</div><div class="t">制作負担</div></div>
-      <div class="rq"><div class="n">RQ 4 · 日本</div><div class="t">問い方（選ぶ／自分の言葉）</div></div>
+      <div class="rq"><div class="n">RQ 4 · 日本</div><div class="t">選択肢：最初から／見たいときだけ</div></div>
     </div>
   </section>
 
@@ -405,8 +405,8 @@
         <div class="mini"><div class="frame"></div><div class="frame"></div><div class="frame"></div></div>
       </div>
       <div class="lane F">
-        <div class="lh"><span class="code">F</span><span class="name">想いを聞く</span></div>
-        <div class="flow">AI が作品への想いを3–5問たずね、自分の言葉で答える → 生成 → 手で直す。日本のみ。</div>
+        <div class="lh"><span class="code">F</span><span class="name">選択肢を隠して問う</span></div>
+        <div class="flow">E と同じ問い。選択肢は最初は隠れていて、見たいときだけ表示（2秒待つ）。AIに任せるはなし。日本のみ。</div>
         <div class="mini"><div class="frame"></div><div class="frame"></div><div class="frame"></div></div>
       </div>
       <!-- ROUTE-SLOT:system END -->
@@ -447,26 +447,31 @@
     </div>
   </section>
 
-  <!-- F DESIGN(日本のみ;06 ㉖) -->
+  <!-- F DESIGN(日本のみ;06 ㉜:選択肢を最初は隠した E) -->
   <section class="slide">
     <div class="kicker">07 ── F の設計（日本）</div>
-    <h2>F：AI が<span class="rose">「想いを聞く」</span></h2>
+    <h2>F：選択肢は<span class="rose">「見たいときだけ」</span></h2>
     <div class="cols">
       <div>
         <ul>
-          <li><b>3–5問</b>：第1問は固定<br>「このアイデアの、どこがいちばん気に入っていますか？」</li>
-          <li>続く2問（観る人に感じてほしい気持ち／それが伝わる瞬間）は、前の答えに合わせて AI が言い換える。答えが曖昧なときだけ <b>0–2問</b>追加</li>
-          <li><b>自分の言葉だけ</b>で答える ── 選択肢なし・AIに任せるなし。<br>次の問いの前に、答えを原文のまま復唱</li>
-          <li>生成は E と<b>同じ指示文</b>／生成後は手で直すのみ</li>
+          <li>問いは <b>E と同じ</b>（固定の3観点 ＋ AI が 2–4 問）</li>
+          <li>選択肢は<b>最初は隠れている</b>：<br>「選択肢を表示しますか？」［表示する］［自分で書く］</li>
+          <li>「表示する」→「選択肢を用意しています…」<b>2秒</b>待って表示</li>
+          <li><b>AI に任せる</b>はなし ── 選ぶか書くか、必ず自分で答える</li>
+          <li>生成も、生成後の追加ガイドも E と同じ</li>
         </ul>
       </div>
       <div class="frame" style="aspect-ratio:4/3; flex-direction:column; gap:.7em; padding:1.2em">
-        <div class="muted" style="font-size:.8rem;letter-spacing:.2em">INTERVIEW</div>
-        <div style="font-size:clamp(1rem,1.6vw,1.3rem);color:#fff;font-weight:700">このアイデアの、どこが<br>いちばん気に入っていますか？</div>
-        <div style="width:82%;border:1px solid var(--rose);border-radius:6px;padding:.5em .8em;font-size:.85rem;color:#cbc5b9;text-align:left">あなたの答え（一言でもOK）</div>
+        <div class="muted" style="font-size:.8rem;letter-spacing:.2em">GUIDED ELICITATION · F</div>
+        <div style="font-size:clamp(1rem,1.6vw,1.3rem);color:#fff;font-weight:700">主人公の心で、<br>いちばん強い思いは？</div>
+        <div class="muted" style="font-size:.85rem">選択肢を表示しますか？</div>
+        <div style="display:flex;flex-wrap:wrap;gap:.4em;justify-content:center;font-size:.85rem;color:#cbc5b9">
+          <span style="border:1px solid var(--rose);color:var(--rose);border-radius:6px;padding:.3em .7em">表示する</span>
+          <span style="border:1px solid var(--gold);color:var(--gold);border-radius:6px;padding:.3em .7em">✍ 自分で書く</span>
+        </div>
       </div>
     </div>
-    <div class="note">E と F は<b>同じタイミング</b>（生成前）。違うのは<b>問い方</b> ── AI が示す選択肢から選ぶか、作品への想いを自分の言葉で答えるか。</div>
+    <div class="note">E と F の違いは<b>選択肢を最初から見せるか</b>だけ ── 「AI の候補から選ぶ」か、「まず自分で考える」か。</div>
   </section>
 
   <!-- 10 · METHOD (Williams) -->

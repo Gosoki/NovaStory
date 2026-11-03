@@ -49,11 +49,11 @@ def render_editable(topic: dict, cond: str) -> None:
         # 而二次方爆炸本来就由那道退化分支兜底,不靠这个上限。
         max_chars=20000,
     )
-    st.caption(t("postgen.edit_hint_f" if cond == "F" else "postgen.edit_hint"))   # F 没有 AI 修改通道
+    st.caption(t("postgen.edit_hint"))
 
     if cond == "D":
         _render_revision_channel(topic)
-    elif cond == "E":
+    elif cond in ("E", "F"):   # F 与 E 同一个「AI のガイドを続ける」入口(06 ㉜)
         _render_guidance_channel()
 
     if st.button(t("postgen.submit"), type="primary", width="stretch"):
@@ -121,7 +121,7 @@ def render_history() -> None:
     if not versions:
         return
     requests = st.session_state["r_revision_requests"]   # condition D
-    guidance_rounds = st.session_state["r_guidance_rounds"]   # condition E(别叫 guidance:与下面局部 import 的模块同名)
+    guidance_rounds = st.session_state["r_guidance_rounds"]   # condition E / F(别叫 guidance:与下面局部 import 的模块同名)
     # 「内容多高就多高、最高 _HISTORY_HEIGHT」:st.container(height=) 是写死的高度,只有一版时下面一大块空白
     st.markdown(f'<span class="ns-css"></span><style>.st-key-ns_history{{height:auto!important;'
                 f'max-height:{_HISTORY_HEIGHT}px}}</style>', unsafe_allow_html=True)

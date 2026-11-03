@@ -100,7 +100,7 @@ def main(argv: list[str] | None = None) -> int:
     print("\n[引导 / 修改]")
     for lg, g in tr.groupby("lang"):
         e = g[g["condition"] == "E"]
-        items = [it for x in e["guidance_json"] for rd in _j(x, {}).get("rounds", []) if rd.get("source") != "interview"
+        items = [it for x in e["guidance_json"] for rd in _j(x, {}).get("rounds", [])
                  for it in rd.get("items", []) if isinstance(it, dict)]
         if items:
             n = len(items)
@@ -116,18 +116,16 @@ def main(argv: list[str] | None = None) -> int:
             used = int((pd.to_numeric(d["n_ai_rounds"], errors="coerce").fillna(0) > 0).sum())
             print(f"  {lg} D: 用过 AI 修改入口 {used}/{len(d)} 人")
         f = g[g["condition"] == "F"]
-        if len(f):
-            nq, fbq, chars = [], 0, []
-            for x in f["guidance_json"]:
-                for rd in _j(x, {}).get("rounds", []):
-                    if rd.get("source") == "interview":
-                        its = [it for it in rd.get("items", []) if isinstance(it, dict)]
-                        nq.append(len(its))
-                        fbq += sum(bool(it.get("fallback")) for it in its)
-                        chars.append(sum(len(str(it.get("chosen") or "")) for it in its))
-            if nq:
-                print(f"  {lg} F: 题数 {pd.Series(nq).value_counts().sort_index().to_dict()} · 退回固定题面 {fbq}/{sum(nq)} 题"
-                      f" · 回答总字数中位 {pd.Series(chars).median():.0f}")
+        if len(f):   # F(06 ㉜):与 E 同一出题,选项默认藏起来
+            its = [it for x in f["guidance_json"] for rd in _j(x, {}).get("rounds", [])
+                   for it in rd.get("items", []) if isinstance(it, dict) and it.get("options")]
+            if its:
+                n = len(its)
+                rev = sum(bool(it.get("revealed")) for it in its)
+                own = sum(bool(it.get("is_custom")) for it in its)
+                print(f"  {lg} F: {n} 题 · 点开选项 {rev / n:.0%} · 一开始选「自分で書く」"
+                      f"{sum(it.get('first_choice') == 'self' for it in its) / n:.0%} · 最终自己写 {own / n:.0%}"
+                      f" · 题面换成固定题 {sum(bool(it.get('fixed_q')) for it in its)}")
 
     try:
         pt = v3.per_trial(v3.load(db))

@@ -6,7 +6,7 @@
   · 创意陈述里没有                        —— 不是提问之前就已经说过的
   · 题面与分镜格式词里也没有
   · 而终稿里有                            —— 进了作品
-的个数(每个 trial 一个值)。来源分两种:「自己写」(E 的自填 / F 的全部回答)与「点选 AI 选项」(只有 E 有);
+的个数(每个 trial 一个值)。来源分两种:「自己写」(自填)与「点选 AI 选项」(E 默认显示选项;F 的选项要点开才看得到,06 ㉜);
 「交给 AI」没有内容,不计。两种来源重合的 bigram 记在「自己写」名下。
 
 中国 E 只作描述;日本的 F−E 配对比较在 analysis/f_analysis.py 里报(调用本模块的 trial_qv)。
@@ -34,16 +34,16 @@ DB = ROOT / "data" / "novastory.db"
 
 
 def _answers(guidance_json: str) -> tuple[list[str], list[str]]:
-    """(自己写的回答, 点选的 AI 选项)。F 的采访(source=interview)全算自己写;交给 AI 的题没有内容。"""
+    """(自己写的回答, 点选的 AI 选项)。E 与 F 同一套 item 形状(F 自 2026-11-03 起与 E 同一出题组件,06 ㉜);
+    交给 AI 的题没有内容。"""
     own, opt = [], []
     for rnd in json.loads(_s(guidance_json) or "{}").get("rounds", []):
-        interview = rnd.get("source") == "interview"
         for it in rnd.get("items", []):
             if not isinstance(it, dict) or it.get("ai_decided"):
                 continue
             text = str(it.get("chosen") or "").strip()
             if text:
-                (own if (interview or it.get("is_custom")) else opt).append(text)
+                (own if it.get("is_custom") else opt).append(text)
     return own, opt
 
 
