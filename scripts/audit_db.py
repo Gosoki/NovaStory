@@ -51,7 +51,7 @@ def main(argv: list[str] | None = None) -> int:
         parts = v3.read_participants(con, "id, lang, seq, status, created_at, screening_json")
         trials = pd.read_sql("SELECT participant_id, round_idx, condition, final_output, guidance_json, script_versions,"
                              " revision_requests, n_ai_rounds, app_rev, model FROM trials", con)
-        ev = pd.read_sql("SELECT participant_id, round_idx, type, payload_json, ts FROM events", con)
+        ev = pd.read_sql("SELECT participant_id, round_idx, type, payload_json, ts, trial_id FROM events", con)
     finally:
         con.close()
     parts["dev"] = parts["screening_json"].map(lambda x: bool(_j(x, {}).get("dev")))
@@ -138,8 +138,10 @@ def main(argv: list[str] | None = None) -> int:
                 # 题面夹带候补 → AI 补的题不问:丢多了 F 的题就比 E 少(f_leak_probe 是开采前的同一口径)
                 n1 = {c: [len(_j(x, {})["rounds"][0]["items"]) for x in g.loc[g["condition"] == c, "guidance_json"]
                           if _j(x, {}).get("rounds")] for c in "EF"}
-                drop = sum(int(_j(x, {}).get("f_dropped") or 0) for x in
-                           ev.loc[(ev["lang"] == lg) & (ev["type"] == "guidance_shown"), "payload_json"])
+                # 与 f_analysis 同口径:只数产生了已提交 trial 的 attempt(作废 attempt 的出题不算)、只数第一轮
+                drop = sum(int(d.get("f_dropped") or 0) for d in map(lambda x: _j(x, {}), ev.loc[
+                    (ev["lang"] == lg) & (ev["type"] == "guidance_shown") & ev["trial_id"].notna(), "payload_json"])
+                    if int(d.get("round") or 1) == 1)
                 avg = {c: f"{sum(v) / len(v):.1f}" if v else "—" for c, v in n1.items()}
                 print(f"  {lg} F: 第一轮平均题数 F {avg['F']} / E {avg['E']} · 因题面夹带候补丢掉的 AI 补题 {drop}")
 

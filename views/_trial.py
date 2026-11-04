@@ -41,6 +41,7 @@ def submit_trial(final_text: str) -> None:
         n_hand_edits=st.session_state["r_n_hand_edits"],
         hand_edit_chars=st.session_state["r_hand_edit_chars"],
         app_rev=config.APP_REV or None,
+        attempt=st.session_state.get("r_attempt") or None,
         **meta,
         **durs,
     )

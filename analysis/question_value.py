@@ -50,6 +50,7 @@ def _answers(guidance_json: str) -> tuple[list[str], list[str]]:
 def trial_qv(db_path: Path, ids: set[int], conds=("E", "F")) -> pd.DataFrame:
     """每个 E / F trial 一行:qv_own / qv_opt(两种来源各自进终稿的新内容 bigram 数)、qv_yield = 两者之和,
     以及分母 new_own / new_opt(回答里「模型写不出来」的 bigram 数)。"""
+    from analysis import v3  # noqa: PLC0415 —— 队列(06 ㉞)决定缺基线时硬失败还是记缺失
     from core import state  # noqa: PLC0415 —— 与 embed / ja_predictions 同一份题库归一化
     topics = state.load_topics()
     title2idx = {state.topic_text(t, "title", embed.BASELINE_LANG): i for i, t in enumerate(topics)}
@@ -60,16 +61,23 @@ def trial_qv(db_path: Path, ids: set[int], conds=("E", "F")) -> pd.DataFrame:
                          " t.intent_statement, t.final_output, t.guidance_json"
                          f" FROM trials t JOIN participants p ON p.id = t.participant_id WHERE t.condition IN ({q})",
                          con, params=conds)
+        coh = v3.read_participants(con, "id, lang").set_index("id")["cohort"].to_dict()
     finally:
         con.close()
     tr = tr[tr["participant_id"].isin(ids)]
     base_bg: dict[tuple[int, str], set[str]] = {}
-    rows = []
+    rows, no_base, n_latin = [], {}, 0
     for r in tr.itertuples():
         lang = _s(r.lang) or "ja"
+        if lang not in prereg.BIGRAM_LANGS:   # 英文的字符 bigram 无区分力(prereg.BIGRAM_LANGS)
+            n_latin += 1
+            continue
         topic = json.loads(_s(r.topic_json) or "{}")
         ti = title2idx.get(state.topic_text(topic, "title", embed.BASELINE_LANG))
         if ti is None:
+            continue
+        if not embed.has_baseline(ti, lang) and not embed.baseline_required(lang, coh.get(r.participant_id)):
+            no_base[(lang, ti)] = no_base.get((lang, ti), 0) + 1   # prereg.BASELINE_MISSING_RULE
             continue
         if (ti, lang) not in base_bg:
             base_bg[(ti, lang)] = set().union(*(_bigrams(strip_format(x)) for x in embed._baseline_texts(ti, topics, lang)))
@@ -83,6 +91,10 @@ def trial_qv(db_path: Path, ids: set[int], conds=("E", "F")) -> pd.DataFrame:
                      "lang": lang, "new_own": len(new_own), "new_opt": len(new_opt),
                      "qv_own": len(new_own & final), "qv_opt": len(new_opt & final),
                      "has_own": bool(own)})
+    embed.warn_no_baseline(no_base, "QV1 问题产出")
+    if n_latin:
+        print(f"  (QV1:界面语言不在 {prereg.BIGRAM_LANGS} 的 {n_latin} 个 trial 不进 —— 字符 bigram 对英文无区分力,"
+              "prereg.BIGRAM_LANGS)")
     out = pd.DataFrame(rows, columns=["participant_id", "round_idx", "condition", "lang", "new_own", "new_opt",
                                       "qv_own", "qv_opt", "has_own"])
     out["qv_yield"] = out["qv_own"] + out["qv_opt"]

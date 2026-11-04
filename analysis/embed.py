@@ -44,8 +44,9 @@ _MIN_BASELINE = prereg.MIN_BASELINE_PER_TOPIC  # 质心的机器稿下限:更少
 # data/baseline/ 根目录那份基线的语言(历史布局;deploy_check.embed_lang 读它)。
 # 其他语言的基线放 data/baseline/<lang>/(baseline_dir);每位被试只和**自己语言**的基线比。
 BASELINE_LANG = "ja"
-# 正式队列的语言(ja=日本队列、zh=中国队列,docs/paper/03):缺同语言基线 → 硬失败。
-# 其余语言(en = 研究员测试 / 脱离协议)缺基线时照旧:不发 API、Δ 记 NaN、大声说。
+# 正式队列的语言(ja=日本队列、zh=中国队列,docs/paper/03):队列**自己的语言**缺基线 → 硬失败。
+# 其余情况(界面语言 ≠ 队列,例如日本队列里选中文 / 英文的人;en = 旧的研究员测试行)缺同语言同题基线 →
+# 不发 API、Δ 记 NaN、大声说(baseline_required,prereg.BASELINE_MISSING_RULE)。
 COHORT_LANGS = ("ja", "zh")
 # 意图定义②(敏感性):锚 = intent_statement + E 引导答案。stats 按列名精确认 embed_fidelity
 # (定义①,原口径),所以这一列不会进保真复合。两种定义方向可能相反,都必须报(docs/paper/10)。
@@ -56,6 +57,28 @@ def baseline_dir(lang: str) -> Path:
     """某语言的机器基线目录。ja 沿用历史位置 data/baseline/(deploy_check 与文档都指这里),
     其他语言放 data/baseline/<lang>/ —— 分目录而不是同名文件,两种语言的质心在结构上就串不了。"""
     return BASELINE if lang == BASELINE_LANG else BASELINE / lang
+
+
+def has_baseline(topic_idx: int, lang: str) -> bool:
+    """这一题有没有 `lang` 的机器基线文件(只看存在性;内容校验仍由 _baseline_texts 负责)。"""
+    return (baseline_dir(lang) / f"topic{topic_idx}.jsonl").exists()
+
+
+def baseline_required(lang: str, cohort) -> bool:
+    """缺 `lang` 基线时是否硬失败(prereg.BASELINE_MISSING_RULE,2026-11-05):只有正式队列**自己的语言**
+    (ja 队列的 ja、zh 队列的 zh)必须有基线;队列里选了别的界面语言的被试(06 ㉞:日本招募、选了中文 / 英文)
+    缺这份基线 → 依赖基线的量对该 trial 记缺失、大声说,不拖垮整次分析。"""
+    cohort = cohort if isinstance(cohort, str) and cohort else lang
+    return lang in COHORT_LANGS and lang == cohort
+
+
+def warn_no_baseline(missing: dict, what: str) -> None:
+    """{(lang, topic_idx): trial 数} → 一行告警(prereg.BASELINE_MISSING_RULE)。"""
+    if missing:
+        print(f"  ⚠️ {what}:{sum(missing.values())} 个 trial 没有同语言同题的机器基线("
+              + "、".join(f"{lg} topic{ti} {n} 个" for (lg, ti), n in sorted(missing.items()))
+              + ")→ 这一项记缺失(prereg.BASELINE_MISSING_RULE);"
+              "补救 = 用采数同一模型快照 make baseline BASELINE_LANG=<语言>(需授权调 API)")
 
 
 def guided_intent(intent: str, guidance_json) -> str:
@@ -201,16 +224,17 @@ def compute(only_lang: str | None = None) -> None:
         raise SystemExit("先跑 analysis/v3.py 生成 v3_per_trial.csv。")
     if not BASELINE.exists():
         raise SystemExit(f"缺少机器基线目录 {BASELINE} —— Δ 的零点就是它,先跑: make baseline")
+    from analysis import v3 as _v3  # noqa: PLC0415 — 避免模块级循环依赖
     con = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
     trials = pd.read_sql("SELECT participant_id, round_idx, intent_statement, final_output, "
                          "topic_json, model, guidance_json FROM trials", con)
-    langs = pd.read_sql("SELECT id AS participant_id, lang FROM participants", con)
+    # 队列(06 ㉞)决定缺基线时硬失败还是记缺失(baseline_required);旧库没有 cohort 列 → 按 lang
+    langs = _v3.read_participants(con, "id AS participant_id, lang")
     con.close()
 
     # 纳入规则(同 analysis/v3):此前 embed **连 dev 过滤都没有** —— 研究员的测试稿会
     # 进质心、也会被送去 OpenAI 算 embedding。而同意书写着中止者的回答不用于分析,
     # embedding 正是「分析」里最实打实的那一步(还要把原文外发一次)。
-    from analysis import v3 as _v3  # noqa: PLC0415 — 避免模块级循环依赖
     keep = _v3.included_participants(DB)
     n0 = trials["participant_id"].nunique()
     trials = trials[trials["participant_id"].isin(keep)]
@@ -218,22 +242,17 @@ def compute(only_lang: str | None = None) -> None:
         print(f"  纳入规则:{n0} 人中排除 "
               f"{n0 - trials['participant_id'].nunique()} 人(dev / 名单剔除 / 未走完全部轮次)")
     # 语言:每位被试只和**自己语言**的基线比(prompt / 题面 / 分镜模板全随语言变,跨语言的零点
-    # 不可比)。正式队列(COHORT_LANGS)缺基线 → 由 _baseline_texts 硬失败;其余语言缺基线、
-    # 或被 --lang 排除 → 不发 API、Δ 记 NaN、大声说。
-    trials = trials.merge(langs, on="participant_id", how="left")
+    # 不可比)。正式队列自己的语言缺基线 → 由 _baseline_texts 硬失败;界面语言 ≠ 队列的被试缺同语言同题
+    # 基线(下面按 trial 判,prereg.BASELINE_MISSING_RULE)、或被 --lang 排除 → 不发 API、Δ 记 NaN、大声说。
+    trials = trials.merge(langs[["participant_id", "lang", "cohort"]], on="participant_id", how="left")
     trials["lang"] = trials["lang"].fillna(BASELINE_LANG)
+    trials["cohort"] = trials["cohort"].fillna(trials["lang"])
     skip = (trials["lang"] != only_lang) if only_lang else pd.Series(False, index=trials.index)
-    for lg in set(trials.loc[~skip, "lang"]):
-        if lg not in COHORT_LANGS and not any(baseline_dir(lg).glob("topic*.jsonl")):
-            skip |= trials["lang"] == lg
     for lg, n in trials[skip].groupby("lang")["participant_id"].nunique().items():
-        if only_lang and lg != only_lang:
-            print(f"  {n} 位 {lg} 被试不在 --lang {only_lang} 内:不重算,CSV 里已有的 embed_fidelity 原样保留")
-        else:
-            print(f"  ⚠️ {n} 位 {lg} 被试无同语言基线(非正式队列),embed_fidelity 记 NaN")
+        print(f"  {n} 位 {lg} 被试不在 --lang {only_lang} 内:不重算,CSV 里已有的 embed_fidelity 原样保留")
     trials = trials[~skip]
     if trials.empty:
-        raise SystemExit("没有任何被试可算 Δ(语言被 --lang 排除,或都没有同语言基线)。")
+        raise SystemExit("没有任何被试可算 Δ(语言被 --lang 排除)。")
     if only_lang:
         # --lang 只补算一种语言时,其他正式队列的 Δ 要靠 CSV 里已有的值。但 `make v3` 每次都重写 CSV、
         # 丢掉 embedding 列 —— `make v3 events embed EMBED_LANG=ja` 会让 zh 的保真复合悄悄退回主观三腿,
@@ -259,6 +278,18 @@ def compute(only_lang: str | None = None) -> None:
     used = sorted({int(i) for i in trials["topic_idx"].dropna().unique()})
     if not used:
         raise SystemExit("没有一条 trial 的题目能对上 topics.json(题面被改过?)——无法配基线。")
+    # 缺同语言同题基线(prereg.BASELINE_MISSING_RULE,2026-11-05):例如日本队列里选中文的人做第 4 题(中国只做过
+    # 前 3 题,zh 没有第 4 题基线)、选英文的人(en 没有基线)→ 这些 trial 的 Δ 记 NaN;队列自己的语言缺基线仍硬失败
+    no_base = pd.Series([pd.notna(ti) and not has_baseline(int(ti), lg) and not baseline_required(lg, coh)
+                         for ti, lg, coh in zip(trials["topic_idx"], trials["lang"], trials["cohort"])],
+                        index=trials.index, dtype=bool)
+    if no_base.any():
+        warn_no_baseline({(lg, int(ti)): int(n) for (lg, ti), n
+                          in trials[no_base].groupby(["lang", "topic_idx"]).size().items()},
+                         f"embed_fidelity(涉及 {trials.loc[no_base, 'participant_id'].nunique()} 人)")
+        trials = trials[~no_base]
+        if trials.empty:
+            raise SystemExit("没有任何 trial 有同语言同题的机器基线,无法算 Δ。")
     # 先纯文件校验+读齐所有用到的基线,再花任何 API 调用。逐语言:先存在性/身份(可读提示),再模型一致性
     base_texts = {}
     for lg, g in trials.groupby("lang"):

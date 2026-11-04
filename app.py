@@ -662,6 +662,17 @@ body:has(.stElementContainer:not([data-stale="true"]) .ns-busy) .stElementContai
 }
 .stElementContainer:has(.ns-busy){height:0!important;min-height:0!important;margin:0!important;
   padding:0!important;overflow:hidden!important}
+/* AI 调用等待中(.ns-busy-llm,views/_streaming 调用一结束就撤掉):本次运行里**已画出**的引导卡片 / 脚本编辑框 /
+   修改框 / 「AIに伝える」不可点(2026-11-05 审计)。E/F 点「回答を終えて生成」、D 点「AIに伝える」之后,流式输出时
+   改一个选项、点「前の質問」或点编辑框都会 rerun → 在途的生成没人接回、要再点一次生成、等待也没记进 AI 等待。
+   只挡指针(滚动照常);不支持 :has() 的浏览器退回原样。 */
+body:has(.stElementContainer:not([data-stale="true"]) .ns-busy-llm)
+  :is(.st-key-ns_card_gq, .st-key-_script_edit, .st-key-_revision_input, .st-key-btn_more_ai){
+  pointer-events:none!important;
+}
+/* 输入框获得焦点时 Streamlit 1.60 自带的英文提示「Press ⌘+Enter to apply」与字数「12/1000」—— 不随界面语言变,
+   ja / zh 被试会看到英文 → 藏掉;max_chars 的上限照常生效(2026-11-05 审计)。 */
+[data-testid="InputInstructions"]{display:none!important}
 .stExpander summary,
 [data-baseweb="tab-list"],[data-baseweb="tab"]{opacity:1!important}
 

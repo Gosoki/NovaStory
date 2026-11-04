@@ -394,9 +394,19 @@ def render() -> None:
     answers: dict[str, object] = {}
     missing: list[str] = []  # labels of unanswered items, named back to the user
     pending: list[str] = []  # 还没答的题的容器 key(按页面顺序),第一个套「下一题」框
+    # 逐题作答记录(2026-11-05,探索性;06 ⑯):某题的值与上一次运行不同才记一条 q_item —— 不加 on_change、
+    # 不多一次 rerun(这些控件本来每点一下就整页重跑)。得到逐题作答时刻、改答次数与作答顺序(第 4 轮是否变快、
+    # 是否在配图出来之前就打了分)。记录失败不挡作答(state.log_passive)。
+    snap = st.session_state.setdefault(f"_qsnap_{ridx}", {})
+
+    def track(k: str, v) -> None:
+        if v is not None and snap.get(k) != v:
+            state.log_passive("q_item", {"k": k, "v": v, "prev": snap.get(k)})
+            snap[k] = v
 
     def likert(key: str, label: str, anchors: str | None = "agree") -> None:
         val = _scale.likert(label, f"_q_{key}_{ridx}", anchors=anchors)   # 题与题之间的分隔线在 _scale 的块样式里
+        track(key, val)
         if val is None:
             missing.append(_scale.truncate_label(label))
             pending.append(_scale.container_key(f"_q_{key}_{ridx}"))
@@ -444,6 +454,7 @@ def render() -> None:
                     t("q.shot_tag_label"), tag_labels, selection_mode="single",
                     key=f"_q_shot{s['idx']}_{ridx}",
                 )
+            track(f"shot{s['idx']}", lbl2tag.get(sel))
             if sel is None:
                 missing.append(t("q.shot_label", i=s["idx"]))
                 pending.append(f"ns_card_shot{s['idx']}_{ridx}")
@@ -453,6 +464,7 @@ def render() -> None:
             t("q.whole_tag_label"), tag_labels, selection_mode="single",
             key=f"_q_whole_{ridx}",
         )
+        track("whole", lbl2tag.get(sel))
         if sel is None:
             missing.append(_scale.truncate_label(t("q.whole_tag_label")))
             pending.append(f"_q_whole_{ridx}")
@@ -473,6 +485,7 @@ def render() -> None:
 
     if st.button(t("q.submit"), type="primary", width="stretch"):
         if missing:
+            state.log_passive("blocked", {"where": "questionnaire", "n": len(missing)})
             st.error(t("errors.unanswered", items=" / ".join(missing)))
             return
         _submit(ridx, answers, shot_annotations)

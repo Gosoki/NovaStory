@@ -38,7 +38,7 @@
   },
   "intro": {
     "title": "Before you begin",
-    "flow": "This study has 4 rounds. Each round follows this flow:\n\n**Write your idea　→　the AI drafts a script　→ (if needed) tweak it　→　a few short questions**\n\nThe way the AI is involved changes a little each round.",
+    "flow": "This study has 4 rounds. Each round follows this flow:\n\n**Write your idea　→　the AI drafts a script　→ (if needed) tweak it　→　a short questionnaire**\n\nThe way the AI is involved changes a little each round.",
     "freedom": "Just put down whatever you already have in mind. A polished mini-script, a rough idea, or just the direction or mood is all fine — write it however you like, as much or as little as you want.",
     "ex_lead": "Example: if the topic were \"You overslept because your alarm didn't go off\" — for the same topic, you can write as much or as little as you like.",
     "ex_no": "Example {n}",
@@ -126,13 +126,13 @@
     "intent_submit": "Confirm and start creating",
     "step_intent": "Write your idea",
     "step_generate": "Generate the script",
-    "step_questionnaire": "Answer questions",
+    "step_questionnaire": "Fill in the questionnaire",
     "step_guidance": "Answer the AI's questions",
     "step_polish": "Polish the script",
     "retry": "Retry"
   },
   "q": {
-    "title": "A few questions about this round",
+    "title": "A short questionnaire about this round",
     "hint": "Please answer based on the script you just completed.",
     "own1": "I feel that this storyboard script is MY work.",
     "own2": "I feel a strong sense of ownership toward this script.",
@@ -155,7 +155,7 @@
     "satisfaction": "Overall, I am satisfied with the final result of this round",
     "ai_q_quality": "The questions the AI asked were on-point and helped me develop my ideas.",
     "ai_q_amount": "How was the number of questions the AI asked you?",
-    "ai_q_best": "Which of those questions helped you (helped you think it through)?",
+    "ai_q_best": "Which of the AI's questions helped you (helped you think it through)?",
     "ai_q_best_ph": "Select all that apply — or none, if none of them helped.",
     "script_review": "The storyboard you just finished",
     "anchor_disagree": "Strongly disagree",
@@ -296,7 +296,7 @@
     "col_frame": "Frame",
     "col_plot": "Action",
     "col_line": "Dialogue",
-    "frame_todo": "Coming soon",
+    "frame_todo": "No image",
     "generating": "Generating…\nfeel free to answer the questionnaire below first",
     "title": "Storyboard"
   },

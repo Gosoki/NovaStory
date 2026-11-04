@@ -38,6 +38,67 @@ from streamlit.testing.v1 import AppTest  # noqa: E402
 
 N = 8
 rng = random.Random(20261103)
+# 06 ㉞:队列按招募地 —— 日本招募的人选了中文 / 英文界面也做 4 条件(cohort=ja)。8 人里放 1 个 zh、1 个 en 界面,
+# 让「lang ≠ cohort」这条路径(题面 / 提示词语言、按队列筛、缺 zh 第 4 题 / en 基线时分析照常跑完)每次回归都走到。
+LANGS = ["ja", "zh", "ja", "ja", "ja", "en", "ja", "ja"]
+# zh / en 被试的桩稿(dev_smoke_e2e 导入时按 ja 装好桩;换语言时一并换掉,解析器按各自语言的字段标记读)
+_STUB = {
+    "zh": {"script": ("1.\n【画面描写】闹钟显示23:00，主角猛地抬头\n【时长】3 秒 【拍法】特写 【台词/音效】\"完了完了\"\n"
+                      "2.\n【画面描写】书页快速翻动，荧光笔乱涂\n【时长】8 秒 【拍法】中景 【台词/音效】纸张哗哗声\n"
+                      "3.\n【画面描写】天亮，主角趴在书堆里睡着\n【时长】4 秒 【拍法】远景 【台词/音效】鸟叫"),
+           "rev": ("完了完了", "哈哈哈，有意思"),
+           "q": [("psychology", "主角此刻最强烈的感受是？", ["恐慌", "自嘲", "冷静"]),
+                 ("turning_point", "故事在哪里转折？", ["开场", "中段", "结尾"]),
+                 ("key_shot", "最想让观众记住哪个画面？", ["翻书", "睡着", "天亮"]),
+                 ("tone", "整体基调？", ["喜剧", "悬疑", "写实"]),
+                 ("ending", "结局走向？", ["失败", "反转", "开放"]),
+                 ("sound", "突出哪种声音？", ["钟表声", "独白", "环境音"])],
+           "fu": [("pacing", "第二镜是否太长？", ["缩短", "保持", "拆成两镜"]),
+                  ("dialogue", "要不要加一句结尾台词？", ["要", "不要"])],
+           "input": {"intents": ("主角发现卷子上的题目昨晚全梦到过", "末班车开走后他跟着夜跑团回家",
+                                 "告白的话写在毕业帽内侧被风吹走", "躲雨时和陌生人分享了一把伞"),
+                     "request": "更搞笑一点", "edit": "\n（我手改的：结尾加一个彩蛋镜头）",
+                     "custom": "我自己写的：荒诞但温柔", "f_custom": "我自己写的：先不敢相信，然后笑出来"}},
+    "en": {"script": ("1.\n【Visual】The alarm clock shows 23:00 and the hero jerks awake\n"
+                      "【Duration】3 s 【Shot】close-up 【Audio】\"Oh no, oh no\"\n"
+                      "2.\n【Visual】Textbook pages flip fast, a highlighter races across\n"
+                      "【Duration】8 s 【Shot】medium 【Audio】pages rustling\n"
+                      "3.\n【Visual】Morning: the hero asleep face-down on a pile of books\n"
+                      "【Duration】4 s 【Shot】wide 【Audio】birdsong"),
+           "rev": ("Oh no, oh no", "Ha, that's funny"),
+           "q": [("psychology", "What does the hero feel most strongly?", ["panic", "self-mockery", "calm"]),
+                 ("turning_point", "Where does the story turn?", ["opening", "middle", "ending"]),
+                 ("key_shot", "Which image should viewers remember?", ["flipping pages", "falling asleep", "dawn"]),
+                 ("tone", "Overall tone?", ["comedy", "suspense", "realism"]),
+                 ("ending", "Which way does it end?", ["failure", "twist", "open"]),
+                 ("sound", "Which sound to feature?", ["ticking clock", "monologue", "ambience"])],
+           "fu": [("pacing", "Is shot 2 too long?", ["shorten", "keep", "split in two"]),
+                  ("dialogue", "Add a closing line?", ["yes", "no"])],
+           "input": {"intents": ("She realises she dreamed every exam question last night",
+                                 "After missing the last train he jogs home with a night-running club",
+                                 "A confession written inside a graduation cap blows away",
+                                 "Sheltering from rain, two strangers share one umbrella"),
+                     "request": "Make it funnier", "edit": "\n(my own edit: add a bonus shot at the end)",
+                     "custom": "My own words: absurd but gentle", "f_custom": "My own words: disbelief, then laughter"}},
+}
+_STUB["ja"] = {"script": E._SCRIPT, "rev": ("やばい、やばい", "ははっ、面白い"), "r1": E._R1_QUESTIONS,
+               "fu_q": E._FU_QUESTIONS, "input": dict(E._INPUT)}
+
+
+def _use_lang(lang: str) -> None:
+    """下一位被试用 lang 界面:标签映射、桩稿、被试输入一起换;E2E 的模块级注入表也清掉(会跨被试残留)。"""
+    s = _STUB[lang]
+    E._injected.clear()
+    E.E2E_LANG = lang
+    E._TGT_TEXT = dict(E._walk(E._T._load(lang)))
+    E._SCRIPT = s["script"]
+    E._SCRIPT_REV = s["script"].replace(*s["rev"])
+    E._R1_QUESTIONS = s.get("r1") or {"questions": [{"dimension": d, "question": q, "options": o, "why": "x"}
+                                                     for d, q, o in s["q"]]}
+    E._FU_QUESTIONS = s.get("fu_q") or {"questions": [{"dimension": d, "question": q, "options": o, "why": "x"}
+                                                       for d, q, o in s["fu"]]}
+    E._INPUT = s["input"]
+    E.EDIT_MARK = s["input"]["edit"]
 
 
 def _answer_questionnaire(at, round_idx, attention=False, ai_q=False):
@@ -115,9 +176,10 @@ def _final_survey(at) -> None:
 
 
 def _participant(k: int) -> tuple[int, list[str], str]:
+    _use_lang(LANGS[k])
     at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=90)
     at.run()
-    at.radio(key="_consent_lang").set_value(E.LANG_LABELS["ja"])
+    at.radio(key="_consent_lang").set_value(E.LANG_LABELS[LANGS[k]])
     at.run()
     at.checkbox(key="_consent_agree").check().run()
     E.btn_click(at, "同意并开始")
@@ -170,12 +232,17 @@ def _check_db(db_path: Path) -> None:
         EV = pd.read_sql("SELECT * FROM events", con)
     finally:
         con.close()
-    assert len(P) == N and set(P["lang"]) == {"ja"} and set(P["status"]) == {"done"}, P[["lang", "status"]]
+    assert len(P) == N and set(P["status"]) == {"done"}, P[["lang", "status"]]
+    assert set(P["cohort"]) == {"ja"} and P.sort_values("id")["lang"].tolist() == LANGS, \
+        f"选中文 / 英文的日本招募者也该是 cohort=ja(06 ㉞):{P[['lang', 'cohort']].values.tolist()}"
     assert sorted(P["seq"]) == [0, 1, 4, 5, 8, 9, 12, 13], f"交错分配不对:{sorted(P['seq'])}"
-    ja = json.load(open(ROOT / "i18n" / "locales" / "ja.json", encoding="utf-8"))["consent"]
-    fp = hashlib.sha1("\x1f".join(ja[k] for k in ("body", "agree", "no_refresh")).encode()).hexdigest()[:16]
     sj = P["screening_json"].map(json.loads)
-    assert set(sj.map(lambda d: d.get("consent_sha1"))) == {fp}, "同意书指纹没落库或不一致"
+    for lg in set(LANGS):   # 同意书指纹按各自的界面语言
+        c = json.load(open(ROOT / "i18n" / "locales" / f"{lg}.json", encoding="utf-8"))["consent"]
+        fp = hashlib.sha1("\x1f".join(c[k] for k in ("body", "agree", "no_refresh")).encode()).hexdigest()[:16]
+        got = set(sj[P["lang"] == lg].map(lambda d: d.get("consent_sha1")))
+        assert got == {fp}, f"{lg} 同意书指纹没落库或不一致:{got} ≠ {fp}"
+    assert sj.map(lambda d: bool(d.get("session_id"))).all(), "screening_json 没记 session_id(连点提交的防重靠它)"
     fs = P["final_survey_json"].map(json.loads)
     assert fs.map(lambda d: d.get("owned_round") is not None).all(), "总问卷 owned_round 没落库"
     assert len(T) == 4 * N and T["condition"].value_counts().to_dict() == {c: N for c in "CDEF"}, T["condition"].value_counts()
@@ -205,7 +272,8 @@ def _check_db(db_path: Path) -> None:
         assert n_ev.get(etype, 0) == n_item > 0, f"{etype} 事件 {n_ev.get(etype, 0)} ≠ 各题 {field} 之和 {n_item}"
     groups = EV.loc[EV["type"] == "llm_start", "payload_json"].map(lambda s: json.loads(s).get("group"))
     assert {"F-guidance-r1", "F-final"} <= set(groups), set(groups)
-    print(f"  ✅ 库:8 人 / 32 trial / 32 份问卷;F {len(f_items)} 题(点ヒント {sum(it['n_hint_clicks'] > 0 for it in f_items)}、"
+    print(f"  ✅ 库:8 人(界面 {P['lang'].value_counts().to_dict()},全部 cohort=ja)/ 32 trial / 32 份问卷;"
+          f"F {len(f_items)} 题(点ヒント {sum(it['n_hint_clicks'] > 0 for it in f_items)}、"
           f"显示了选项 {len(revealed)}、点开后退回自己写 {sum(it['n_hint_declines'] > 0 for it in f_items)});"
           f"事件 f_hint_click {n_ev.get('f_hint_click', 0)} 次")
 
@@ -228,7 +296,7 @@ def main() -> int:
     rc, _ = _cli(A_ev.main, ["--db", str(db_path), "--csv", str(csv)])
     assert rc == 0, "events 失败"
     df = pd.read_csv(csv)
-    assert len(df) == 4 * N and set(df["lang"]) == {"ja"}, df["lang"].value_counts()
+    assert len(df) == 4 * N and set(df["cohort"]) == {"ja"}, df["cohort"].value_counts()
     must = ["own_mean", "imagine", "violation", "not_against", "mine_ratio", "satisfaction", "tlx1", "attention_ok",
             "pre_investment", "post_investment", "total_investment", "n_ai_rounds", "hand_edit_chars", "t_total",
             "fs_pref_cond", "fs_owned_cond", "fs_effort_cond", "seq", "n_llm_unclosed", "parse_ok"]

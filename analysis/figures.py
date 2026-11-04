@@ -176,6 +176,8 @@ def main(argv: list[str] | None = None) -> None:
     if len(langs) > 1:
         print(f"⚠️ 图里混有多个队列 {langs}(不分队列、无 lang 项);分国图用 --lang zh / --lang ja")
     raw, _ = drop_non_confirmatory(raw)   # 第 4 条件 F 不进 C/D/E 的图(与 make stats 同口径)
+    if "cohort" in raw:   # 复合 z 按队列分组(与 make stats 同口径):界面语言不是队列(06 ㉞)
+        raw = raw.assign(lang=raw["cohort"])
     pt = build_composites(raw)
     if args.population == "novice":
         if "novice" not in pt.columns:
@@ -200,9 +202,15 @@ def main(argv: list[str] | None = None) -> None:
             df = df[df["novice"].astype(bool)]
         if args.lang != "all" and "cohort" in df.columns:
             df = df[df["cohort"] == args.lang]
-        # 压缩比 / distinct-2 跨语言不可比(字节级、字符级),中日稿混成一组算没有意义
-        mixed = "lang" in df.columns and df["lang"].nunique() > 1
-        div = v3.diversity_by_group(df) if not mixed else []
+        # 压缩比 / distinct-2 跨语言不可比(字节级、字符级),中日稿混成一组算没有意义。单队列时只用队列自己的
+        # 语言:日本队列里选了中文 / 英文界面的稿子(06 ㉞)不进这张图(fig4 素材照旧全收)
+        df_div = df
+        if args.lang != "all" and "lang" in df.columns and (df["lang"] != args.lang).any():
+            df_div = df[df["lang"] == args.lang]
+            print(f"(多样性图只用界面语言 = {args.lang} 的稿子;另有 {int((df['lang'] != args.lang).sum())} 稿"
+                  "是别的语言,不进这张图)")
+        mixed = "lang" in df_div.columns and df_div["lang"].nunique() > 1
+        div = v3.diversity_by_group(df_div) if not mixed else []
         if mixed:
             stale = FIGDIR / f"fig_diversity{sfx}.png"
             print("(多个队列混在一起,跳过多样性图 —— 用 --lang zh / --lang ja 分开画"

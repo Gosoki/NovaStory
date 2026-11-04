@@ -34,6 +34,11 @@ _FORGET_AFTER_S = 600   # 已结束、没人来取的调用(会话放弃 / 换�
 # 等待中的标记:app.py 的 CSS 见到「本次运行里有它」,就把上一次运行残留、还没被重画的旧元素
 # 藏起来、不可点(只在有 AI 调用的那次运行里;问卷页等其他运行不受影响)。
 _BUSY = '<span class="ns-busy"></span>'
+# AI 调用等待专用(2026-11-05):另加 ns-busy-llm,app.py 据此在**等待期间**把本次运行里已画出的引导卡片 / 编辑框 /
+# 修改框 / 「AIに伝える」设为不可点 —— 以前流式输出时点一下卡片或改一个选项就 rerun,在途的生成没人接回
+# (n_llm_unclosed)、等待也没记进 r_llm_wait。标记放在 st.empty() 里,调用一结束就撤掉:失败后的
+# 「もう一度」/ 生成按钮必须点得动。F 的 2 秒等待用的是上面的 _BUSY(不锁卡片,F 的交互不变)。
+_BUSY_LLM = '<span class="ns-busy ns-busy-llm"></span>'
 
 
 def _one_line(s: str) -> str:
@@ -179,13 +184,15 @@ def stream_llm(system: str, user: str, *, group: str) -> Optional[str]:
 
     job, new = _job(key, run)
     _log_start(group, job, new)
-    st.markdown(_BUSY, unsafe_allow_html=True)
+    busy = st.empty()
+    busy.markdown(_BUSY_LLM, unsafe_allow_html=True)
     # 状态行收起:输出本来就画在它下面,展开只会多一个空框
     status = st.status(t("common.loading"), expanded=False)
     out = st.empty()
     while not job["done"]:
         out.markdown(script_view("".join(job["chunks"])), unsafe_allow_html=True)
         time.sleep(0.15)
+    busy.empty()   # 等待结束:撤掉锁定标记(见 _BUSY_LLM)
     raw = "".join(job["chunks"])
     out.markdown(script_view(raw), unsafe_allow_html=True)
 
@@ -243,13 +250,15 @@ def call_llm_json(system: str, user: str, *, group: str) -> dict | None | object
     uid = str(st.session_state.get("participant_id") or "")
     job, new = _job(key, lambda job: llm.generate_json(system, user, group=group, user_id=uid))
     _log_start(group, job, new)
-    st.markdown(_BUSY, unsafe_allow_html=True)
+    busy = st.empty()
+    busy.markdown(_BUSY_LLM, unsafe_allow_html=True)
     label = t("guidance.wait")
     bar = st.progress(0.0, text=label)
     while not job["done"]:
         bar.progress(min((time.time() - job["t0"]) / _PROGRESS_CEIL_S, 0.95), text=label)
         time.sleep(0.3)
     bar.empty()
+    busy.empty()   # 等待结束:撤掉锁定标记(见 _BUSY_LLM)
 
     if job["settled"] is None:   # 记账只做一次(同 stream_llm)
         elapsed = round(time.time() - job["t0"], 2)

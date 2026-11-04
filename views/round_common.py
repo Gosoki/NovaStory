@@ -186,6 +186,7 @@ def _render_intent(cond: str, topic: dict) -> None:
     _tour.intent_tour()
     if st.button(t("round.intent_submit"), type="primary", width="stretch"):
         if len(val) < config.MIN_INTENT_CHARS:
+            state.log_passive("blocked", {"where": "intent", "chars": len(val)})   # 探索性(2026-11-05)
             st.error(t("errors.intent_too_short", n=config.MIN_INTENT_CHARS))
             return
         st.session_state["r_intent"] = val

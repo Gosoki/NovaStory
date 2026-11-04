@@ -283,7 +283,9 @@ def _attempt_resume() -> None:
         # 这里也要铸新段 id:否则 session_resumed / final_survey_* 会以 attempt=NULL 写进第 3 轮,
         # 破坏「每段都有 attempt」(LOG4),以后按段切的脚本会把它当旧格式行。
         reset_round_payload()
-        log_event("session_resumed", {"stage": "final_survey"})
+        # 总问卷在所有轮次之外 → 与 final_survey_* 同一约定记到 round_idx=0(2026-11-05):以前记进最后一轮,
+        # 那一轮的 n_resumes 会被总问卷页的刷新算进去
+        log_intake_event("session_resumed", {"stage": "final_survey"})
         return
     st.session_state["round_idx"] = done_rounds + 1
     # 终稿已提交、问卷还没交(问卷页刷新 / 断线):从 trial 行把这一轮**原样恢复到问卷页**。
@@ -640,6 +642,15 @@ def log_event(type_: str, payload: Optional[dict] = None, *, once: bool = False)
         seq_in_round=len(st.session_state["r_events"]),  # LOG3: 1-based within attempt
         attempt=st.session_state.get("r_attempt") or None,
     )
+
+
+def log_passive(type_: str, payload: Optional[dict] = None) -> None:
+    """探索性的被动记录(2026-11-05:问卷逐题 q_item、被拦下的提交 blocked 等):写失败只吞掉 ——
+    这些事件不进任何冻结指标,不能因为它们挡住被试的操作。"""
+    try:
+        log_event(type_, payload)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def add_llm_wait(seconds: float) -> None:

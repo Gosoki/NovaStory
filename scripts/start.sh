@@ -15,6 +15,10 @@ set -uo pipefail
 
 cd "$(dirname "$0")/.." || exit 1
 ROOT="$PWD"
+# 库里的时间戳是 datetime.now() 写的**服务器本地时间**(core/db.py),中国队列的全部行都是 UTC 写的,
+# 后台面板也按 UTC 显示(+9h)。2026-10-30 起这台机器的系统时区是 Asia/Tokyo —— 不固定的话,重启后日本的
+# 时间戳会变成 JST,与中国口径差 9 小时。所以服务一律以 UTC 起(cron 的 @reboot / 看门狗也走这里)。
+export TZ="${NOVASTORY_TZ:-Etc/UTC}"
 PORT="${NOVASTORY_PORT:-8501}"
 ADDR="${NOVASTORY_ADDR:-0.0.0.0}"   # 反代在另一台机器(10.0.0.1)上,不能绑 127.0.0.1
 PIDFILE="$ROOT/data/novastory.pid"
@@ -53,7 +57,19 @@ case "${1:-start}" in
     exit 0 ;;
 
   restart)
-    "$0" stop; sleep 2; exec "$0" start ;;
+    old="$(running_pid)"
+    "$0" stop
+    # 等旧进程真的退出(以前只 sleep 2:没退干净时 start 会说「已经在跑了」然后 exit 0,
+    # 跑的还是旧代码,要等看门狗才换成新的)
+    for _ in $(seq 1 30); do
+      { [ -n "${old:-}" ] && [ -d "/proc/$old" ]; } || break
+      sleep 0.5
+    done
+    if [ -n "${old:-}" ] && [ -d "/proc/$old" ]; then
+      echo "✗ 旧进程 pid=$old 15 秒内没有退出,没有重启。先看: ps -o pid,lstart,cmd -p $old"
+      exit 1
+    fi
+    exec "$0" start ;;
 esac
 
 # ---------- start ----------

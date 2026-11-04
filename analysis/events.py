@@ -48,7 +48,10 @@ EVENT_COLS = ["t_questionnaire", "n_llm_calls", "n_llm_errors",
               # 请求被 rerun 打断的读数(prereg.JA_SENSITIVITY 第 1 条,2026-10-29):
               #   n_llm_unclosed = 没有结束事件的 llm_start(中国队列:打断后整个重发,旧代码的口径)
               #   n_llm_reattach = 打断后接着等原来那次调用的次数(2026-10-29 之后的代码,日本队列)
-              "n_llm_unclosed", "n_llm_reattach"]
+              "n_llm_unclosed", "n_llm_reattach",
+              # F 点「表示する」后的等待秒数(06 ㉜:作業時間另报扣除版本;2026-11-05):
+              #   f_wait_pre = 第 1 轮(生成前)的,落在 t_pregen 里;f_wait_post = 追问轮(生成后)的,落在 t_postgen 里
+              "f_wait_pre", "f_wait_post"]
 _COLS = EVENT_COLS
 
 
@@ -114,6 +117,10 @@ def round_metrics(g: pd.DataFrame) -> dict:
             or (p.get("repro") or {}).get("served_model")) for p in done}
     fps.discard(None)
     fps.discard(None)
+    # F 的点开等待(f_reveal_click.wait_s):payload 的 round = 引导轮次,1 = 生成前,≥2 = 生成后的追问轮
+    rev = list(pay[w["type"] == "f_reveal_click"])
+    f_wait = {k: float(sum(float(p.get("wait_s") or 0) for p in rev if (int(p.get("round") or 1) == 1) == (k == "pre")))
+              for k in ("pre", "post")}
     return {
         "t_questionnaire": t_q,
         "n_llm_calls": int((w["type"] == "llm_start").sum()),
@@ -125,6 +132,8 @@ def round_metrics(g: pd.DataFrame) -> dict:
         "n_llm_unclosed": int(max((w["type"] == "llm_start").sum() - (w["type"] == "llm_done").sum()
                                   - (w["type"] == "llm_error").sum(), 0)),
         "n_llm_reattach": int((w["type"] == "llm_reattach").sum()),
+        "f_wait_pre": f_wait["pre"],
+        "f_wait_post": f_wait["post"],
     }
 
 

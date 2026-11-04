@@ -45,8 +45,8 @@
 - **被験者内 3 条件 × 3 お題**、1 人 1 セッション 3 ラウンド。**Williams 型 6 順序 × 3 お題ローテーション ＝ 18 系列**。
 - 効果：各条件が各ラウンドに均等に出るうえ、**どの条件も他条件の直後に等しく来る** → 一次のキャリーオーバーまで相殺 → 主対比 **E−D が順序と交絡しない**。
 - **停止規則**：コホートごとに 18 系列を均等に埋める（中国 18 系列 × 各 2 名＝36・収集済み。日本は 4 条件のため Williams 4 順序 × お題 4 ＝ 16 系列、16 名か 32 名で止める）。novice 条件は 2026-09-07 に削除。
-- **対象と主解析母集団**：中国コホート（zh、解析対象 35 名、収集済み。22 名は中等職業学校での講義後にその場で参加、13 名はその後に個別に参加した学生以外の成人。年齢・所属は限定しない。研究者のデモ 1 件は除外）と日本の参加者（ja、16〜32 名、これから）の無償ボランティアを**選抜せず**募集。**主解析母集団は全標本**（研究者の記録では 2026-09-07 決定。文書・コードとも git への初出はデータ収集開始後の 2026-09-12）。初心者性は背景質問紙で**測定・記録**する：絵コンテ・脚本の執筆経験があり、かつ用語小テスト 2 問とも正解 = 経験者、それ以外 = novice（`analysis/prereg.py: NOVICE_DEF`）。
-- **成果物**：1 ラウンドにつき **15 秒・3 カットの絵コンテ**（秒数／カメラ／画面／セリフ・音）。目安 10〜15 分（中国コホートの実測中央値 17.5 分）。
+- **対象と主解析母集団**：中国コホート（zh、解析対象 35 名、収集済み。22 名は中等職業学校での講義後にその場で参加、13 名はその後に個別に参加した、職業学校以外の成人。年齢・所属は限定しない。研究者のデモ 1 件は除外）と日本の参加者（ja、16〜32 名、これから）の無償ボランティアを**選抜せず**募集。**主解析母集団は全標本**（研究者の記録では 2026-09-07 決定。文書・コードとも git への初出はデータ収集開始後の 2026-09-12）。初心者性は背景質問紙で**測定・記録**する：絵コンテ・脚本の執筆経験があり、かつ用語小テスト 2 問とも正解 = 経験者、それ以外 = novice（`analysis/prereg.py: NOVICE_DEF`）。
+- **成果物**：1 ラウンドにつき **15 秒・3 カットの絵コンテ**（秒数／カメラ／画面／セリフ・音）。目安：実験1（中国・3 題）10〜15 分（実測中央値 17.5 分）、実験2（日本・4 題）約 20〜30 分（同意書の記載）。
 - **本収集用のお題 3 つ**（`data/topics.json`。2026-07-18 の norming は旧題面・旧モデル。2026-09-24 に現行題面で再測定：日本語 3 題は同程度、中国語は第 1 題が明らかに均質で題間差が大きい）：**拾った切符（誰かの落とし物）** / **最後のひと口（分け合う/独り占め）** / **はじめての街の、最初の一歩**（日本は 4 つめ **待ち合わせの5分前（相手はまだ来ない）** を加えた 4 題）。
 
 ### 主張すること／しないこと
@@ -80,7 +80,7 @@
 - **確証的主要終点は 2 つだけ**：`ownership_composite`, `fidelity_composite`（`analysis/prereg.py: PRIMARY_ENDPOINTS`、本収集前に確定・git で記録）。副次終点は `satisfaction` / `effort_composite` / `post_investment` / `total_investment`。
 - **主分析**：線形混合モデル `DV ~ 条件 + お題 + 順序位置 + (1 | 被験者)`。計画対比は **主対比 E−D**（副：E−C, D−C）、族内 **Holm** 補正。FWER は 2 つの主要複合変数に対して制御し、副次・探索はその後にゲート。
 - **TOST は主要 2 終点の判定分岐**（有意でなければ TOST。所有感・忠実度〔imagine で判定〕とも SESOI 0.5 点）と H4（記述、SESOI 0.10）で使う。界は事前に確定した絶対値（`analysis/prereg.py: SESOI_BY_ENDPOINT`）。データ依存の界は使用禁止。
-- 頑健性：Wilcoxon 符号順位／単項目 Likert は CLMM／計数は負二項混合／時間は log 変換。検定力は主分析と同じ構造の LMM＋Holm でシミュレート（`analysis/power_sim.py`。主解析母集団は全標本：MDES は中国 36 → dz .48、合併約 53 → .39）。
+- 頑健性：Wilcoxon 符号順位／単項目 Likert は CLMM／計数は負二項混合／時間は log 変換。検定力は主分析と同じ構造の LMM＋Holm でシミュレート（`analysis/power_sim.py`。主解析母集団は全標本：MDES は中国 36 → dz .48、日本 16 / 32 → .75 / .51、合併 51 / 67 → 約 .40 / .35）。
 - **もし E が効いた場合の機構**は、H5 と **D のフィードバック内容コーディング**（事後に直したもの＝事前に問われなかったもの）の 2 本が担う。
 - 上表の日本語は README 用の要約であり、凍結する確定文言ではない（元の表は [`04`](docs/paper/04_假设与分析计划.md)）。
 
@@ -102,7 +102,7 @@ uv run streamlit run app.py
 - 本番起動に uv は不要（systemd は `.venv/bin/streamlit` を直接起動 → [`DEPLOY.md`](DEPLOY.md)）。
 - `secrets.toml` に書く項目は 2 つ。
   - `[[api_configs]]`：`name` / `base_url` / `model` / `api_key`。先頭が参加者に自動適用。**本収集では `model` を日付付きスナップショットに固定する**（浮動エイリアスだと本収集の途中でモデルが差し替わる）。
-  - `researcher_password`：→ 環境変数 `NOVASTORY_RESEARCHER_PW` → 開発用既定値。
+  - `researcher_password`：→ 環境変数 `NOVASTORY_RESEARCHER_PW`。どちらも空なら研究者モードはロック（既定のパスワードはない）。⚠️ `secrets.toml` では**先頭（`[[api_configs]]` より前）**に書く —— 表の後ろに書くと TOML 上その表のキーになり、ロックされたままになる。
 
 ### 確認コマンド
 
@@ -133,7 +133,7 @@ uv run python scripts/deploy_check.py     # 公開前ゲート。赤が 1 つで
 
 ## 実装（参加者が見るもの）
 
-- 段階：`consent → intro → screening → rounds ×3 → final_survey → done`。ラウンド内は `アイデア → 条件パイプライン → 質問紙`（ステップ表示 C=3 / D=4 / E=5）。
+- 段階：`consent → screening → intro → rounds ×3（実験1）/ ×4（実験2）→ final_survey → done`。ラウンド内は `アイデア → 条件パイプライン → 質問紙`（ステップ表示 C=3 / D=4 / E=5）。
 - **言語は同意画面で 1 回だけ選択**（ja/zh/en。現在の既定は ja（2026-10-23 に zh から戻した）。日本コホートの募集リンクも `?lang=ja` 付きで出す）。以後、参加者側に切替 UI は出ない。
   - **`?lang=ja|zh|en`** を URL に付けると、その言語が同意画面の選択肢に**あらかじめ入った状態**で始まる（テスト・募集リンク用）。効くのは**被験者行ができる前の 1 回だけ** —— 参加者は同意画面でまだ変更でき、途中で言語が入れ替わることはない。復帰した被験者は DB の `lang` が優先され、未知の値は無視され、既定言語（現在 ja）のまま始まる。日本コホートのリンクは必ず `?lang=ja`。`?t=` との併用可（例：`?lang=zh&t=…`）。
 - アイデアは 8 文字以上（`MIN_INTENT_CHARS`）、`temperature = 0.8`、生成はストリーミング表示。注意チェックは**第 2 ラウンド**の質問紙に埋め込み。完了時に 8 文字の完了コードを発行。
@@ -150,18 +150,18 @@ SQLite（`data/novastory.db`、WAL、gitignore 済み）。ほかに `data/llm.l
 
 | テーブル | 1 行の単位 | 主な中身 |
 |---|---|---|
-| `participants` | 被験者 | `lang`, `seq`(0-17), 背景・属性 JSON, `passed`, 注意チェック, 復帰 `token`, `final_survey_json`, `completion_code`, `status`, `finished_at`（完了コード発行時刻＝`created_at` との差が**全体所要時間**） |
-| `trials` | 被験者 × ラウンド | `condition`, お題, `intent_statement`, `final_output`, `parse_ok`, `script_versions`, `guidance_json`(E), `revision_requests`(D), `n_ai_rounds`/`n_hand_edits`/`hand_edit_chars`, モデル/温度/base_url, 各種所要時間 |
+| `participants` | 被験者 | `lang`, `cohort`（募集地のコホート、2026-11-04〜）, `seq`(中国 0-17 / 日本 0-15), 背景・属性 JSON, `passed`, 注意チェック, 復帰 `token`, `final_survey_json`, `completion_code`, `status`, `finished_at`（完了コード発行時刻＝`created_at` との差が**全体所要時間**） |
+| `trials` | 被験者 × ラウンド | `condition`, お題, `intent_statement`, `final_output`, `parse_ok`, `script_versions`, `guidance_json`(E・F), `revision_requests`(D), `n_ai_rounds`/`n_hand_edits`/`hand_edit_chars`, モデル/温度/base_url, 各種所要時間 |
 | `events` | 操作 1 件（追記のみ） | ms 精度の `ts`/`type`/`payload_json`, `seq_in_round`, `attempt`, `trial_id`（提出後に backfill）。`llm_done` にトークン使用量と seed / `system_fingerprint`。**`round_idx=0` は intake 段**（同意・説明・背景質問紙）で、被験者行ができる前に `participant_id=NULL` で書き、screening 送信時に backfill する |
-| `questionnaires` | 被験者 × ラウンド | own1-3 / soa1-2 / 負荷 / 意図違背 / イメージ一致 / 満足度 / E 専用 3 項目 / カット単位の帰属タグ |
+| `questionnaires` | 被験者 × ラウンド | own1-3 / soa1-2 / 負荷 / 意図違背 / イメージ一致 / 満足度 / E・F 専用 3 項目 / カット単位の帰属タグ |
 
 - 一意制約は `trials` と `questionnaires` の `(participant_id, round_idx)` の **2 つだけ**（＋`INSERT OR REPLACE`）。`events` と `participants.token` には無い。
-- **所要時間の出どころ**：ラウンド内の 5 列は `trials`（`t_read_intent` / `t_pregen`(E) / `t_postgen` / `t_llm_wait` / `t_total`、いずれも `t_total` は質問紙を含まない）。質問紙時間・intake 3 区間・全体質問紙・全体所要時間は `make events` が `analysis/events.py` で算出し、`v3_per_trial.csv` と **`v3_per_participant.csv`** に書き出す。
+- **所要時間の出どころ**：ラウンド内の 5 列は `trials`（`t_read_intent` / `t_pregen`(E・F；F は「表示する」後の 2 秒×回数を含む) / `t_postgen` / `t_llm_wait` / `t_total`、いずれも `t_total` は質問紙を含まない）。質問紙時間・intake 3 区間・全体質問紙・全体所要時間は `make events` が `analysis/events.py` で算出し、`v3_per_trial.csv` と **`v3_per_participant.csv`** に書き出す。
 - **再現性の範囲**：モデルは日付付きスナップショットに固定し、試行ごとの seed と `system_fingerprint` を記録する。主張してよいのは「**設定再現可能・ドリフト検知可能**」まで — **出力の逐語再現はしない**（本番の `gpt-5.4-mini-2026-03-17` は `system_fingerprint` を返さないので `served_model` で監視。`gpt-image-1-mini` には固定できるスナップショットが無い）。
 
 ## 研究者モード
 
-サイドバーでパスワード解錠（`secrets.toml` → 環境変数 → 開発用既定値。**本番では必ず設定する**）。参加者フローを置き換えるのは、解錠と `researcher_mode` トグルの**両方**が真のときだけ。
+サイドバーでパスワード解錠（`secrets.toml` → 環境変数。どちらも空ならロック。**本番では 16 文字以上のランダムな文字列を必ず設定する**）。参加者フローを置き換えるのは、解錠と `researcher_mode` トグルの**両方**が真のときだけ。
 
 - **監視**：完了/進行中、目標 N への進捗、novice 比率、データ健全性（解析失敗率・LLM エラー率・フォールバック率・生成レイテンシ）、条件×お題の均衡、系列別の完了数（目標 各 2）、DV の記述統計。
 - **解析**：パイロット 4 判定 → per-trial 指標＋複合 → 終点検定 → 図 → 検定力シミュレーション（`data/analysis/` へ出力）。⚠️ パネルは終点 6 つを直書きしており、**TOST（H4）・用量反応（H5）・イベント層の指標は CLI（`make stats` / `make events`）だけ**。「解析結果を出す」を押すと per-trial を再計算するため、`embed_fidelity` は保持されるが**イベント層の 6 列は消える**（押したあと `make events` を回し直す）。

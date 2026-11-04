@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 import streamlit as st
 
 from analysis import prereg
@@ -13,6 +15,40 @@ from views import _scale, _scroll, consent
 # population is the full sample (2026-09-07; see docs/paper/04).
 _QUIZ1_CORRECT = 1
 _QUIZ2_CORRECT = 1
+_SRC_OK = re.compile(r"[A-Za-z0-9_-]{1,16}")
+
+
+def _client_info() -> dict:
+    """screening_submit 事件的 payload(2026-11-05,探索性):设备类别 / 系统 / 浏览器的**粗分类**、时区、语言设置,
+    以及招募链接里的渠道 / 场次码 `?src=`(研究员按场次发不同链接时用;prereg.JA_SENSITIVITY 的「入组批次 / 场次」)。
+    只存粗分类,不存 User-Agent 原文与 IP(同意书写的是「操作記録」)。服务端读,不跑 JS;读不到的项记空。"""
+    out: dict = {}
+    try:
+        ua = st.context.headers.get("User-Agent") or ""
+        out["device"] = ("tablet" if ("iPad" in ua or "Tablet" in ua or ("Android" in ua and "Mobile" not in ua))
+                         else "mobile" if any(k in ua for k in ("Mobi", "iPhone", "Android")) else "desktop")
+        out["os"] = next((n for k, n in (("iPhone", "iOS"), ("iPad", "iOS"), ("Android", "Android"), ("CrOS", "ChromeOS"),
+                                         ("Windows", "Windows"), ("Mac OS X", "macOS"), ("Linux", "Linux")) if k in ua), "other")
+        out["browser"] = next((n for k, n in (("Line/", "LINE"), ("Instagram", "Instagram"), ("Edg", "Edge"), ("OPR/", "Opera"),
+                                              ("SamsungBrowser", "Samsung"), ("CriOS", "Chrome"), ("Chrome/", "Chrome"),
+                                              ("FxiOS", "Firefox"), ("Firefox/", "Firefox"), ("Safari/", "Safari")) if k in ua),
+                              "other")
+    except Exception:  # noqa: BLE001 —— headless AppTest 等无请求头的场景
+        pass
+    for k in ("timezone", "locale"):
+        try:
+            v = getattr(st.context, k, None)
+            if isinstance(v, str) and v:
+                out[k] = v[:40]
+        except Exception:  # noqa: BLE001
+            pass
+    try:
+        src = (st.query_params.get("src") or "").strip()
+        if _SRC_OK.fullmatch(src):
+            out["src"] = src
+    except Exception:  # noqa: BLE001
+        pass
+    return out
 
 
 def render() -> None:
@@ -162,9 +198,13 @@ def render() -> None:
         st.error(t("errors.not_ready"))
         return
 
-    state.log_intake_event("screening_submit")
+    state.log_intake_event("screening_submit", _client_info())
+    # 连点「提交」的防重(2026-11-05):Streamlit 的 fastReruns 会在第一次运行写完库、还没记下 participant_id 时
+    # 起第二次运行 → 再插一行、多占一个序列格子。同一浏览器会话(session_id)只入组一次,由 insert_participant 在写锁内查重。
+    screening["session_id"] = st.session_state.get("session_id", "")
     pid, seq, token = db.insert_participant(
-        st.session_state.get("lang", DEFAULT_LANG), demographics, screening, passed=True
+        st.session_state.get("lang", DEFAULT_LANG), demographics, screening, passed=True,
+        session_id=screening["session_id"],
     )
     # Now that the id exists, claim this browser session's intake events for it.
     db.attach_intake_events(pid, st.session_state.get("session_id", ""))

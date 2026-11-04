@@ -61,6 +61,7 @@ def render_editable(topic: dict, cond: str) -> None:
             # 编辑框被清空:persist_pending_edit 会静默回落成 AI 原稿 —— 被试以为交了空稿
             # 或想重写,库里却是 AI 版且 n_hand_edits 不增,页面还留着一个空框。把原稿放回去、
             # 说明一句、不提交。
+            state.log_passive("blocked", {"where": "script_empty"})   # 探索性(2026-11-05)
             st.session_state["_postgen_notice"] = "errors.script_empty"
             request_editor_refresh()
             st.rerun()
@@ -182,6 +183,7 @@ def _render_revision_channel(topic: dict) -> None:
     if st.button(t("d.revision_send"), type="secondary", width="stretch", key="btn_more_ai"):
         request = (st.session_state.get("_revision_input") or "").strip()
         if not request:
+            state.log_passive("blocked", {"where": "revision"})   # 探索性(2026-11-05)
             st.error(t("errors.revision_empty"))
             return
         base = persist_pending_edit()

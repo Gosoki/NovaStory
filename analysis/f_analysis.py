@@ -46,18 +46,20 @@ def paired(df: pd.DataFrame, dv: str, hi: str, lo: str) -> dict | None:
         return None
     d = (w[hi] - w[lo]).dropna()
     n = len(d)
-    if n < 2:
+    # 同 stats.paired_t_pairs:不足 5 人不检验(2026-11-05:n=2 且两个差值相同就会得到 p=0、判「显著」,
+    # 试跑 2–3 人时 route 会因此判主推 F)
+    if n < 5:
         return {"n": n}
-    t = st.ttest_1samp(d, 0.0)
-    se = d.std(ddof=1) / np.sqrt(n)
+    sd = d.std(ddof=1)
+    se = sd / np.sqrt(n)
     half = st.t.ppf(0.975, n - 1) * se
+    p_t = float(st.ttest_1samp(d, 0.0).pvalue)
     try:
         p_w = float(st.wilcoxon(d).pvalue) if (d != 0).any() else float("nan")
     except ValueError:
         p_w = float("nan")
-    sd = d.std(ddof=1)
     return {"n": n, "mean": float(d.mean()), "ci_lo": float(d.mean() - half), "ci_hi": float(d.mean() + half),
-            "dz": float(d.mean() / sd) if sd > 1e-9 else float("nan"), "p_t": float(t.pvalue), "p_wilcoxon": p_w}
+            "dz": float(d.mean() / sd) if sd > 1e-9 else float("nan"), "p_t": p_t, "p_wilcoxon": p_w}
 
 
 def verdict(r: dict | None, sesoi: float, alpha: float) -> str:
@@ -80,9 +82,19 @@ def _fmt(r: dict | None) -> str:
     if not r:
         return "数据不足(缺这两个条件之一)"
     if "mean" not in r:
-        return f"n={r['n']}(不足 2 人,不检验)"
+        return f"n={r['n']}(不足 5 人,不检验)"
     return (f"n={r['n']}  差={r['mean']:+.3f}  95%CI[{r['ci_lo']:+.3f}, {r['ci_hi']:+.3f}]  "
             f"dz={r['dz']:+.2f}  配对t p={r['p_t']:.4f}  Wilcoxon p={r['p_wilcoxon']:.4f}")
+
+
+def _net_of_reveal_wait(df: pd.DataFrame) -> pd.DataFrame | None:
+    """作業時間扣掉 F 的点开等待(06 ㉜「另给扣除版本」;列来自 make events):第 1 轮的等待在 t_pregen 里,
+    追问轮的在 t_postgen 里 → pre 扣 f_wait_pre,total 扣两者之和。非 F 的 trial 两列都是 0。"""
+    if not {"f_wait_pre", "f_wait_post", "pre_investment", "total_investment"} <= set(df.columns):
+        return None
+    pre, post = df["f_wait_pre"].fillna(0), df["f_wait_post"].fillna(0)
+    return df.assign(pre_investment=df["pre_investment"] - pre,
+                     total_investment=df["total_investment"] - pre - post)
 
 
 def manipulation_check(db_path: Path, ids: set[int]) -> str:
@@ -95,12 +107,17 @@ def manipulation_check(db_path: Path, ids: set[int]) -> str:
     try:
         rows = con.execute("SELECT participant_id, guidance_json FROM trials WHERE condition='F'").fetchall()
         e_rows = con.execute("SELECT participant_id, guidance_json FROM trials WHERE condition='E'").fetchall()
-        shown = con.execute("SELECT participant_id, payload_json FROM events WHERE type='guidance_shown'").fetchall()
+        # 只数产生了已提交 trial 的那段 attempt(trial_id 回填过的):续接时未完成的那一轮会整轮重做,
+        # 作废 attempt 里的出题也记过 guidance_shown(2026-11-05,以前会重复计数)
+        shown = con.execute("SELECT participant_id, payload_json FROM events "
+                            "WHERE type='guidance_shown' AND trial_id IS NOT NULL").fetchall()
     finally:
         con.close()
     n1 = {c: [len(json.loads(g)["rounds"][0]["items"]) for pid, g in rs
               if int(pid) in ids and g and json.loads(g).get("rounds")] for c, rs in (("E", e_rows), ("F", rows))}
-    dropped = sum(int(json.loads(p or "{}").get("f_dropped") or 0) for pid, p in shown if pid is not None and int(pid) in ids)
+    sp = [json.loads(p or "{}") for pid, p in shown if pid is not None and int(pid) in ids]
+    dropped = sum(int(d.get("f_dropped") or 0) for d in sp if int(d.get("round") or 1) == 1)   # 与「第一轮平均题数」同口径
+    dropped_fu = sum(int(d.get("f_dropped") or 0) for d in sp if int(d.get("round") or 1) >= 2)
     items = [it for pid, g in rows if int(pid) in ids and g
              for rnd in json.loads(g).get("rounds", []) for it in rnd.get("items", [])
              if isinstance(it, dict) and it.get("options")]
@@ -120,7 +137,8 @@ def manipulation_check(db_path: Path, ids: set[int]) -> str:
            + (f" · 自写字数 中位 {chars.median():.0f}" if len(chars) else "")
            + f" · 题面换成固定题 {sum(bool(it.get('fixed_q')) for it in items)} · 点开等待合计 {wait:.0f} 秒"
            + "\n  第一轮平均题数 " + " / ".join(f"{c} {sum(v) / len(v):.1f}" for c, v in n1.items() if v)
-           + f" · 因题面夹带候补丢掉的 AI 补题 {dropped}(F−E 题数差也是整包差别的一部分,06 ㉜)")
+           + f" · 因题面夹带候补丢掉的 AI 补题 {dropped}(第一轮;追问轮另丢 {dropped_fu};"
+             "F−E 题数差也是整包差别的一部分,06 ㉜)")
     if rev / n > prereg.F_REVEAL_NEAR_E:
         out += f"\n  ⚠️ 点开率 > {prereg.F_REVEAL_NEAR_E:.0%}:按 06 ㉜ 写「F 在行为上接近 E」—— 零结果优先读作「选项一旦可得多数人仍会用」"
     return out
@@ -151,7 +169,8 @@ def _s(x) -> str:
 def shot_rows(db_path: Path, ids: set[int], conds=("E", "F")) -> pd.DataFrame:
     """每个镜头一行:mine(0/1)、本人文字重合 own_ov、所选 AI 选项重合 opt_ov、镜头位置。
     重合 = 该来源(去掉题面与格式词)的 bigram 里,有多少比例出现在这一镜的画面 + 台词里。
-    本人文字 = 创意陈述 + 自己写的回答(F 的全部回答 / E 的自写回答);所选选项 = E 里点选的 AI 选项。"""
+    本人文字 = 创意陈述 + 自己写的回答(is_custom);所选选项 = 点选的 AI 选项(E 默认显示;F 要点开ヒント才有,
+    2026-11-03 起 F 与 E 同一 item 形状)。界面语言不在 prereg.BIGRAM_LANGS 的 trial 不进(英文的字符 bigram 无区分力)。"""
     con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     try:
         q = ",".join("?" * len(conds))
@@ -163,9 +182,12 @@ def shot_rows(db_path: Path, ids: set[int], conds=("E", "F")) -> pd.DataFrame:
     finally:
         con.close()
     m = tr[tr["participant_id"].isin(ids)].merge(qs, on=["participant_id", "round_idx"], how="inner")
-    rows = []
+    rows, n_skip = [], 0
     for r in m.itertuples():
         lang = _s(r.lang) or "ja"
+        if lang not in prereg.BIGRAM_LANGS:
+            n_skip += 1
+            continue
         topic = json.loads(_s(r.topic_json) or "{}")
         tb = _FORMAT_BG.union(*(_bigrams((topic.get(k) or {}).get(lang, "")) for k in ("title", "scenario", "choices")))
         own, opt = [_s(r.intent_statement)], []
@@ -187,6 +209,9 @@ def shot_rows(db_path: Path, ids: set[int], conds=("E", "F")) -> pd.DataFrame:
                          "mine": int(tags[sh["idx"]] == "mine"),
                          "own_ov": len(sb & u_own) / len(u_own) if u_own else np.nan,
                          "opt_ov": len(sb & u_opt) / len(u_opt) if u_opt else 0.0})
+    if n_skip:
+        print(f"  (机制:界面语言不在 {prereg.BIGRAM_LANGS} 的 {n_skip} 个 trial 不进 —— 字符 bigram 对英文无区分力,"
+              "prereg.BIGRAM_LANGS)")
     return pd.DataFrame(rows)
 
 
@@ -272,7 +297,9 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         from analysis.stats import build_composites  # noqa: PLC0415
-        comp = build_composites(df)
+        # z 的参照 = 日本 4 条件的全部 trial(prereg):build_composites 见到多种 lang 会按 lang 分组 z,
+        # 而这里的 lang 是界面语言(选中文的日本被试会被单独标准化)→ 先换成队列;df 本身不动(dist_base 要界面语言)
+        comp = build_composites(df.assign(lang=df["cohort"]) if "cohort" in df else df)
     except Exception as e:  # noqa: BLE001 —— 复合建不出来只影响一条次要
         print(f"  注:fidelity_composite 建不出来({type(e).__name__}: {e}),该次要项跳过")
         comp = df
@@ -283,11 +310,21 @@ def main(argv: list[str] | None = None) -> int:
         src = comp if dv in comp.columns else df
         r = paired(src, dv, a, b) if dv in src.columns else None
         print(f"  {dv:<20} {a}−{b}  预测 {direction:<6}  " + _fmt(r))
+    net = _net_of_reveal_wait(df)
+    if net is None:
+        print("  (扣除 F 点开等待的版本:CSV 里没有 f_wait_pre / f_wait_post —— 先跑 make events)")
+    else:
+        print(f"  ↳ 扣除 F 的点开等待(「表示する」后的 {config.F_REVEAL_DELAY_S:g} 秒 × 次数;06 ㉜ 另报的版本):")
+        for dv in ("pre_investment", "total_investment"):
+            print(f"  {dv + '(净)':<20} F−E  预测 两侧      " + _fmt(paired(net, dv, "F", "E")))
 
     print("\n[F−D 探索性比较](prereg.F_VS_D_EXPLORATORY,2026-11-03 06 ㉚-4;整包比较,双侧,只报估计与 95% CI,不进判定)")
     for dv in prereg.F_VS_D_EXPLORATORY:
         src = comp if dv in comp.columns else df
         print(f"  {dv:<20} F−D  " + _fmt(paired(src, dv, "F", "D") if dv in src.columns else None))
+    if net is not None:
+        print(f"  {'total_investment(净)':<20} F−D  " + _fmt(paired(net, "total_investment", "F", "D"))
+              + "(扣除 F 的点开等待)")
     print(f"  (不比较:{prereg.F_NOT_COMPARED[1]})")
 
     print("\n[提问的价值](prereg.QUESTION_VALUE_EXPLORATORY,2026-11-03 06 ㉚-5;探索性,双侧,成败都报)")

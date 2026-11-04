@@ -123,13 +123,15 @@ def render(topic: dict) -> None:
     # 按题加 key(2026-10-29 审计):没有 key 的按钮 id 只由标签决定、各题相同,双击「次の質問」时第二下
     # 落在下一题的同一个按钮上(下一题还没答 → 报错;「前の質問」则连退两题)。外观不变。
     if idx > 0 and cols[0].button(t("guidance.prev"), width="stretch", key=f"_g_prev_{g_round}_{idx}"):
-        _save_current(g_round, idx)
+        _save_current(g_round, idx, "prev")
         st.session_state["r_g_idx"] -= 1
         st.rerun()
     last = idx == len(qs) - 1
     label = t("guidance.finish") if last else t("guidance.next")
     if cols[1].button(label, type="primary", width="stretch", key=f"_g_next_{g_round}_{idx}"):
         if not _answered(g_round, idx, q):
+            # 被拦下的提交(2026-11-05,探索性):F 没有「AI に任せる」、必须作答,空着点「次へ」的次数也是负担的读数
+            state.log_passive("blocked", {"where": "guidance", "round": g_round, "q": idx})
             # 兜底开放题没有选项、也没有「AI に任せる」,提示不能叫被试去选
             if not q.get("options"):
                 st.error(t("errors.answer_open"))
@@ -138,7 +140,7 @@ def render(topic: dict) -> None:
             else:   # F:提示没显示 → 叫被试写;显示了 → 写或点选
                 st.error(t("errors.answer_pick_or_write" if shown else "errors.answer_open"))
             return
-        _save_current(g_round, idx)
+        _save_current(g_round, idx, "finish" if last else "next")
         if last:
             _finish_round(topic, g_round)
         else:
@@ -173,6 +175,8 @@ def _f_hint(card, g_round: int, idx: int) -> bool:
     「表示する」后等到 t0 + F_REVEAL_DELAY_S 再显示(按时刻算剩余:等待中被 rerun 打断,下一次接着等);
     「自分で書く」收起询问,之后还能再点「ヒント」。"""
     rv = _f_rv(idx)
+    # 点提示时输入框里已经写了什么(2026-11-05,探索性):区分「看提示前就写好了」「看了提示再写 / 改写」
+    pre = (st.session_state.get(f"_g_custom_{g_round}_{idx}") or "")[:300]
     if rv["shown"]:
         card.markdown(f'<div class="ns-why">{html.escape(t("guidance.f_hint"))}</div>', unsafe_allow_html=True)
         return True
@@ -189,15 +193,16 @@ def _f_hint(card, g_round: int, idx: int) -> bool:
         c1, c2 = card.columns(2)
         if c1.button(t("guidance.f_show"), width="stretch", key=f"_g_fshow_{g_round}_{idx}"):
             rv.update(asking=False, n_reveal=rv["n_reveal"] + 1, t0=time.time())
-            state.log_event("f_reveal_click", {"round": g_round, "q": idx, "wait_s": config.F_REVEAL_DELAY_S})
+            state.log_event("f_reveal_click", {"round": g_round, "q": idx, "wait_s": config.F_REVEAL_DELAY_S,
+                                               "pre_chars": len(pre), "pre_text": pre})
             st.rerun()
         if c2.button(t("guidance.f_self"), width="stretch", key=f"_g_fself_{g_round}_{idx}"):
             rv.update(asking=False, n_decline=rv["n_decline"] + 1)
-            state.log_event("f_hint_decline", {"round": g_round, "q": idx})
+            state.log_event("f_hint_decline", {"round": g_round, "q": idx, "pre_chars": len(pre), "pre_text": pre})
             st.rerun()
     elif card.button(t("guidance.f_hint"), key=f"_g_fhint_{g_round}_{idx}"):
         rv.update(asking=True, n_hint=rv["n_hint"] + 1)
-        state.log_event("f_hint_click", {"round": g_round, "q": idx})
+        state.log_event("f_hint_click", {"round": g_round, "q": idx, "pre_chars": len(pre), "pre_text": pre})
         st.rerun()
     return False
 
@@ -213,7 +218,7 @@ def _answered(g_round: int, idx: int, q: dict) -> bool:
     return bool(custom) or chosen is not None
 
 
-def _save_current(g_round: int, idx: int) -> None:
+def _save_current(g_round: int, idx: int, direction: str = "") -> None:
     """Persist the mounted question's answer to a non-widget store; Streamlit
     clears a widget's key once it stops being rendered (paginated questions)."""
     opt = st.session_state.get(f"_g_opt_{g_round}_{idx}")
@@ -227,7 +232,19 @@ def _save_current(g_round: int, idx: int) -> None:
     }
     # Per-question timing anchor (log batch 7-02): with ms timestamps, the gap
     # between consecutive saves ≈ time spent on each question (dose analysis).
-    state.log_event("guidance_answer_saved", {"round": g_round, "q": idx})
+    # 2026-11-05 起顺带记这一刻的答案快照(探索性):往哪翻、选了第几个选项(ai = 交给 AI)、自写字数、F 是否已显示选项
+    # —— 回翻后改没改答案、逐题的作答变化,以前只看得到「保存过」。
+    payload = {"round": g_round, "q": idx, "dir": direction}
+    try:
+        opts = list((st.session_state["r_g_questions"][idx] or {}).get("options") or [])
+        a = st.session_state["r_g_answers"][idx]
+        payload.update(opt_i=("ai" if a["ai_decided"] else opts.index(opt) if opt in opts else None),
+                       chars=len(a["custom"].strip()))
+        if _is_f():
+            payload["revealed"] = bool(st.session_state["r_g_reveal"].get(idx, {}).get("shown"))
+    except Exception:  # noqa: BLE001 —— 快照只是附加信息,取不到就只记时刻
+        pass
+    state.log_event("guidance_answer_saved", payload)
 
 
 def _generate_questions(topic: dict) -> None:
@@ -253,7 +270,9 @@ def _generate_questions(topic: dict) -> None:
     except Exception:  # noqa: BLE001 — 再畸形的 JSON 也只能降级,不能把堆栈端给被试
         qs = None
     n_fixed_q = n_dropped = 0
+    dropped_q: list[str] = []
     if qs and f_mode:
+        dropped_q = [q["question"] for q in qs if q["options"] and _f_leaks(q) and q["dimension"] not in _FIXED_DIMS]
         qs, n_fixed_q, n_dropped = _f_strip_leaks(qs)
     if qs is None:
         # Degrade: one open question, free text only (paper/7 §2).
@@ -269,7 +288,7 @@ def _generate_questions(topic: dict) -> None:
                "source": source, "n_questions": len(qs),
                "fallback": st.session_state["r_g_fallback"]}
     if f_mode:
-        payload.update(f_fixed_q=n_fixed_q, f_dropped=n_dropped)
+        payload.update(f_fixed_q=n_fixed_q, f_dropped=n_dropped, f_dropped_q=dropped_q)
     state.log_event("guidance_shown", payload)
     st.rerun()
 
@@ -286,7 +305,7 @@ def _f_strip_leaks(qs: list[dict]) -> tuple[list[dict] | None, int, int]:
     for q in qs:
         if q["options"] and _f_leaks(q):
             if q["dimension"] in _FIXED_DIMS:
-                q = dict(q, question=t(f"guidance.f_fixed_{q['dimension']}"), fixed_q=True)
+                q = dict(q, question=t(f"guidance.f_fixed_{q['dimension']}"), fixed_q=True, orig_question=q["question"])
                 n_fixed += 1
             else:
                 n_drop += 1
@@ -347,6 +366,7 @@ def _finish_round(topic: dict, g_round: int) -> None:
             "dimension": q["dimension"],
             "question": q["question"],
             "options": q["options"],
+            "why": q.get("why", ""),   # 被试看到的「为什么问」(2026-11-05 起入库:实际刺激的完整记录)
             "chosen": chosen,
             # 既选了选项又打了字时 chosen 只留自填文本;选过的那一项另存一份(描述性,
             # 不进 g_custom_rate 的分母),否则被试原本选了什么就永久丢了。
@@ -360,6 +380,8 @@ def _finish_round(topic: dict, g_round: int) -> None:
             items[-1].update(n_hint_clicks=int(rv.get("n_hint", 0)), revealed=bool(rv.get("shown")),
                              n_reveal_clicks=int(rv.get("n_reveal", 0)),
                              n_hint_declines=int(rv.get("n_decline", 0)), fixed_q=bool(q.get("fixed_q")))
+            if q.get("fixed_q"):
+                items[-1]["orig_question"] = q.get("orig_question")   # 夹带候补、被换掉的原题面
 
     source = st.session_state["r_g_source"]
     intent = st.session_state["r_intent"]

@@ -53,13 +53,17 @@ def dist_base(csv_df: pd.DataFrame, db_path: Path) -> tuple[pd.DataFrame, int]:
         tr = pd.read_sql("SELECT participant_id, round_idx, topic_json, final_output FROM trials", con)
     finally:
         con.close()
-    keys = csv_df[["participant_id", "round_idx", "lang"]].drop_duplicates(["participant_id", "round_idx"])
+    cols = ["participant_id", "round_idx", "lang"] + (["cohort"] if "cohort" in csv_df else [])
+    keys = csv_df[cols].drop_duplicates(["participant_id", "round_idx"])
     tr = tr.merge(keys, on=["participant_id", "round_idx"])
-    cents, rows, missing = {}, [], 0
+    cents, rows, missing, no_base = {}, [], 0, {}
     for r in tr.itertuples():
         ti = title2idx.get(state.topic_text(json.loads(r.topic_json) if r.topic_json else {}, "title",
                                             embed.BASELINE_LANG))
         if ti is None:
+            continue
+        if not embed.has_baseline(ti, r.lang) and not embed.baseline_required(r.lang, getattr(r, "cohort", None)):
+            no_base[(r.lang, ti)] = no_base.get((r.lang, ti), 0) + 1   # prereg.BASELINE_MISSING_RULE
             continue
         key = (ti, r.lang)
         if key not in cents:
@@ -73,6 +77,7 @@ def dist_base(csv_df: pd.DataFrame, db_path: Path) -> tuple[pd.DataFrame, int]:
             continue
         rows.append({"participant_id": r.participant_id, "round_idx": r.round_idx,
                      "dist_base": 1.0 - embed.cosine(f, cents[key])})
+    embed.warn_no_baseline(no_base, "dist_base")
     return pd.DataFrame(rows, columns=["participant_id", "round_idx", "dist_base"]), missing
 
 

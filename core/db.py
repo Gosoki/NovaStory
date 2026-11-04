@@ -139,6 +139,9 @@ _MIGRATIONS = [
     "ALTER TABLE trials ADD COLUMN app_rev TEXT",
     # 2026-11-04(06 ㉞):队列 = 招募地,不再等于界面语言。旧行为空 → 按 lang 算(config.cohort_of)
     "ALTER TABLE participants ADD COLUMN cohort TEXT",
+    # 2026-11-05:产出这一行的 attempt(与 events.attempt 同值)。trial 与事件以前只靠 attach_trial_to_events
+    # 回填 trial_id 连起来 —— 写完 trial、回填之前被打断的话,这一轮的事件就对不上是哪一段
+    "ALTER TABLE trials ADD COLUMN attempt TEXT",
 ]
 
 
@@ -209,8 +212,13 @@ def insert_participant(
     screening: dict,
     passed: bool,
     cohort: str | None = None,
+    session_id: str | None = None,
 ) -> tuple[int, Optional[int], str]:
     """Insert a participant; returns (id, seq, token).
+
+    session_id (the browser session, also stored in screening_json): a second insert from the same
+    session returns the existing row instead of a new one — a double-clicked submit under fastReruns
+    would otherwise create an orphan row that occupies a Latin-square cell (2026-11-05).
 
     cohort defaults to config.ACTIVE_COHORT — the recruitment site, independent of the
     UI language `lang` (06 ㉞). seq (a Williams-design sequence: 0-15 for the ja cohort,
@@ -228,6 +236,15 @@ def insert_participant(
             # passing screening in the same instant can't both read the same
             # count and grab the same Latin-square seq.
             conn.execute("BEGIN IMMEDIATE")
+            # 同一浏览器会话已经入组过(连点提交时第二次运行赶在 participant_id 记下之前)→ 原样返回那一行。
+            # 在写锁之内查,两个交叉的运行也只会落一行。
+            if session_id:
+                dup = conn.execute(
+                    "SELECT id, seq, token FROM participants WHERE json_valid(screening_json) = 1"
+                    " AND json_extract(screening_json, '$.session_id') = ? ORDER BY id LIMIT 1",
+                    (session_id,)).fetchone()
+                if dup:
+                    return int(dup[0]), (None if dup[1] is None else int(dup[1])), dup[2]
             # Researcher-injected test subjects (screening_json {"dev": true})
             # must not shift real participants' Latin-square rotation.
             # json_valid 先行:一行非法 JSON(手改库 / 写入中断)会让 json_extract 抛错,
@@ -259,8 +276,8 @@ def insert_participant(
             if four:
                 # ja 的平局按「题目行优先、条件行其次」交错取(2026-10-28,docs/paper/18 §1-4):
                 # seq = 条件行 × 4 + 题目行(state.plan_for_seq),取 0, 4, 8, 12, 1, 5, … ——
-                # 每 4 人就是一个完整的 4×4 Williams 方阵,停在 16 / 32 以外的人数时条件 × 轮次、
-                # 条件 × 题目、一阶残留仍平衡。按编号取的话前 4 人全是 C→D→F→E,要到 16 才平衡。
+                # 每 4 人就是一个完整的 4×4 Williams 方阵,停在 16 / 32 以外、4 的倍数的人数时条件 × 轮次、
+                # 条件 × 题目、一阶残留仍平衡(题目 × 轮次要到 16 才平衡)。按编号取的话前 4 人全是 C→D→F→E,要到 16 才平衡。
                 n_rot = config.N_ROUNDS_F   # = 题目轮转数(state 里有断言)
                 seq = min(range(config.seq_count_for_cohort(cohort)),
                           key=lambda k: (used.get(k, 0), k % n_rot, k // n_rot))

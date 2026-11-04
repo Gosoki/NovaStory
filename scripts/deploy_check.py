@@ -112,8 +112,12 @@ def check_ja_legacy_rows() -> None:
         return
     try:
         con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+        # 按**队列**数(与分配器 core/db.py 同一个 COALESCE(cohort, lang)):06 ㉞ 起选中文 / 英文的日本招募者
+        # 也是 ja(cohort=ja、lang=zh/en),只按 lang 查会漏掉占着日本格子的这类行
+        has_cohort = any(r[1] == "cohort" for r in con.execute("PRAGMA table_info(participants)"))
         rows = con.execute(
-            "SELECT id, seq, created_at FROM participants WHERE lang='ja' AND passed=1"
+            "SELECT id, seq, created_at FROM participants WHERE "
+            + ("COALESCE(cohort, lang)" if has_cohort else "lang") + "='ja' AND passed=1"
             " AND (json_valid(screening_json)=0 OR COALESCE(json_extract(screening_json,'$.dev'),0)!=1)"
         ).fetchall()
         con.close()
@@ -220,8 +224,14 @@ def check_baseline(sec: dict) -> None:
     # 2026-11-04(06 ㉞):日本招募的人选了中文也做 4 题 → embed 要 zh 的 4 题基线(中国只做过 3 题)
     zh_miss = [f"topic{i}.jsonl" for i in range(need) if not (ROOT / "data" / "baseline" / "zh" / f"topic{i}.jsonl").exists()]
     if zh_miss:
-        add(Y, "机器基线(zh)", f"日本队列里选中文的被试要用 zh 基线,缺 {zh_miss} —— 缺着时 make embed 会整体报错;"
+        add(Y, "机器基线(zh)", f"日本队列里选中文的被试要用 zh 基线,缺 {zh_miss} —— 缺着时这些 trial 的 embedding 指标"
+                              "(保真复合的客观腿、P1 / QV1–3)记缺失(prereg.BASELINE_MISSING_RULE);"
                               "用采数快照补(make baseline BASELINE_LANG=zh,须授权调 API)")
+    en_miss = [f"topic{i}.jsonl" for i in range(need) if not (ROOT / "data" / "baseline" / "en" / f"topic{i}.jsonl").exists()]
+    if en_miss:
+        add(Y, "机器基线(en)", f"日本队列里选英文的被试要用 en 基线,缺 {len(en_miss)}/{need} 题 —— 缺着时这些被试的 embedding 指标"
+                              "全部记缺失、保真复合整个缺(prereg.BASELINE_MISSING_RULE);"
+                              "要补:make baseline BASELINE_LANG=en(须授权调 API)")
     have = {f.name for f in files}
     if any(f"topic{i}.jsonl" not in have for i in range(need)):
         # 只生成了一部分题:embed 会对缺题的被试整轮拿不到 Δ,而绿灯会让人以为已经齐了。
@@ -553,6 +563,41 @@ def _check_script_mode() -> None:
                         "⚠️ 以 root 跑且绑 0.0.0.0 —— 已知并接受的取舍(见 DEPLOY.md §2)。")
 
 
+def check_process() -> None:
+    """跑着的那个进程(2026-11-05):① 时区是不是 UTC —— 库里的时间戳是 datetime.now() 写的本地时间,
+    中国队列全是 UTC,这台机器 10-30 起系统时区是 Asia/Tokyo(scripts/start.sh 现在固定 TZ=Etc/UTC);
+    ② 是不是在最近一次代码更新之后起的 —— 拉了代码不重启,跑的还是旧版本(trial 记的也是旧 app_rev)。
+    只在 Linux 上、服务由 start.sh 起(有 pidfile)时检查。"""
+    import os
+    try:
+        proc = Path("/proc") / (ROOT / "data" / "novastory.pid").read_text().strip()
+        env = dict(kv.split("=", 1) for kv in (proc / "environ").read_bytes().decode(errors="replace").split("\0")
+                   if "=" in kv)
+        fields = (proc / "stat").read_text().rsplit(")", 1)[1].split()
+        btime = next(int(ln.split()[1]) for ln in Path("/proc/stat").read_text().splitlines() if ln.startswith("btime"))
+        started = btime + int(fields[19]) / os.sysconf("SC_CLK_TCK")
+    except (OSError, ValueError, StopIteration, IndexError):
+        return   # 非 Linux / 没有 start.sh 起的进程:上面「运行时」一项已经报过
+    tz = env.get("TZ", "")
+    sys_utc = Path("/etc/localtime").resolve().name in ("UTC", "UCT", "Universal", "Zulu")
+    if tz.lstrip(":") in ("Etc/UTC", "UTC", "UTC0") or (not tz and sys_utc):
+        add(G, "进程时区", "服务以 UTC 运行(与中国队列的时间戳同口径)。")
+    else:
+        add(R, "进程时区", f"服务进程的时区不是 UTC(TZ={tz or '未设,跟系统 ' + Path('/etc/localtime').resolve().name})"
+                          "→ 新写的时间戳与中国队列差 9 小时、后台面板的时刻也会错 → 用新版 scripts/start.sh restart。")
+    head = (ROOT / ".git" / "HEAD").read_text().strip() if (ROOT / ".git" / "HEAD").exists() else ""
+    ref = ROOT / ".git" / head[5:] if head.startswith("ref: ") else ROOT / ".git" / "HEAD"
+    if not ref.exists():
+        ref = ROOT / ".git" / "packed-refs"
+    if ref.exists() and ref.stat().st_mtime > started + 1:
+        import time as _t
+        fmt = lambda x: _t.strftime("%m-%d %H:%M", _t.gmtime(x)) + " UTC"  # noqa: E731
+        add(R, "进程版本", f"代码 {fmt(ref.stat().st_mtime)} 更新过,服务却是 {fmt(started)} 起的 → 跑的是旧代码"
+                          "(新 trial 会记旧 app_rev)→ scripts/start.sh restart,再看 status 的 pid 是新的。")
+    elif ref.exists():
+        add(G, "进程版本", "服务是在最近一次代码更新之后起的。")
+
+
 def check_runtime(sec: dict) -> None:
     """运行时(不只是文件与配置):单元是否持久、是否 root、是否绑 0.0.0.0、有没有 HTTPS。
     以前闸门对这四件事一无所知,而它们恰是 DEPLOY.md §2/§5 的全部内容。非 Linux / 无 systemctl 时跳过。"""
@@ -706,6 +751,7 @@ def main() -> None:
     check_freeze()
     check_default_lang()
     check_runtime(sec)
+    check_process()
     check_public(sec)
     check_static_gzip()
     check_backup()

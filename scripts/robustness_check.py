@@ -253,7 +253,25 @@ def section_a() -> None:
                 for _ in range(4)]
     # 06 ㉞:队列按招募地 —— 日本招募的人在同意页选了中文,仍进 ja 的 16 格(接着交错取,下一个是 2)
     zh_in_ja = db.insert_participant("zh", {"a": 0}, {"is_novice": True}, passed=True)[1]
+    # 连点「提交」(2026-11-05):同一浏览器会话的第二次入组返回原来那一行,不再多占一个格子;并发的两次也只落一行
+    sid = "dupe0001"
+    first = db.insert_participant("ja", {"a": 0}, {"is_novice": True, "session_id": sid}, passed=True, session_id=sid)
+    twins: list = []
+    tw = [threading.Thread(target=lambda: twins.append(db.insert_participant(
+        "ja", {"a": 0}, {"is_novice": True, "session_id": sid}, passed=True, session_id=sid))) for _ in range(4)]
+    for t in tw:
+        t.start()
+    for t in tw:
+        t.join()
+    nxt = db.insert_participant("ja", {"a": 0}, {"is_novice": True, "session_id": "other001"}, passed=True,
+                                session_id="other001")
+    import sqlite3 as _sq
+    with _sq.connect(db.DB_PATH) as _c:
+        n_rows = _c.execute("SELECT COUNT(*) FROM participants").fetchone()[0]
     db.DB_PATH = conc_db   # 下面的 events 并发写仍在并发库上
+    ck(all(x[:2] == first[:2] for x in twins) and nxt[1] != first[1] and n_rows == 15,
+       "同一会话连点提交只入组一次(并发 4 次也是同一行),下一位照常拿下一个格子",
+       f"first={first[:2]} twins={[x[:2] for x in twins]} next={nxt[:2]} rows={n_rows}")
     ck(ja_order == [0, 4, 8, 12, 1, 5, 9, 13] and zh_order == [0, 1, 2, 3],
        "ja 交错取格(每 4 人一个完整方阵)、中国队列按编号取", f"ja {ja_order} · zh {zh_order}")
     ck(zh_in_ja == 2, "选中文的日本招募被试进 ja 的 16 格,不占中国的格子(06 ㉞)", f"seq {zh_in_ja}")

@@ -102,7 +102,12 @@ def _body() -> None:
     include_ja = st.checkbox(t("analysis.include_ja"), key="_an_include_ja", help=t("analysis.include_ja_help"))
 
     def _cohort(pt):
-        if include_ja or "cohort" not in pt:
+        if "cohort" not in pt:
+            return pt
+        # 之后的 pooled 判断、复合 z、is_ja / topic_c 都读 lang 列 —— 它在 stats 里表示**队列**(make stats 同样
+        # 先 lang := cohort);选中文的日本被试不能被当成中国队列(06 ㉞)。CSV 已在这之前写出,不受影响
+        pt = pt.assign(lang=pt["cohort"])
+        if include_ja:
             return pt
         return pt[~pt["cohort"].isin(config.FOUR_COND_COHORTS)]   # 按队列,不按界面语言(06 ㉞)
 

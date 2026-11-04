@@ -8,6 +8,7 @@
 启动:  make preview        → http://127.0.0.1:8510/?lang=ja   (研究员工具再加 &admin=1,口令走 secrets 或
                                                               NOVASTORY_RESEARCHER_PW 环境变量)
        NOVASTORY_PREVIEW_DELAY=3 make preview   # 把等待画面放慢,看进度条 / 流式输出
+       NOVASTORY_PREVIEW_FAIL=D-revise make preview   # 这些调用第一次失败一次(逗号分隔 group),看重试路径
 改 app.py / views/ / i18n/ / config.toml:刷新页面即见;改 core/ 或本文件:要重启服务。
 ⚠️ 只供本机看界面。样稿是写死的,与被试实际看到的 AI 输出无关;这里产生的行不是数据。
 """
@@ -111,7 +112,21 @@ def _lang(*texts: str) -> str:
     return "zh" if re.search(r"[一-鿿]", s) else "en"
 
 
+# NOVASTORY_PREVIEW_FAIL=D-revise,E-final:这些 group 的**第一次**调用失败一次,之后照常 —— 看失败 → 重试的画面
+# (2026-11-05)。本脚本每次 rerun 都会重跑,所以「失败过没有」记在 llm 模块上,整个进程只失败一次。
+if not hasattr(llm, "_preview_fail_once"):
+    llm._preview_fail_once = {g.strip() for g in os.environ.get("NOVASTORY_PREVIEW_FAIL", "").split(",") if g.strip()}
+
+
+def _maybe_fail(group: str) -> None:
+    if group in llm._preview_fail_once:
+        llm._preview_fail_once.discard(group)
+        time.sleep(DELAY)
+        raise llm.LLMCallError(f"ui_preview: 模拟 {group} 失败一次")
+
+
 def _stub_stream(system, user, *, group, user_id="", temperature=None):
+    _maybe_fail(group)
     lang = _lang(system, user)
     text = _SCRIPT[lang]
     if "revise" in group:
@@ -127,6 +142,7 @@ def _qs(rows):
 
 
 def _stub_json(system, user, *, group, user_id="", retries=None, temperature=None):
+    _maybe_fail(group)
     lang = _lang(system, user)
     time.sleep(DELAY)
     # E 与 F 同一出题(06 ㉜):第一轮 = 6 道题,生成后的继续引导 = 2 道题;F 的选项在页面上默认藏起来

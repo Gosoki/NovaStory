@@ -42,8 +42,11 @@ def replications(df: pd.DataFrame, db_path: Path) -> list[tuple[str, bool | None
     """P1–P3 各自复核成功与否(None = 数据不足)。定义同 analysis/ja_predictions.py。"""
     cde = df[df["condition"].isin(prereg.CONFIRMATORY_CONDITIONS)]
     if db_path.exists():
-        d, _ = dist_base(cde, db_path)
+        d, miss = dist_base(cde, db_path)
         cde = cde.merge(d, on=["participant_id", "round_idx"], how="left")
+        if miss:
+            print(f"  ⚠️ embedding 缓存缺 {miss} 条向量(终稿或基线)→ P1 只用到有向量的 trial;"
+                  "补齐先跑 make embed(需授权调 OpenAI)")
     out = []
     for p in prereg.JA_DIRECTION_PREDICTIONS:
         rs = [one_sided(cde, p["dv"], a, b) if p["dv"] in cde else None for a, b in p["contrasts"]]
@@ -90,6 +93,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  own_mean F−E:差 {own['mean']:+.3f}  95%CI[{own['ci_lo']:+.3f}, {own['ci_hi']:+.3f}]  p={own['p_t']:.4f}")
     print("  方向复核:" + " · ".join(f"{i} " + ("成功" if ok else "数据不足" if ok is None else "未成功")
                                     for i, ok in reps))
+    if any(ok is None for _, ok in reps):
+        print("  ⚠️ 有复核项数据不足(P1 要先跑 make embed)→ 「数据不足」不算复核成功,下面 E 的宣称档位是**下界**")
 
     branch = rule["branches"][route]
     print(f"\n→ 路线:**主推 {route}**({why})")

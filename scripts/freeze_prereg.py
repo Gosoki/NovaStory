@@ -53,6 +53,8 @@ HASHED_FILES = [
     "analysis/embed.py",       # embedding 保真 Δ(占保真复合一半权重)
     "analysis/f_analysis.py",  # F 的日本内部分析:判定三分支、机制(2026-10-27 / 10-28)
     "analysis/ja_predictions.py",  # 日本方向复核预测 P1–P3 / B1–B3 的执行(2026-10-28)
+    "analysis/route.py",       # 主推 E / F 的判定(prereg.PROMOTION_RULE,2026-11-03)—— 改它就改论文路线
+    "analysis/question_value.py",  # 提问价值 QV1 的算法(2026-11-03)
     "core/db.py",              # 序列分配器(ja 交错取格,2026-10-28)—— 决定谁拿到哪种条件顺序
     "scripts/baseline_gen.py", # Δ 的零点(机器基线)怎么生成
     "scripts/judge.py",        # judge_fidelity(次要/收敛证据,合进同一份 CSV 并会被报告)
