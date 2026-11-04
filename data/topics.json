@@ -11,9 +11,9 @@
       "en": "On the street you pick up something small that someone dropped."
     },
     "choices": {
-      "ja": "中を見るか、届けるか、それとも——。",
+      "ja": "行き先を見てみるか、届けるか、それとも——。",
       "zh": "是打开看看、拿去归还，还是——。",
-      "en": "Do you peek inside, hand it in, or——?"
+      "en": "Do you check where it's for, hand it in, or——?"
     },
     "shot_count": 3,
     "total_seconds": 15
