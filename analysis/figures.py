@@ -57,7 +57,7 @@ def fig_effort(pt: pd.DataFrame, out: Path, population: str = "") -> None:
     for i, (a, b) in enumerate(zip(pre, post)):
         ax.text(i, a + b + (sem[i] or 0), f"{a + b:.0f}s (n={n_by[i]})", ha="center", va="bottom", fontsize=8)
     ax.set_ylabel("net human time (s), mean ± SEM")
-    ax.set_title("Production burden breakdown: time before vs after generation" + (f"  [{population}]" if population else ""))
+    ax.set_title("Production burden breakdown:\ntime before vs after generation" + (f"  [{population}]" if population else ""))
     ax.legend(frameon=False, fontsize=8)
     ax.spines[["top", "right"]].set_visible(False)
     fig.tight_layout()
