@@ -93,6 +93,9 @@ def main() -> None:
         "--config-index", type=int, default=0,
         help="secrets.toml 中 api_configs 序号(默认 0)",
     )
+    ap.add_argument("--model", default="",
+                    help="覆盖该配置的模型名(钉采数快照用,同 f_leak_probe;本机 secrets 第一项不是正式快照时:"
+                         "--model gpt-5.4-mini-2026-03-17)")
     ap.add_argument("--temperature", type=float, default=config.TEMPERATURE,
                     help="默认 = 被试用的 config.TEMPERATURE;基线与被试温度不同则 Δ 的零点不同源")
     ap.add_argument("--lang", default="ja", choices=("ja", "zh", "en"),
@@ -107,6 +110,8 @@ def main() -> None:
     topics = state.load_topics()[: config.N_ROUNDS_F]
     seeds = load_seeds(args.seeds_file)
     client = BatchClient.from_secrets(args.config_index, temperature=args.temperature)
+    if args.model:
+        client.model = args.model
     out_dir = baseline_dir(args.lang)
     out_dir.mkdir(parents=True, exist_ok=True)
     print(f"模型: {client.model}  温度: {client.temperature}  语言: {args.lang}  每题 N={args.n}")
