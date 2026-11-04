@@ -53,7 +53,7 @@ LATIN_SQUARE_N = 18
 # 4 条件 Williams 方阵 4 个序列 × 4 个题目轮换 = 16(state._COND_ORDERS_F / _TOPIC_ORDERS_F)。
 # 队列 = 招募地,不是界面语言(2026-11-04,06 ㉞):新入组的被试一律记 ACTIVE_COHORT,不论在同意页选
 # ja / zh / en;库里 cohort 为空的旧行按原来的 lang 算(cohort_of)—— 中国 36 人 = zh。
-# ⚠️ 轮数写死在三语文案里(「4 つのお題 / 全 4 ラウンド / 約20〜30分」等):改 ACTIVE_COHORT 时要同步改
+# ⚠️ 轮数写死在三语文案里(「4 つのお題 / 全 4 ラウンド / 約15分」等):改 ACTIVE_COHORT 时要同步改
 #    i18n/locales 的 consent.body、intro.flow、final_survey.hint / q_noticed。
 FOUR_COND_COHORTS = frozenset({"ja"})
 ACTIVE_COHORT = "ja"
