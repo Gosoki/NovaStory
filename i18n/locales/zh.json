@@ -5,8 +5,9 @@
     "contact": "本研究相关咨询：g2550005@stu.musashino-u.ac.jp"
   },
   "common": {
-    "loading": "AI 生成中，请稍候…",
-    "select_placeholder": "请选择"
+    "loading": "AI 生成中…请不要关闭页面或切换到其他应用，稍候片刻。",
+    "select_placeholder": "请选择",
+    "loading_slow": "这次比平时慢一些，请不要关闭页面，耐心等待。"
   },
   "sidebar": {
     "researcher_pw_locked": "尝试次数过多，请等一分钟再试。",
@@ -260,7 +261,7 @@
     "revision_send": "告诉 AI"
   },
   "guidance": {
-    "wait": "AI 正在为你准备问题…",
+    "wait": "AI 正在为你准备问题…请不要关闭页面或切换到其他应用，稍候片刻。",
     "title": "和 AI 一起完善你的故事",
     "progress": "第 {i} / {n} 问",
     "pick_label": "选一个最接近你想法的",
@@ -280,7 +281,8 @@
     "f_custom_label": "✍ 用自己的话写（一句话也行）：",
     "f_fixed_psychology": "在这个场景里，主角最想得到（或最想避免）的是什么？",
     "f_fixed_turning_point": "这 15 秒里，局面或心情发生翻转的那一瞬间在哪里？",
-    "f_fixed_key_shot": "这个故事最关键的看点，你想用怎样的一格画面来呈现？"
+    "f_fixed_key_shot": "这个故事最关键的看点，你想用怎样的一格画面来呈现？",
+    "wait_slow": "这次比平时慢一些，请不要关闭页面，耐心等待。"
   },
   "tour": {
     "read": "先读一读这一轮的题目",

@@ -5,8 +5,9 @@
     "contact": "Questions about this study: g2550005@stu.musashino-u.ac.jp"
   },
   "common": {
-    "loading": "The AI is generating… please wait a moment.",
-    "select_placeholder": "Choose an option"
+    "loading": "The AI is generating… please keep this page open and don't switch to another app.",
+    "select_placeholder": "Choose an option",
+    "loading_slow": "This is taking longer than usual. Please keep this page open and wait."
   },
   "sidebar": {
     "researcher_pw_locked": "Too many attempts. Please wait a minute and try again.",
@@ -260,7 +261,7 @@
     "revision_send": "Tell the AI"
   },
   "guidance": {
-    "wait": "The AI is preparing your questions…",
+    "wait": "The AI is preparing your questions… please keep this page open and don't switch to another app.",
     "title": "Build your story together with the AI",
     "progress": "Question {i} / {n}",
     "pick_label": "Pick the option closest to what you have in mind",
@@ -280,7 +281,8 @@
     "f_custom_label": "✍ In your own words (a few words is fine):",
     "f_fixed_psychology": "In this scene, what does the protagonist most want to get (or avoid)?",
     "f_fixed_turning_point": "Where in these 15 seconds does the situation or mood suddenly flip?",
-    "f_fixed_key_shot": "What single frame would you use to show the heart of this story?"
+    "f_fixed_key_shot": "What single frame would you use to show the heart of this story?",
+    "wait_slow": "This is taking longer than usual. Please keep this page open and wait."
   },
   "tour": {
     "read": "First, read this round's topic",

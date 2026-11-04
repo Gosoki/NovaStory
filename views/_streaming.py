@@ -30,6 +30,8 @@ _PROGRESS_CEIL_S = 12.0
 # llm_reattach(日本队列「请求重启」敏感性的读数,prereg.JA_SENSITIVITY)。等待时长从第一次发出算到
 # 拿到结果,只记一次(llm_done 的 elapsed 与 add_llm_wait 都含被打断的那段)。
 _INFLIGHT = "_llm_inflight"
+# 等待超过这么久(秒)就把提示换成「比平时久、请别关页面」(2026-11-05;中国实测最长约 12 秒)
+_SLOW_AFTER_S = 20
 _FORGET_AFTER_S = 600   # 已结束、没人来取的调用(会话放弃 / 换了 attempt)留这么久后清掉
 # 等待中的标记:app.py 的 CSS 见到「本次运行里有它」,就把上一次运行残留、还没被重画的旧元素
 # 藏起来、不可点(只在有 AI 调用的那次运行里;问卷页等其他运行不受影响)。
@@ -189,8 +191,12 @@ def stream_llm(system: str, user: str, *, group: str) -> Optional[str]:
     # 状态行收起:输出本来就画在它下面,展开只会多一个空框
     status = st.status(t("common.loading"), expanded=False)
     out = st.empty()
+    slow = False
     while not job["done"]:
         out.markdown(script_view("".join(job["chunks"])), unsafe_allow_html=True)
+        if not slow and time.time() - job["t0"] > _SLOW_AFTER_S:   # 等太久:告诉被试没卡住、别关页面
+            status.update(label=t("common.loading_slow"))
+            slow = True
         time.sleep(0.15)
     busy.empty()   # 等待结束:撤掉锁定标记(见 _BUSY_LLM)
     raw = "".join(job["chunks"])
@@ -255,6 +261,8 @@ def call_llm_json(system: str, user: str, *, group: str) -> dict | None | object
     label = t("guidance.wait")
     bar = st.progress(0.0, text=label)
     while not job["done"]:
+        if time.time() - job["t0"] > _SLOW_AFTER_S:   # 等太久:进度条停在 95% 时换成「比平时久」的提示
+            label = t("guidance.wait_slow")
         bar.progress(min((time.time() - job["t0"]) / _PROGRESS_CEIL_S, 0.95), text=label)
         time.sleep(0.3)
     bar.empty()
