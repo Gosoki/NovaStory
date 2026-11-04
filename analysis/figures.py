@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """A6: 论文图表(paper/10 §7.2)。无显示环境用 Agg 后端;标签用 ASCII 避开日文字体。
 
-  fig_effort        招牌图:各条件 事前投入 vs 事后返工 堆叠条(努力再分配)
+  fig_effort        招牌图:各条件 事前投入 vs 事后返工 堆叠条(制作负担的内部结构:事前 vs 事后;旧称「努力再分配」)
   fig_dv            主 DV 分条件:箱线 + 被试内散点连线(两个主复合各一张)
   fig_diversity     条件×题目 多样性(gzip CR,越高越同质)
 
@@ -44,7 +44,7 @@ def _cond_order(df):
 
 
 def fig_effort(pt: pd.DataFrame, out: Path, population: str = "") -> None:
-    """招牌图:事前投入(引导答题)+ 事后返工 的堆叠,直观化'努力再分配'。均值 ± SEM。"""
+    """招牌图:事前投入(引导答题)+ 事后返工 的堆叠,直观化制作负担在生成前 / 后的分布(旧称'努力再分配')。均值 ± SEM。"""
     conds = _cond_order(pt)
     n_by = [int(pt.loc[pt.condition == c, "post_investment"].notna().sum()) for c in conds]
     sem = [float(pt.loc[pt.condition == c, ["pre_investment", "post_investment"]].fillna(0).sum(axis=1).sem()) for c in conds]
@@ -57,7 +57,7 @@ def fig_effort(pt: pd.DataFrame, out: Path, population: str = "") -> None:
     for i, (a, b) in enumerate(zip(pre, post)):
         ax.text(i, a + b + (sem[i] or 0), f"{a + b:.0f}s (n={n_by[i]})", ha="center", va="bottom", fontsize=8)
     ax.set_ylabel("net human time (s), mean ± SEM")
-    ax.set_title("Effort reallocation across conditions" + (f"  [{population}]" if population else ""))
+    ax.set_title("Production burden breakdown: time before vs after generation" + (f"  [{population}]" if population else ""))
     ax.legend(frameon=False, fontsize=8)
     ax.spines[["top", "right"]].set_visible(False)
     fig.tight_layout()

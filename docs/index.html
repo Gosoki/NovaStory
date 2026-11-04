@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>NovaStory ── 生成する前に、問いを。</title>
+<title>NovaStory ── 生成AIによる物語制作における事前の意図明確化が作品の忠実性・所有感・制作負担に与える影響</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@600;700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
@@ -81,10 +81,12 @@
   /* title sits at the left; layoutSB() COVER makes the storyboard fill the space to
      its right (padding + this column + 90px gap), so no empty middle and no shift needed. */
   .slide.cover .title-wrap{max-width:min(38vw,700px)}
-  /* cover title = largest text in the deck; subtitle = body size (consistent with other pages) */
-  .slide.cover .title-wrap h1{font-size:clamp(3.6rem,5.3vw,5.8rem)}
+  /* cover title = thesis title (fixed 2026-11-04): 4 phrases, one per line. The longest,
+     「作品の忠実性・所有感・制作負担に」 (~16.3em), must fit the 38vw column that layoutSB() assumes.
+     Subtitle sits one step below the title. */
+  .slide.cover .title-wrap h1{font-size:clamp(1.1rem,2.2vw,2.6rem); line-height:1.42}
   .slide.cover .kicker{letter-spacing:.18em}
-  .slide.cover .title-sub{font-size:clamp(1.35rem,2.3vw,2.05rem)}
+  .slide.cover .title-sub{font-size:clamp(1rem,1.65vw,1.5rem)}
   .title-wrap h1{font-size:clamp(2.9rem,6.9vw,6rem); word-break:keep-all}
   .title-wrap h1 .ph{display:inline-block}   /* keep each phrase intact; wrap only between them */
   .title-sub{font-size:clamp(1.28rem,2.25vw,1.9rem); color:#d8d2c6; margin-top:clamp(20px,3.4vh,40px); line-height:1.6; font-family:var(--sans); max-width:24em}
@@ -280,7 +282,7 @@
   <section class="slide cover active">
     <div class="title-wrap">
       <div class="kicker">研究報告（中間） · Interim Report</div>
-      <h1><span class="ph">生成する前に、</span><span class="ph gold">問いを。</span></h1>
+      <h1><span class="ph">生成AIによる物語制作における</span><span class="ph"><span class="gold">事前の意図明確化</span>が</span><span class="ph">作品の忠実性・所有感・制作負担に</span><span class="ph">与える影響</span></h1>
       <!-- ROUTE-SLOT:cover BEGIN (06 ㉛:pr/主推E・pr/主推F はここだけ差し替える) -->
       <div class="title-sub"><span class="nw">「生成前の意図の引き出し」</span>と<span class="nw">「生成後の修正」</span>は、<span class="nw">何を変えるのか</span></div>
       <!-- ROUTE-SLOT:cover END -->
@@ -318,7 +320,7 @@
       </div>
       <div class="card" style="border-color:var(--gold-soft)">
         <h3>新しい型 <span class="tag gold">問う → 生成</span></h3>
-        <p>AI が先に意図を問い、確定してから生成する。
+        <p>AI が先に問いかけ、意図をはっきりさせてから生成する（<b>事前の意図明確化</b>）。
         AskUserQuestion など<b>産業界で広がりつつある</b>。</p>
       </div>
     </div>
@@ -330,7 +332,7 @@
     <div class="kicker">Research Question</div>
     <div class="big">
       生成の<span class="hl">「前」</span>に意図を引き出す方法は、<br>
-      生成の<span class="hl">「後」</span>に直す方法と比べて、<br>何を変えるのか。
+      生成の<span class="hl">「後」</span>に直す方法と比べて、<br>どのような影響を与えるのか。
     </div>
     <div class="rqrow">
       <div class="rq"><div class="n">RQ 1</div><div class="t">意図への忠実性</div></div>
@@ -350,9 +352,9 @@
     </p>
     <ul>
       <li><b>作り手</b>が、AIと<b>作品をまるごと</b>作る場面で</li>
-      <li>忠実性・<b>所有感</b>・<b>制作負担</b>を<b>同時に</b>比べたとき、事前に問うことで何が変わるか</li>
+      <li>忠実性・<b>所有感</b>・<b>制作負担</b>を<b>同時に</b>比べたとき、事前の意図明確化がどのような影響を与えるか</li>
     </ul>
-    <div class="note">「初」とは主張しない。狙いは<b>仕組み</b> ── 事前に問うことが、作り手の<b>「自分の作品だ」</b>という感覚を守るか。</div>
+    <div class="note">「初」とは主張しない。狙いは<b>仕組み</b> ── 所有感は<b>「問われて自分で決める」</b>ことで高まるのか、<b>「誰が書いたか」</b>で決まるのか。</div>
   </section>
 
   <!-- POSITIONING / RELATED WORK -->
@@ -379,7 +381,7 @@
         </tr>
       </tbody>
     </table>
-    <div class="note">「初」とは主張しない。貢献は、これらを<b>一つの対照に束ねて</b> ── 作品まるごと × 3指標 同時 ── <b>事前に問うことが所有感が損なわれるのを防げるか</b>を検証すること。</div>
+    <div class="note">「初」とは主張しない。貢献は、これらを<b>一つの対照に束ねて</b> ── 作品まるごと × 忠実性・所有感・制作負担を同時に ── <b>事前の意図明確化が与える影響</b>を、ワークフロー全体として検証すること。</div>
   </section>
 
   <!-- 7 · SYSTEM -->
@@ -411,7 +413,7 @@
       </div>
       <!-- ROUTE-SLOT:system END -->
     </div>
-    <div class="cite">C / D / E ＝「人の意図が生成パイプラインに入る<b>タイミング</b>」の操作 ／ E / F ＝ 同じ「生成前」での<b>問い方</b>の違い（F は日本のみ）。タスクは全条件で同一。</div>
+    <div class="cite">C / D / E ＝「人の意図が生成パイプラインに入る<b>タイミング</b>」の操作 ／ E / F ＝ どちらも<b>事前の意図明確化</b>。違いは同じ「生成前」での<b>問い方</b>（F は日本のみ）。タスクは全条件で同一。</div>
   </section>
 
   <!-- 05 · REAL OUTPUT (full 絵コンテ sheet) -->
@@ -514,7 +516,7 @@
     <div class="cols" style="grid-template-columns:1.1fr 1fr">
       <div>
         <ul>
-          <li><b>意図への忠実性</b> <br>= 想像一致（自己申告）＋ 意図との食い違い（逆転）<br>＋ ショット単位アノテーション ＋ 埋め込み距離Δ（客観・自動）</li>
+          <li><b>意図への忠実性</b>（作品が本人の意図にどれだけ沿っているか）<br>= 想像一致（自己申告）＋ 意図との食い違い（逆転）<br>＋ ショット単位アノテーション ＋ 埋め込み距離Δ（客観・自動）</li>
           <li><b>所有感</b> own1–3（1–7）<span class="muted">／ 主体感 soa1–2 は補助</span></li>
           <li><b>制作負担</b> = 作業時間 ＋ 主観的負荷<br>＋ 生成後の手直し ＋「一番手間がかかった」ラウンド<br><span class="muted">トークン（システム側のコスト）は別に報告</span></li>
         </ul>
@@ -592,11 +594,11 @@
     <div class="kicker">結び</div>
     <!-- ROUTE-SLOT:closing BEGIN (06 ㉛) -->
     <div class="big">
-      <span class="hl">「作る前に問う」</span>と<span class="hl">「作ったあとで直す」</span>、<br>何が変わるのか。
+      <span class="hl">事前の意図明確化</span>は、<br>忠実性・所有感・制作負担に<br>どのような影響を与えるのか。
     </div>
     <div class="title-meta" style="margin-top:clamp(30px,5vh,60px)">
       <span>中国（N=35）：意図への忠実性・所有感とも、E の D に対する向上は検出されず</span>
-      <span>制作負担：E は時間が長いが、生成後の手直しは少ない</span>
+      <span>制作負担：E は時間が長いが、主観的な負荷には差がなく、生成後の手直しは少ない（記述的）</span>
     </div>
     <div class="title-meta">
       <span>実装済み</span><span>中国 収集済み</span><span>→ 日本 4つのやり方（収集中）</span><span>→ 提案する問い方（E か F）を日本の結果で決める</span>
