@@ -168,9 +168,14 @@ def _fill_guidance() -> None:
     if not qs:
         return
     answers = {}
+    f_mode = state.current_round()["condition"] == "F"
     for i, q in enumerate(qs):
         options = q.get("options") or []
-        if i == 1:
+        if f_mode:
+            # F(06 ㉜):选项默认藏着(没点开ヒント时选项控件不渲染、点选不算作答)、也没有「AI に任せる」
+            # → 每题都自己写一句(2026-11-05 服务器走查:以前只给最后一题选了选项,「回答完了」被拦下)
+            answers[i] = {"opt": None, "custom": _session_text(_G_CUSTOM), "ai_decided": False}
+        elif i == 1:
             answers[i] = {"opt": None, "custom": _session_text(_G_CUSTOM), "ai_decided": False}
         elif i == 2 and options:
             answers[i] = {"opt": t("guidance.ai_decide"), "custom": "", "ai_decided": True}

@@ -268,7 +268,18 @@ def section_a() -> None:
     import sqlite3 as _sq
     with _sq.connect(db.DB_PATH) as _c:
         n_rows = _c.execute("SELECT COUNT(*) FROM participants").fetchone()[0]
+        # 旧行 cohort 为空 + 新行 cohort=ja 混在一张表里(2026-11-05 服务器走查):pandas 把这列的 NULL 读成 NaN,
+        # cohort_of 以前会把旧的中国行算成 NaN → 第一位日本被试一进库,按队列筛的分析与后台就把中国整个丢掉
+        _c.execute("INSERT INTO participants (created_at, lang, seq, demographics_json, screening_json, passed, token, status)"
+                   " VALUES ('2026-09-20T00:00:00', 'zh', 0, '{}', '{}', 1, 'legacy01', 'done')")
+    from analysis import v3 as _v3
+    with _sq.connect(db.DB_PATH) as _c:
+        _pp = _v3.read_participants(_c, "id, lang")
+    legacy = _pp.loc[_pp["id"] == _pp["id"].max(), "cohort"].tolist()
     db.DB_PATH = conc_db   # 下面的 events 并发写仍在并发库上
+    ck(legacy == ["zh"] and set(_pp["cohort"]) == {"ja", "zh"},
+       "cohort 为空的旧行与 cohort=ja 的新行混在一起时,旧行仍按 lang 归队列(不变成 NaN)",
+       f"旧行 → {legacy};全表队列 {sorted(map(str, set(_pp['cohort'])))}")
     ck(all(x[:2] == first[:2] for x in twins) and nxt[1] != first[1] and n_rows == 15,
        "同一会话连点提交只入组一次(并发 4 次也是同一行),下一位照常拿下一个格子",
        f"first={first[:2]} twins={[x[:2] for x in twins]} next={nxt[:2]} rows={n_rows}")

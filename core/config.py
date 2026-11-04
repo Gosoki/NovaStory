@@ -65,8 +65,14 @@ F_REVEAL_DELAY_S = 2.0
 
 
 def cohort_of(lang: str | None, cohort: str | None = None) -> str:
-    """一位被试属于哪个队列:有 cohort 就用它,旧行(cohort 为空)按原来的 lang(06 ㉞)。"""
-    return cohort or lang or ""
+    """一位被试属于哪个队列:有 cohort 就用它,旧行(cohort 为空)按原来的 lang(06 ㉞)。
+
+    「空」包括 NaN:pandas 读一列有 NULL 又有字符串的 cohort 时,NULL 会变成 float NaN,而 NaN 是真值 ——
+    以前 `cohort or lang` 会把中国 36 行的队列都算成 NaN,第一位日本被试一进库,按队列筛的分析与后台就把中国整个丢掉
+    (2026-11-05 服务器走查发现;全是 NULL 时 pandas 给的是 None,所以之前的测试都没撞到)。"""
+    c = cohort if isinstance(cohort, str) and cohort else None
+    lg = lang if isinstance(lang, str) and lang else None
+    return c or lg or ""
 
 
 def rounds_for_cohort(cohort: str) -> int:
