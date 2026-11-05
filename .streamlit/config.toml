@@ -16,6 +16,11 @@ gatherUsageStats = false
 # the app itself adds — here, none.)
 toolbarMode = "minimal"
 
+# 亮 / 暗切换圆钮(app.py _masthead)用 Streamlit 的宿主消息当场换主题,它只收这里列出的来源发的消息。
+# 列的是我们自己的网址(正式站 + 本机预览);替换掉默认的 Streamlit Community Cloud 域名(本项目用不到)。
+# 只有同一页面里的脚本能以本来源发这种消息 —— 没有被嵌进别人网页时,外站发不进来。
+allowedOrigins = ["https://test.jp.wuzuxi.com", "http://127.0.0.1:8510", "http://127.0.0.1:8531", "http://localhost:8510"]
+
 # 出错时不要把 Python 栈打给被试。默认是 "full" —— 而 views/ 与 core/(除 db.py 外)没有
 # 任何一处捕获 sqlite3.OperationalError,磁盘满、库权限变化、写锁超时这类意外会直接把
 # 整段 traceback(含文件路径)糊在被试屏幕上,既吓人又泄露部署细节。"none" 只显示一句

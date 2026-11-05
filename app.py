@@ -102,6 +102,36 @@ _MARK = '<span class="ns-mark" aria-hidden="true"></span>'
 _HTML_LANG = {"ja": "ja", "zh": "zh-CN", "en": "en"}
 
 
+
+# 亮 / 暗切换(2026-11-06 用户:「默认跟系统走,但是点过了就按用户设置」「固定在左上角」「之后的页面也要」)。
+# 每页左上角一颗圆钮,纯前端、不是 Streamlit 控件:点它不触发 rerun、不进任何数据,生成中也照常可点。
+# 当场切换不重新加载(实验中途重新加载 = 当前轮从头再来):把 Streamlit 自己的主题换掉要走它的宿主消息
+# SET_CUSTOM_THEME_CONFIG(只收 config.toml [client] allowedOrigins 里的来源 —— 那里列了我们自己的域名),
+# 消息里带上与 config.toml 同一份配置生成的整套主题(用 Streamlit 自己生成 new_session 主题的函数,不手抄颜色;
+# 2026-11-06 实测切换后与正常加载逐元素一致)。选择另写进 Streamlit 记主题的 localStorage 键,下次打开直接按它加载;
+# 没点过 = 跟系统。拿不到主题信息(Streamlit 内部接口变了)就不显示按钮,其余照常。
+_THEME_KEY_JS = "'stActiveTheme-'+location.pathname+'-v2'"
+
+
+@st.cache_resource
+def _theme_info_json() -> str | None:
+    try:
+        from google.protobuf.json_format import MessageToDict
+        from streamlit.proto.NewSession_pb2 import CustomThemeConfig
+        from streamlit.runtime.app_session import _populate_theme_msg
+        out = {}
+        for mode, base in (("light", CustomThemeConfig.BaseTheme.LIGHT), ("dark", CustomThemeConfig.BaseTheme.DARK)):
+            m = CustomThemeConfig()
+            _populate_theme_msg(m, "theme")
+            _populate_theme_msg(m, f"theme.{mode}")
+            m.ClearField("light")
+            m.ClearField("dark")
+            m.base = base
+            out[mode] = MessageToDict(m, use_integers_for_enums=True)
+        return json.dumps(out)
+    except Exception:  # noqa: BLE001 —— 没有按钮也能做实验
+        return None
+
 # 页头底边那条细线 = 整个流程走到哪了(06 ⑮ (b) 的轻量版:不加任何字)。v1 只有轮内一根进度条,
 # 同意 / 背景问卷 / 说明 / 总问卷全程没有进度,第 1 轮开局还显示 0%。权重大致按时长:入组约 12%、
 # 各轮共 80%(轮内按步骤条细分)、总问卷之后到 100%。
@@ -127,21 +157,36 @@ def _masthead(*, hero: bool, progress: float | None = None) -> None:
     b, p = html.escape(brand), html.escape(product)
     # 研究员入口(?admin=1)时左上角有展开侧栏的按钮,窄屏上页头要给它让位(样式见 .ns--shift)
     shift = " ns--shift" if (st.session_state.get("researcher_ok") or sidebar.admin_requested()) else ""
+    # data-ns-theme:被试点过亮 / 暗(存在 Streamlit 自己的主题键里)就跟它,否则不设 = 跟系统(见 _DESIGN_CSS)
+    info = _theme_info_json()
+    labels = json.dumps({"light": t("common.theme_to_light"), "dark": t("common.theme_to_dark")}, ensure_ascii=False)
+    btn = ('<button type="button" id="ns-theme-btn" class="ns-theme-btn">'
+           '</button>') if info else ""
     if hero:
-        head = (f'<header class="ns-hero{shift}">{_MARK}<div class="ns-hero-brand">{b}</div>'
+        head = (f'<header class="ns-hero{shift}">{btn}{_MARK}<div class="ns-hero-brand">{b}</div>'
                 f'<h1 class="ns-hero-title">{p}</h1>'
                 f'<p class="ns-hero-sub">{html.escape(t("app.subtitle"))}</p></header>')
     else:
         line = ("" if progress is None else
                 f'<span class="ns-bar-progress" aria-hidden="true" style="width:{max(0.0, min(progress, 1.0)) * 100:.1f}%"></span>')
-        head = (f'<header class="ns-bar{shift}">{_MARK}<span class="ns-bar-brand">{b}</span>'
+        head = (f'<header class="ns-bar{shift}">{_MARK}<span class="ns-bar-brand">{b}</span>{btn}'
                 f'<span class="ns-bar-product">{p}</span>{line}</header>')
-    # data-ns-theme:被试在同意页选过亮 / 暗(存在 Streamlit 自己的主题键里)就跟它,否则不设 = 跟系统(见 _DESIGN_CSS)
     js = (f"<script>document.documentElement.lang={json.dumps(_HTML_LANG.get(lang, lang))};"
-          "(function(){var v=null,r=document.documentElement;"
-          "try{v=JSON.parse(localStorage.getItem('stActiveTheme-'+location.pathname+'-v2')||'null')}catch(e){}"
+          "(function(){var r=document.documentElement,K=" + _THEME_KEY_JS + ",v=null;"
+          "try{v=JSON.parse(localStorage.getItem(K)||'null')}catch(e){}"
           "if(v==='Light')r.dataset.nsTheme='light';else if(v==='Dark')r.dataset.nsTheme='dark';"
-          "else delete r.dataset.nsTheme;})();</script>")
+          "else delete r.dataset.nsTheme;"
+          "var b=document.getElementById('ns-theme-btn'),TI=" + (info or "null") + ",L=" + labels + ";"
+          "if(!b||!TI)return;"
+          "function cur(){return r.dataset.nsTheme||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')}"
+          "function paint(){var to=cur()==='dark'?'light':'dark';b.textContent=to==='dark'?'🌙':'☀️';"
+          "b.title=L[to];b.setAttribute('aria-label',L[to])}"
+          "paint();"
+          "b.onclick=function(){var to=cur()==='dark'?'light':'dark',sv=JSON.stringify(to==='dark'?'Dark':'Light');"
+          "window.postMessage({stCommVersion:1,type:'SET_CUSTOM_THEME_CONFIG',themeName:'ns-'+to,themeInfo:TI[to]},location.origin);"
+          "r.dataset.nsTheme=to;try{localStorage.setItem(K,sv)}catch(e){}"
+          "setTimeout(function(){try{localStorage.setItem(K,sv)}catch(e){}},500);paint()};"
+          "})();</script>")
     st.html(head + js, unsafe_allow_javascript=True)
 
 
@@ -275,6 +320,7 @@ hr{ border-color:var(--ns-line)!important; }
 .ns-bar{ position:relative; display:flex; align-items:center; gap:.55rem; min-height:2.75rem; padding:0 4.5rem .55rem 0;
   border-bottom:1px solid var(--ns-line); }
 .ns-bar-progress{ position:absolute; left:0; bottom:-1px; height:2px; border-radius:2px; background:var(--ns-accent); }
+/* 让出左上角展开侧栏的按钮(只有研究员入口有;正文居中的宽屏上碰不到它) */
 /* 让出左上角展开侧栏的按钮(只有研究员入口有;正文居中的宽屏上碰不到它) */
 @media (max-width:1000px){ .ns-bar.ns--shift{ padding-left:2.75rem; } .ns-hero.ns--shift{ padding-top:3.4rem; } }
 .ns-bar-brand{ font-weight:700; font-size:1rem; letter-spacing:.01em; color:var(--ns-text); white-space:nowrap; }
@@ -694,10 +740,16 @@ body:has(.stElementContainer:not([data-stale="true"]) .ns-busy-llm)
 .stExpander summary,
 [data-baseweb="tab-list"],[data-baseweb="tab"]{opacity:1!important}
 
-/* 同意页的亮 / 暗切换(views/consent._theme_toggle):与语言胶囊同一个样子,小一号 */
-.ns-theme-btn{ font:inherit; font-size:.85rem; line-height:1.4; padding:.35rem .95rem; border-radius:999px; cursor:pointer;
-  border:1px solid var(--ns-line-strong); background:var(--ns-surface); color:var(--ns-text); }
+/* 亮 / 暗切换(_masthead):每页页头右上角的圆钮(2026-11-06 用户:「做在右上角,画面滚动跟着走,固定在网页上」→
+   放在页头元素里、随页面滚走,不是悬浮)。图标 = 点了会变成的样子(暗色时 ☀️、亮色时 🌙),完整说明在 title / aria-label。
+   手机上页头右端让给 Streamlit 自己固定在屏幕右上角的「运行中」图标(.ns-bar 的右内边距原本就是为它留的),圆钮挪到它左边。 */
+.ns-theme-btn{ position:absolute; right:0; z-index:2; width:2.25rem; height:2.25rem; padding:0;
+  display:flex; align-items:center; justify-content:center; font-size:1.05rem; line-height:1; cursor:pointer;
+  border-radius:50%; border:1px solid var(--ns-line-strong); background:var(--ns-surface); color:var(--ns-text); }
 .ns-theme-btn:hover{ border-color:var(--ns-accent-line); }
+.ns-bar .ns-theme-btn{ top:calc(50% - .275rem); transform:translateY(-50%); }   /* .275rem = 底内边距的一半:与品牌那行居中 */
+.ns-hero{ position:relative; }
+.ns-hero .ns-theme-btn{ top:1.75rem; }   /* 与标志同一高度(.ns-hero 的上内边距) */
 /* 电脑屏整体放大一档(2026-11-06 用户:「pc 版字体大一点」;日本队列推荐用电脑做):Streamlit 与本页样式的字号
    都以根字号为基准(rem),只改根字号 = 全站按同一比例放大(正文 16→18px、注释约 13→15px),版面比例不变。
    手机 / 平板(<1024px)不受影响。内容列宽是 px 固定的,不随之变宽。 */
@@ -711,7 +763,9 @@ body:has(.stElementContainer:not([data-stale="true"]) .ns-busy-llm)
   .ns-hero{ padding-top:1rem; }
   .ns-hero .ns-mark{ width:2.1rem; height:2.1rem; margin-bottom:.8rem; }
   .ns-hero-title{ font-size:1.5rem!important; }
-  .ns-bar{ padding-right:3.25rem; }
+  .ns-bar{ padding-right:6rem; }   /* 右端:「运行中」图标(3.25rem)+ 亮暗圆钮 */
+  .ns-bar .ns-theme-btn, .ns-hero .ns-theme-btn{ right:3.25rem; }
+  .ns-hero .ns-theme-btn{ top:1rem; }
   .ns-bar-product{ font-size:.8rem; }
   [data-testid="stForm"]{ padding:1.1rem .95rem 1rem!important; }
   [class*="st-key-ns_card"]{ padding:.95rem 1rem!important; }
