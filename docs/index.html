@@ -324,7 +324,7 @@
         AskUserQuestion など<b>産業界で広がりつつある</b>。</p>
       </div>
     </div>
-    <div class="note">創作領域では、<b>作り手が作品をまるごと作る</b>〈エンドツーエンド〉の設定で、この対照を検証した証拠は、まだ十分ではない。</div>
+    <div class="note">AI による質問の効果と、AI と共同制作した作品の所有感は、これまで<b>主に個別に</b>研究されてきた。質問のタイミングの比較には Jung et al. 2026（C&amp;C）がある。</div>
   </section>
 
   <!-- 5 · RESEARCH QUESTION(研究の主旨 2026-11-02、09 §0.5) -->
@@ -340,48 +340,38 @@
       <div class="rq"><div class="n">RQ 3</div><div class="t">制作負担</div></div>
       <div class="rq"><div class="n">RQ 4 · 日本</div><div class="t">選択肢：最初から／見たいときだけ</div></div>
     </div>
+    <div class="note">具体的には、事前の質問は意図を反映しやすくする一方、時間や負担を増やすのか。それとも、生成後の修正より少ない心理的負担で、作品の所有感を高められるのか。どちらでもない可能性も含めて調べる。</div>
   </section>
 
   <!-- CONTRIBUTION / POSITIONING -->
   <section class="slide">
-    <div class="kicker">03 ── 貢献</div>
+    <div class="kicker">03 ── 主張</div>
     <h2>何を<span class="gold">確かめる</span>のか</h2>
     <p class="lead" style="margin-bottom:.5em">
-      「先に問う」効果は、先行研究が<b>断片的に</b>示してきた。<br>
-      まだ<em>まとめて確かめられていない</em>のは——
+      AI による質問の効果と、AI と共同制作した作品の所有感は、これまで<b>主に個別に</b>研究されてきた。
     </p>
     <ul>
-      <li><b>作り手</b>が、AIと<b>作品をまるごと</b>作る場面で</li>
-      <li>忠実性・<b>所有感</b>・<b>制作負担</b>を<b>同時に</b>比べたとき、事前の意図明確化がどのような影響を与えるか</li>
+      <li>映像制作の初心者による絵コンテ制作を想定し、<b>作らせてから直す</b>方法と<b>質問されてから作る</b>方法を比べる</li>
+      <li>作品が<b>意図どおり</b>にできたか、<b>自分の作品</b>と感じられるか、どれだけ<b>負担</b>がかかるかを調べ、AI とのよりよい制作方法を検討する</li>
     </ul>
-    <div class="note">「初」とは主張しない。狙いは<b>仕組み</b> ── 所有感は<b>「問われて自分で決める」</b>ことで高まるのか、<b>「誰が書いたか」</b>で決まるのか。</div>
+    <div class="note">「初」とは主張しない。操作方法も異なるため、質問のタイミング単独の因果効果とも主張しない。</div>
   </section>
 
   <!-- POSITIONING / RELATED WORK -->
   <section class="slide">
     <div class="kicker">位置づけ ── Related Work</div>
-    <h2>先行研究は<span class="gold">断片的に</span>示してきた</h2>
+    <h2>研究の位置づけ：<span class="gold">先行研究</span>との比較</h2>
     <table class="maptab">
-      <thead><tr><th>先行研究</th><th>示したこと</th><th>本研究が埋める差</th></tr></thead>
+      <thead><tr><th>比較項目</th><th>Jung<br>文章/画像</th><th>Wen<br>画像</th><th>Agarwal<br>UI</th><th>Pennanen<br>短編小説</th><th>Shen<br>漫画</th><th>本研究<br>絵コンテ</th></tr></thead>
       <tbody>
-        <tr>
-          <td class="h">APE<br><span style="font-family:var(--sans);font-weight:400;font-size:.66em;color:var(--faint)">IUI 2026 · N=128</span></td>
-          <td>画像生成（T2I）で<b>選択肢式の事前引き出し</b>が<br>主観的アラインメント +19.8%（自作尺度）・反復 −39.5%</td>
-          <td>所有感は未測定・画像領域・作品まるごとでない<br>→ <b>物語作品</b>＋<b>所有感</b>＋<b>行動指標</b>へ</td>
-        </tr>
-        <tr>
-          <td class="h">Maier et al.<br><span style="font-family:var(--sans);font-weight:400;font-size:.66em;color:var(--faint)">CHI 2026 · N=486+640</span></td>
-          <td>質問モードが<b>所有感</b>を守る</td>
-          <td>質問は AI 生成の<b>後</b>・最終文は人が書く<br>→ 本研究は<b>生成前</b>に問い、<b>AI が完成品</b>を作る</td>
-        </tr>
-        <tr>
-          <td class="h">Timing Matters<br><span style="font-family:var(--sans);font-weight:400;font-size:.66em;color:var(--faint)">CHI 2025 · N=60</span></td>
-          <td>人が<b>いつ</b>使うかで所有感が変わる</td>
-          <td>AI は問わない・アイデア出し課題<br>→ 本研究は<b>AI がどう意図を構造化するか</b>を操作</td>
-        </tr>
+        <tr><td class="h">質問のタイミングを比較</td><td>○</td><td>—</td><td>—</td><td>—</td><td>—</td><td>○※</td></tr>
+        <tr><td class="h">状況に応じて質問を変える</td><td>—</td><td>○</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+        <tr><td class="h">意図への忠実性を評価</td><td>—</td><td>○</td><td>○</td><td>—</td><td>○</td><td>○</td></tr>
+        <tr><td class="h">作品の所有感を評価</td><td>—</td><td>—</td><td>○</td><td>○</td><td>○</td><td>○</td></tr>
+        <tr><td class="h">制作負担を評価</td><td>○</td><td>○</td><td>○</td><td>—</td><td>—</td><td>○</td></tr>
       </tbody>
     </table>
-    <div class="note">「初」とは主張しない。貢献は、これらを<b>一つの対照に束ねて</b> ── 作品まるごと × 忠実性・所有感・制作負担を同時に ── <b>事前の意図明確化が与える影響</b>を、ワークフロー全体として検証すること。</div>
+    <div class="note">○ 論文の主な比較・評価。※「作る前の質問」と「作ったあとの修正」の比較で、操作方法も異なるため、質問のタイミング単独の効果とは主張しない。</div>
   </section>
 
   <!-- 7 · SYSTEM -->
@@ -413,7 +403,7 @@
       </div>
       <!-- ROUTE-SLOT:system END -->
     </div>
-    <div class="cite">C / D / E ＝「人の意図が生成パイプラインに入る<b>タイミング</b>」の操作 ／ E / F ＝ どちらも<span class="nw"><b>事前の意図明確化</b></span>。違いは同じ「生成前」での<b>問い方</b>（F は日本のみ）。タスクは全条件で同一。</div>
+    <div class="cite">C / D / E ＝ ワークフロー全体の違い（<b>タイミング</b>だけでなく直し方も異なる）／ E / F ＝ どちらも<span class="nw"><b>事前の意図明確化</b></span>。違いは同じ「生成前」での<b>問い方</b>（F は日本のみ）。タスクは全条件で同一。</div>
   </section>
 
   <!-- 05 · REAL OUTPUT (full 絵コンテ sheet) -->
@@ -487,7 +477,7 @@
           <li>参加者内：<br>── <b>実験1（中国）</b>3つのやり方（C・D・E）× 3題 ／ <b>実験2（日本）</b>4つのやり方（C・D・E・F）× 4題</li>
           <li><b>中国 35名</b>（職業学校での講義後 22名＋その他の成人 13名。研究者のデモ 1 件は除外）＋ <b>日本 16〜32名</b>（これから）<br>── 中国は 18系列 × 各2人（1系列のみ1人）／日本は 16系列 × 各1〜2人</li>
           <li>条件順は<b>全6並べ替え（Williams）<span class="nw">× 3題ローテーション</span></b>（日本は 4 次の Williams × 4題）</li>
-          <li>募集は<b>誰でも可</b>／<b>主解析は全参加者</b><br>── 中国の約9割（32名）は映像の基礎知識のない初心者。経験者 3 名を除いても結論は変わらない（探索的）・所要 約15分（中国の実測中央値 17.5分。日本は 4 本で約20〜30分）</li>
+          <li><b>想定は映像制作の初心者</b>。募集は<b>誰でも可</b>／<b>主解析は全参加者</b><br>── 中国の約9割（32名）が初心者（基準はデータを見たあとに決定）。経験者 3 名を除いても差は検出されなかった（所有感の判定は「同等」→「判定できず」。探索的）・所要 約15分（中国の実測中央値 17.5分。日本は 4 本で約20〜30分）</li>
         </ul>
       </div>
       <div style="justify-self:center">
