@@ -676,6 +676,11 @@ body:has(.stElementContainer:not([data-stale="true"]) .ns-busy-llm)
 .stExpander summary,
 [data-baseweb="tab-list"],[data-baseweb="tab"]{opacity:1!important}
 
+/* 电脑屏整体放大一档(2026-11-06 用户:「pc 版字体大一点」;日本队列推荐用电脑做):Streamlit 与本页样式的字号
+   都以根字号为基准(rem),只改根字号 = 全站按同一比例放大(正文 16→18px、注释约 13→15px),版面比例不变。
+   手机 / 平板(<1024px)不受影响。内容列宽是 px 固定的,不随之变宽。 */
+@media (min-width:1024px){ html{font-size:18px} }
+
 @media (max-width:640px){
   /* 窄屏字阶:实测 h1 在 390px 上是 44px,一个 st.subheader 的分节标题能占掉三行屏幕。 */
   [data-testid="stHeading"] h1{font-size:1.4rem!important;line-height:1.35}
