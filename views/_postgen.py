@@ -180,12 +180,17 @@ def _render_revision_channel(topic: dict) -> None:
         max_chars=600,
     )
     st.caption(t("d.revision_hint"))
-    if st.button(t("d.revision_send"), type="secondary", width="stretch", key="btn_more_ai"):
-        request = (st.session_state.get("_revision_input") or "").strip()
+    # 断网 / 切到后台再回来(2026-11-05 实测):重连后的那次运行里按钮不算被点,走不到 stream_llm,在途的修改
+    # 没人接回 —— 页面回到点之前的样子、什么提示都没有,这时点「これで満足」交上去的是没改的版本。
+    # 发起时记下这次修改请求,结束(成功或失败)才清;还记着就照常走到 stream_llm,同一请求接回原来那次调用。
+    pending = st.session_state.get("_revision_pending")
+    if st.button(t("d.revision_send"), type="secondary", width="stretch", key="btn_more_ai") or pending:
+        request = pending or (st.session_state.get("_revision_input") or "").strip()
         if not request:
             state.log_passive("blocked", {"where": "revision"})   # 探索性(2026-11-05)
             st.error(t("errors.revision_empty"))
             return
+        st.session_state["_revision_pending"] = request
         base = persist_pending_edit()
         lang = get_lang()
         out = stream_llm(
@@ -195,6 +200,7 @@ def _render_revision_channel(topic: dict) -> None:
             ),
             group="D-revise",
         )
+        st.session_state.pop("_revision_pending", None)
         # Mirror E's _finish_round: only commit the request + version once
         # generation actually succeeds. Committing beforehand left an orphan
         # request on failure (empty/None out), which misaligned the history

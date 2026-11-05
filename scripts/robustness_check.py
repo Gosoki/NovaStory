@@ -752,6 +752,39 @@ def section_g() -> None:
            "C 生成被打断：事件 = 1 start + reattach + 1 done", f"{types}")
         ck("_llm_inflight" not in at.session_state or not at.session_state["_llm_inflight"],
            "取走结果后登记表清空（不残留在途调用）")
+
+        # G3 D 修改(在按钮里发起的调用):重连后的那次运行没人点按钮,也要接回原来那次修改(2026-11-05 断网实测:
+        # 以前修改就此丢掉,页面回到点之前、没有提示,接着交上去的是没改的版本)
+        CALLS.clear()
+        at = seed_round("D")
+        pid = at.session_state["participant_id"]
+        write_intent(at)
+        at.session_state["_revision_input"] = "更搞笑一点"
+        run_interrupted(at, lambda a: click(a, "告诉 AI"))
+        types = ev_types(pid)
+        ss = at.session_state
+        ck(CALLS.count("D-revise") == 1 and len(ss["r_revision_requests"]) == 1 and ss["r_n_ai_rounds"] == 1,
+           "D 修改被打断：不再点按钮也接回，只发 1 次请求、修改记入",
+           f"发出 {CALLS.count('D-revise')} 次 / 请求 {len(ss['r_revision_requests'])} / n_ai_rounds {ss['r_n_ai_rounds']}")
+        ck(types.count("revision_request") == 1 and "llm_reattach" in types,
+           "D 修改被打断：事件 = reattach + 1 次 revision_request", f"{types[-6:]}")
+        ck("_revision_pending" not in ss, "D 修改接回后不残留待接标记")
+
+        # G4 E 成稿(「完成作答，生成脚本」里发起的调用):同上
+        CALLS.clear()
+        at = seed_round("E")
+        pid = at.session_state["participant_id"]
+        write_intent(at)
+        answer_guidance(at)
+        run_interrupted(at, lambda a: click(a, "完成作答，生成脚本"))
+        types = ev_types(pid)
+        ss = at.session_state
+        ck(CALLS.count("E-final") == 1 and len(ss["r_versions"]) == 1 and ss["r_phase"] == "postgen",
+           "E 成稿被打断：不再点按钮也接回，只生成 1 次、进入看稿",
+           f"发出 {CALLS.count('E-final')} 次 / 版本 {len(ss['r_versions'])} / phase {ss['r_phase']}")
+        ck(types.count("guidance_submit") == 1 and "llm_reattach" in types,
+           "E 成稿被打断：事件 = reattach + 1 次 guidance_submit", f"{types[-6:]}")
+        ck("_g_finish_pending" not in ss, "E 成稿接回后不残留待接标记")
     finally:
         MODE.update(delay=0.0)
 

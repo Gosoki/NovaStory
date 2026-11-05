@@ -146,6 +146,8 @@ def render(topic: dict) -> None:
         else:
             st.session_state["r_g_idx"] += 1
             st.rerun()
+    elif last and st.session_state.get("_g_finish_pending") == g_round:
+        _finish_round(topic, g_round)   # 断网 / 切后台重连后接回在途的成稿生成(见 _finish_round)
 
     # Follow-up guidance (a draft already exists): always offer an escape hatch
     # back to the draft, so a failing/looping final generation can't trap the
@@ -387,6 +389,10 @@ def _finish_round(topic: dict, g_round: int) -> None:
     intent = st.session_state["r_intent"]
     lang = get_lang()
     cond = "F" if f_mode else "E"
+    # 断网 / 切到后台再回来(2026-11-05 实测):重连后的那次运行里「回答完了」不算被点,在途的成稿生成没人接回,
+    # 页面回到最后一题、没有任何提示。发起时记下,结束(成功或失败)才清;还记着,render 就照常再走到这里接回
+    # 原来那次调用(同一请求,不重新生成)。
+    st.session_state["_g_finish_pending"] = g_round
     if source == "fixed3+ai_supplement":
         out = stream_llm(
             prompts.build_system_script(topic, lang),
@@ -401,6 +407,7 @@ def _finish_round(topic: dict, g_round: int) -> None:
             ),
             group=f"{cond}-revise",
         )
+    st.session_state.pop("_g_finish_pending", None)
     # Only commit the round once generation succeeds, so a failed-then-retried
     # generation never double-appends the round / re-logs answers.
     if not (out and out.strip()):

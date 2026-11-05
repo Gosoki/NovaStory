@@ -555,7 +555,7 @@ def reset_round_payload() -> None:
     for k in list(st.session_state.keys()):
         # ⚠️ 别在这里清 _q_*:advance_round 在问卷提交的那次 rerun 里调用本函数,此时问卷 widget
         # 仍挂载,同一 run 内删它的 key 会让 Streamlit 炸;_q_ 键按轮次编号,下一轮天然不冲突。
-        if (k in ("_script_edit", "_intent_input", "_revision_input", "_gen_failed")
+        if (k in ("_script_edit", "_intent_input", "_revision_input", "_gen_failed", "_revision_pending")
                 or k.startswith("_g_")):
             st.session_state.pop(k, None)
 
