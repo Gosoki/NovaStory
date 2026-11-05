@@ -7,7 +7,9 @@
   "common": {
     "loading": "AI 生成中…请不要关闭页面或切换到其他应用，稍候片刻。",
     "select_placeholder": "请选择",
-    "loading_slow": "这次比平时慢一些，请不要关闭页面，耐心等待。"
+    "loading_slow": "这次比平时慢一些，请不要关闭页面，耐心等待。",
+    "theme_to_light": "☀️ 切换为浅色",
+    "theme_to_dark": "🌙 切换为深色"
   },
   "sidebar": {
     "researcher_pw_locked": "尝试次数过多，请等一分钟再试。",

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from datetime import datetime
 
 import streamlit as st
@@ -22,6 +23,30 @@ def proof_now() -> dict:
             "consent_at": datetime.now().isoformat(timespec="seconds")}
 
 
+def _theme_toggle() -> None:
+    """亮 / 暗切换(2026-11-06 用户:「默认跟系统走,但是点过了就按用户设置」)。
+
+    写的是 Streamlit 自己记主题的 localStorage 键(值 "Light" / "Dark";没写过 = 跟系统),它只在页面加载时读
+    → 点了要重新加载。所以只放在同意页:这里还没有被试行,重新加载什么都不丢;入组后重新加载会让当前轮从头再来。
+    重新加载时把当前语言写进 ?lang=(会话语言只存在服务端,新会话会回到链接里的语言),其余参数(?src=)原样保留。
+    纯前端按钮,不是 Streamlit 控件:点它不触发 rerun,也不进任何数据。"""
+    labels = {"light": t("common.theme_to_light"), "dark": t("common.theme_to_dark")}
+    lang = st.session_state.get("lang", DEFAULT_LANG)
+    st.html(
+        '<div><button type="button" id="ns-theme-btn" class="ns-theme-btn"></button></div>'
+        "<script>(function(){"
+        "var K='stActiveTheme-'+location.pathname+'-v2',L=" + json.dumps(labels, ensure_ascii=False) + ";"
+        "var v=null;try{v=JSON.parse(localStorage.getItem(K)||'null')}catch(e){}"
+        "var cur=v==='Dark'?'dark':v==='Light'?'light':(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');"
+        "var to=cur==='dark'?'light':'dark',b=document.getElementById('ns-theme-btn');if(!b)return;"
+        "b.textContent=L[to];"
+        "b.onclick=function(){try{localStorage.setItem(K,JSON.stringify(to==='dark'?'Dark':'Light'))}catch(e){}"
+        "var u=new URL(location.href);u.searchParams.set('lang'," + json.dumps(lang) + ");location.replace(u.toString());};"
+        "})();</script>",
+        unsafe_allow_javascript=True,
+    )
+
+
 def render() -> None:
     # 关掉标签页后重新扫码时 URL 里已经没有 ?t=,直接往下走就会 insert 第二行被试
     # 并吃掉一个拉丁方 seq(见 core/state 那段注释)。这台浏览器存过会话就给个入口。
@@ -34,6 +59,7 @@ def render() -> None:
     # shot parser), so a subject gets a single-language session in whichever they
     # pick; ja is the default (langs[0]) for the formal Japanese cohort.
     language_radio("_consent_lang", collapsed=True)   # 三颗胶囊各用本语言写名字,不需要标签
+    _theme_toggle()
     st.header(t("consent.title"))
     # 同意书正文放进一张白卡(只是外框;文字与指纹都不变 —— proof_now 盖的是 i18n 原文)
     with st.container(key="ns_card_consent"):

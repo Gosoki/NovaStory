@@ -7,7 +7,9 @@
   "common": {
     "loading": "The AI is generating… please keep this page open and don't switch to another app.",
     "select_placeholder": "Choose an option",
-    "loading_slow": "This is taking longer than usual. Please keep this page open and wait."
+    "loading_slow": "This is taking longer than usual. Please keep this page open and wait.",
+    "theme_to_light": "☀️ Switch to light mode",
+    "theme_to_dark": "🌙 Switch to dark mode"
   },
   "sidebar": {
     "researcher_pw_locked": "Too many attempts. Please wait a minute and try again.",

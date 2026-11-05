@@ -136,7 +136,12 @@ def _masthead(*, hero: bool, progress: float | None = None) -> None:
                 f'<span class="ns-bar-progress" aria-hidden="true" style="width:{max(0.0, min(progress, 1.0)) * 100:.1f}%"></span>')
         head = (f'<header class="ns-bar{shift}">{_MARK}<span class="ns-bar-brand">{b}</span>'
                 f'<span class="ns-bar-product">{p}</span>{line}</header>')
-    js = f"<script>document.documentElement.lang={json.dumps(_HTML_LANG.get(lang, lang))};</script>"
+    # data-ns-theme:被试在同意页选过亮 / 暗(存在 Streamlit 自己的主题键里)就跟它,否则不设 = 跟系统(见 _DESIGN_CSS)
+    js = (f"<script>document.documentElement.lang={json.dumps(_HTML_LANG.get(lang, lang))};"
+          "(function(){var v=null,r=document.documentElement;"
+          "try{v=JSON.parse(localStorage.getItem('stActiveTheme-'+location.pathname+'-v2')||'null')}catch(e){}"
+          "if(v==='Light')r.dataset.nsTheme='light';else if(v==='Dark')r.dataset.nsTheme='dark';"
+          "else delete r.dataset.nsTheme;})();</script>")
     st.html(head + js, unsafe_allow_javascript=True)
 
 
@@ -180,8 +185,10 @@ _DESIGN_CSS = """
   --ns-chrome:rgba(255,255,255,.86);   /* 浮在正文上的控件底(展开侧栏箭头) */
   --ns-star:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 1.5l2.6 7.9L22.5 12l-7.9 2.6L12 22.5l-2.6-7.9L1.5 12l7.9-2.6z'/%3E%3C/svg%3E");
 }
+/* 深色:默认跟系统;被试在同意页点过「明るい／暗い表示」(views/consent._theme_toggle)就按他的选择 ——
+   选择存在 Streamlit 自己的 localStorage 键里,页头脚本把它写成 <html data-ns-theme>,两处读的是同一个值。 */
 @media (prefers-color-scheme: dark){
-  :root{
+  :root:not([data-ns-theme="light"]){
     --ns-surface:#1b1d22; --ns-surface-2:#1f2127; --ns-sunken:#22252b;
     --ns-text:#e7e5df; --ns-text-2:#c4c2bc; --ns-dim:#9b9ea6;
     --ns-line:#2c2f36; --ns-line-strong:#3c4049;
@@ -192,6 +199,17 @@ _DESIGN_CSS = """
     --ns-raised:#2a2e36;               /* 深色下气泡要比卡片亮一档,否则和变暗的页面混在一起 */
     --ns-chrome:rgba(20,24,33,.82);
   }
+}
+:root[data-ns-theme="dark"]{
+    --ns-surface:#1b1d22; --ns-surface-2:#1f2127; --ns-sunken:#22252b;
+    --ns-text:#e7e5df; --ns-text-2:#c4c2bc; --ns-dim:#9b9ea6;
+    --ns-line:#2c2f36; --ns-line-strong:#3c4049;
+    --ns-accent:#64b5f6; --ns-on-accent:#14161a;
+    --ns-accent-soft:rgba(100,181,246,.12); --ns-accent-line:rgba(100,181,246,.42);
+    --ns-ok:#7cc99a; --ns-ok-soft:rgba(124,201,154,.13);
+    --ns-shadow:0 1px 2px rgba(0,0,0,.35),0 6px 18px -8px rgba(0,0,0,.5);
+    --ns-raised:#2a2e36;               /* 深色下气泡要比卡片亮一档,否则和变暗的页面混在一起 */
+    --ns-chrome:rgba(20,24,33,.82);
 }
 
 /* ── 不占版面的工具元素 ──────────────────────────────────────────────
@@ -676,6 +694,10 @@ body:has(.stElementContainer:not([data-stale="true"]) .ns-busy-llm)
 .stExpander summary,
 [data-baseweb="tab-list"],[data-baseweb="tab"]{opacity:1!important}
 
+/* 同意页的亮 / 暗切换(views/consent._theme_toggle):与语言胶囊同一个样子,小一号 */
+.ns-theme-btn{ font:inherit; font-size:.85rem; line-height:1.4; padding:.35rem .95rem; border-radius:999px; cursor:pointer;
+  border:1px solid var(--ns-line-strong); background:var(--ns-surface); color:var(--ns-text); }
+.ns-theme-btn:hover{ border-color:var(--ns-accent-line); }
 /* 电脑屏整体放大一档(2026-11-06 用户:「pc 版字体大一点」;日本队列推荐用电脑做):Streamlit 与本页样式的字号
    都以根字号为基准(rem),只改根字号 = 全站按同一比例放大(正文 16→18px、注释约 13→15px),版面比例不变。
    手机 / 平板(<1024px)不受影响。内容列宽是 px 固定的,不随之变宽。 */
